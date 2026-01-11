@@ -1,5 +1,8 @@
 hosts.txt
 
+# ICMP helper binary
+ping_helper
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
