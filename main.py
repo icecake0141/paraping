@@ -268,7 +268,7 @@ def render_help_view(width, height):
         "MultiPing - Help",
         "-" * width,
         "Keys:",
-        "  m : cycle display mode (host/name/AS)",
+        "  n : cycle display mode (ip/rdns/alias)",
         "  h : toggle this help",
         "  q : quit",
     ]
@@ -327,21 +327,41 @@ def worker_ping(host, timeout, count, slow_threshold, verbose, result_queue):
     result_queue.put({"host": host, "status": "done"})
 
 
-def get_display_name(host, mode, name_cache, as_cache):
-    if mode == "host":
-        return host
-    if mode == "name":
-        if host not in name_cache:
-            try:
-                name_cache[host] = socket.gethostbyaddr(host)[0]
-            except (socket.herror, socket.gaierror, OSError):
-                name_cache[host] = host
-        return name_cache[host]
-    if mode == "as":
-        if host not in as_cache:
-            as_cache[host] = f"{host} [AS n/a]"
-        return as_cache[host]
-    return host
+def resolve_display_name(host_info, mode):
+    if mode == "ip":
+        return host_info["ip"]
+    if mode == "rdns":
+        return host_info["rdns"] or host_info["ip"]
+    if mode == "alias":
+        return host_info["alias"]
+    return host_info["ip"]
+
+
+def build_display_names(host_infos, mode):
+    return {host: resolve_display_name(info, mode) for host, info in host_infos.items()}
+
+
+def build_host_infos(hosts):
+    host_infos = {}
+    for host in hosts:
+        try:
+            ip_address = socket.gethostbyname(host)
+        except (socket.gaierror, OSError):
+            ip_address = host
+        host_infos[host] = {
+            "alias": host,
+            "ip": ip_address,
+            "rdns": None,
+            "rdns_state": "pending",
+        }
+    return host_infos
+
+
+def resolve_rdns(ip_address):
+    try:
+        return socket.gethostbyaddr(ip_address)[0]
+    except (socket.herror, socket.gaierror, OSError):
+        return None
 
 
 def read_key():
@@ -379,6 +399,7 @@ def main(args):
     symbols = {"success": ".", "fail": "x", "slow": "!"}
     term_size = shutil.get_terminal_size(fallback=(80, 24))
     _, _, timeline_width, _ = compute_main_layout(all_hosts, term_size.columns, term_size.lines)
+    host_infos = build_host_infos(all_hosts)
     buffers = {
         host: {
             "timeline": deque(maxlen=timeline_width),
@@ -397,13 +418,14 @@ def main(args):
         f"count={args.count}, slow-threshold={args.slow_threshold}s"
     )
 
-    modes = ["host", "name", "as"]
+    modes = ["ip", "rdns", "alias"]
     mode_index = 0
     show_help = False
     running = True
-    name_cache = {}
-    as_cache = {}
-    display_names = {host: get_display_name(host, modes[mode_index], name_cache, as_cache) for host in all_hosts}
+    display_names = build_display_names(host_infos, modes[mode_index])
+    rdns_timeout = 2.0
+    rdns_futures = {}
+    rdns_started = {}
 
     stdin_fd = None
     original_term = None
@@ -412,6 +434,9 @@ def main(args):
         original_term = termios.tcgetattr(stdin_fd)
 
     with ThreadPoolExecutor(max_workers=min(len(all_hosts), 10)) as executor:
+        for host, info in host_infos.items():
+            rdns_futures[host] = executor.submit(resolve_rdns, info["ip"])
+            rdns_started[host] = time.time()
         for host in all_hosts:
             executor.submit(
                 worker_ping,
@@ -438,13 +463,26 @@ def main(args):
                     elif key == "h":
                         show_help = not show_help
                         updated = True
-                    elif key == "m":
+                    elif key == "n":
                         mode_index = (mode_index + 1) % len(modes)
-                        display_names = {
-                            host: get_display_name(host, modes[mode_index], name_cache, as_cache)
-                            for host in all_hosts
-                        }
+                        display_names = build_display_names(host_infos, modes[mode_index])
                         updated = True
+
+                for host, future in list(rdns_futures.items()):
+                    if host_infos[host]["rdns_state"] != "pending":
+                        continue
+                    if future.done():
+                        host_infos[host]["rdns"] = future.result()
+                        host_infos[host]["rdns_state"] = "resolved"
+                        updated = True
+                        if modes[mode_index] == "rdns":
+                            display_names = build_display_names(host_infos, modes[mode_index])
+                    elif time.time() - rdns_started[host] >= rdns_timeout:
+                        future.cancel()
+                        host_infos[host]["rdns_state"] = "timeout"
+                        updated = True
+                        if modes[mode_index] == "rdns":
+                            display_names = build_display_names(host_infos, modes[mode_index])
 
                 while True:
                     try:
