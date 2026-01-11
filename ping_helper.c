@@ -148,11 +148,7 @@ int main(int argc, char *argv[]) {
             return 7;
         }
 
-        /* Ensure remaining time is non-negative (guards against clock adjustments) */
-        if (remaining.tv_sec < 0) {
-            remaining.tv_sec = 0;
-            remaining.tv_usec = 0;
-        }
+        /* Ensure remaining microseconds is non-negative (guards against clock adjustments) */
         if (remaining.tv_usec < 0) {
             remaining.tv_usec = 0;
         }
