@@ -237,23 +237,25 @@ def ping_host(host, timeout, count, slow_threshold, verbose, pause_event=None, i
                 sent, received = ans[0]
                 rtt = received.time - sent.time
                 status = "slow" if rtt >= slow_threshold else "success"
+                # Extract TTL from the IP layer of the received packet
+                ttl = received[IP].ttl if IP in received else None
                 if verbose:
-                    print(f"Reply from {host}: seq={i+1} rtt={rtt:.3f}s")
+                    print(f"Reply from {host}: seq={i+1} rtt={rtt:.3f}s ttl={ttl}")
                     for r in ans:
                         r[1].show()
-                yield {"host": host, "sequence": i + 1, "status": status, "rtt": rtt}
+                yield {"host": host, "sequence": i + 1, "status": status, "rtt": rtt, "ttl": ttl}
             else:
                 if verbose:
                     print(f"No reply from {host}: seq={i+1}")
-                yield {"host": host, "sequence": i + 1, "status": "fail", "rtt": None}
+                yield {"host": host, "sequence": i + 1, "status": "fail", "rtt": None, "ttl": None}
         except OSError as e:
             if verbose:
                 print(f"Network error pinging {host}: {e}")
-            yield {"host": host, "sequence": i + 1, "status": "fail", "rtt": None}
+            yield {"host": host, "sequence": i + 1, "status": "fail", "rtt": None, "ttl": None}
         except Exception as e:
             if verbose:
                 print(f"Error pinging {host}: {e}")
-            yield {"host": host, "sequence": i + 1, "status": "fail", "rtt": None}
+            yield {"host": host, "sequence": i + 1, "status": "fail", "rtt": None, "ttl": None}
 
         i += 1
 
@@ -318,10 +320,15 @@ def resize_buffers(buffers, timeline_width, symbols):
             host_buffers["rtt_history"] = deque(
                 host_buffers["rtt_history"], maxlen=timeline_width
             )
+        if host_buffers["ttl_history"].maxlen != timeline_width:
+            host_buffers["ttl_history"] = deque(
+                host_buffers["ttl_history"], maxlen=timeline_width
+            )
         for status in symbols:
             if host_buffers["categories"][status].maxlen != timeline_width:
                 host_buffers["categories"][status] = deque(
                     host_buffers["categories"][status], maxlen=timeline_width
+                )
                 )
 
 
@@ -365,6 +372,7 @@ def compute_summary_data(host_infos, display_names, buffers, stats, symbols):
         avg_rtt_ms = None
         if stats[host_id]["rtt_count"] > 0:
             avg_rtt_ms = stats[host_id]["rtt_sum"] / stats[host_id]["rtt_count"] * 1000
+        latest_ttl = latest_ttl_value(buffers[host_id]["ttl_history"])
         summary.append(
             {
                 "host": display_name,
@@ -373,6 +381,7 @@ def compute_summary_data(host_infos, display_names, buffers, stats, symbols):
                 "streak_type": streak_type,
                 "streak_length": streak_length,
                 "avg_rtt_ms": avg_rtt_ms,
+                "latest_ttl": latest_ttl,
             }
         )
     return summary
@@ -415,6 +424,12 @@ def render_summary_view(summary_data, width, height):
             rtt_line = f"  avg rtt {entry['avg_rtt_ms']:.1f} ms"
         else:
             rtt_line = "  avg rtt n/a"
+        
+        # Format the TTL line
+        if entry.get("latest_ttl") is not None:
+            ttl_line = f"  ttl {entry['latest_ttl']}"
+            rtt_line += f" ttl {entry['latest_ttl']}"
+        
         lines.append(rtt_line[:width])
 
     return pad_lines(lines, width, height)
@@ -544,6 +559,13 @@ def compute_fail_streak(timeline, fail_symbol):
         else:
             break
     return streak
+
+
+def latest_ttl_value(ttl_history):
+    if not ttl_history:
+        return None
+    return ttl_history[-1]
+
 
 
 def latest_rtt_value(rtt_history):
@@ -1020,6 +1042,10 @@ def create_state_snapshot(buffers, stats, timestamp):
                 host_buffers["rtt_history"],
                 maxlen=host_buffers["rtt_history"].maxlen
             ),
+            "ttl_history": deque(
+                host_buffers["ttl_history"],
+                maxlen=host_buffers["ttl_history"].maxlen
+            ),
             "categories": {
                 status: deque(cat_deque, maxlen=cat_deque.maxlen)
                 for status, cat_deque in host_buffers["categories"].items()
@@ -1089,6 +1115,7 @@ def main(args):
         info["id"]: {
             "timeline": deque(maxlen=timeline_width),
             "rtt_history": deque(maxlen=timeline_width),
+            "ttl_history": deque(maxlen=timeline_width),
             "categories": {status: deque(maxlen=timeline_width) for status in symbols},
         }
         for info in host_infos
@@ -1350,6 +1377,7 @@ def main(args):
                     status = result["status"]
                     buffers[host_id]["timeline"].append(symbols[status])
                     buffers[host_id]["rtt_history"].append(result.get("rtt"))
+                    buffers[host_id]["ttl_history"].append(result.get("ttl"))
                     buffers[host_id]["categories"][status].append(result["sequence"])
                     stats[host_id][status] += 1
                     stats[host_id]["total"] += 1
