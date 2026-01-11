@@ -36,6 +36,9 @@ Run the `main.py` script using Python:
 python main.py [options] <host1> <host2> ...
 ```
 
+#### Interactive Controls
+- Press `H` to open the help screen. Press any key to close it.
+
 #### Command-line Options
 - `-t`, `--timeout`: Specify the timeout in seconds for each ping (default: 1 second).
 - `-c`, `--count`: Number of ping attempts per host (default: 4).
@@ -51,4 +54,4 @@ python main.py -t 2 example.com google.com
 - Results may vary based on network conditions and privileges.
 
 ## License
-This project is licensed under the MIT License. Feel free to use, modify, and distribute it as per your needs.
+This project is licensed under the Apache License 2.0. Feel free to use, modify, and distribute it as per your needs.

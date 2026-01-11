@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright 2025 Multiping contributors
+# Copyright 2025 icecake0141
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,40 +33,72 @@ from scapy.all import ICMP, IP, sr  # type: ignore[attr-defined]
 
 def handle_options():
 
-    parser = argparse.ArgumentParser(description="MultiPing - Perform ICMP ping operations to multiple hosts concurrently")
-    parser.add_argument('-t', '--timeout', type=int, default=1, help='Timeout in seconds for each ping (default: 1)')
-    parser.add_argument('-c', '--count', type=int, default=4, help='Number of ping attempts per host (default: 4)')
-    parser.add_argument('--slow-threshold', type=float, default=0.5, help='Threshold in seconds for slow ping (default: 0.5)')
-    parser.add_argument('-v', '--verbose', action='store_true', help='Enable verbose output, showing detailed ping results')
-    parser.add_argument('-f', '--input', type=str, help='Input file containing list of hosts (one per line)', required=False)
-    parser.add_argument(
-        '--panel-position',
-        type=str,
-        default='right',
-        choices=['right', 'left', 'top', 'bottom', 'none'],
-        help='Summary panel position (right|left|top|bottom|none)',
+    parser = argparse.ArgumentParser(
+        description="MultiPing - Perform ICMP ping operations to multiple hosts concurrently"
     )
     parser.add_argument(
-        '--pause-mode',
-        type=str,
-        default='display',
-        choices=['display', 'ping'],
-        help='Pause behavior: display (stop updates only) or ping (pause ping + updates)',
+        "-t",
+        "--timeout",
+        type=int,
+        default=1,
+        help="Timeout in seconds for each ping (default: 1)",
     )
     parser.add_argument(
-        '--timezone',
+        "-c",
+        "--count",
+        type=int,
+        default=4,
+        help="Number of ping attempts per host (default: 4)",
+    )
+    parser.add_argument(
+        "--slow-threshold",
+        type=float,
+        default=0.5,
+        help="Threshold in seconds for slow ping (default: 0.5)",
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output, showing detailed ping results",
+    )
+    parser.add_argument(
+        "-f",
+        "--input",
+        type=str,
+        help="Input file containing list of hosts (one per line)",
+        required=False,
+    )
+    parser.add_argument(
+        "--panel-position",
+        type=str,
+        default="right",
+        choices=["right", "left", "top", "bottom", "none"],
+        help="Summary panel position (right|left|top|bottom|none)",
+    )
+    parser.add_argument(
+        "--pause-mode",
+        type=str,
+        default="display",
+        choices=["display", "ping"],
+        help="Pause behavior: display (stop updates only) or ping (pause ping + updates)",
+    )
+    parser.add_argument(
+        "--timezone",
         type=str,
         default=None,
-        help='Display timezone (IANA name, e.g. Asia/Tokyo). Defaults to UTC.',
+        help="Display timezone (IANA name, e.g. Asia/Tokyo). Defaults to UTC.",
     )
     parser.add_argument(
-        '--snapshot-timezone',
+        "--snapshot-timezone",
         type=str,
-        default='utc',
-        choices=['utc', 'display'],
-        help='Timezone used in snapshot filename (utc|display). Defaults to utc.',
+        default="utc",
+        choices=["utc", "display"],
+        help="Timezone used in snapshot filename (utc|display). Defaults to utc.",
     )
-    parser.add_argument('hosts', nargs='*', help='Hosts to ping (IP addresses or hostnames)')
+    parser.add_argument(
+        "hosts", nargs="*", help="Hosts to ping (IP addresses or hostnames)"
+    )
 
     args = parser.parse_args()
     return args
@@ -79,10 +111,10 @@ def read_input_file(input_file):
 
     host_list = []
     try:
-        with open(input_file, 'r') as f:
+        with open(input_file, "r") as f:
             for line in f:
                 line = line.strip()
-                if line and not line.startswith('#'):  # Skip empty lines and comments
+                if line and not line.startswith("#"):  # Skip empty lines and comments
                     host_list.append(line)
     except FileNotFoundError:
         print(f"Error: Input file '{input_file}' not found.")
@@ -122,7 +154,7 @@ def ping_host(host, timeout, count, slow_threshold, verbose, pause_event=None):
                 time.sleep(0.05)
         try:
             # Create ICMP packet
-            icmp = IP(dst=host)/ICMP()
+            icmp = IP(dst=host) / ICMP()
 
             # Send ICMP packet
             ans, unans = sr(icmp, timeout=timeout, verbose=0)
@@ -199,9 +231,13 @@ def format_status_line(host, timeline, label_width):
 def resize_buffers(buffers, timeline_width, symbols):
     for host, host_buffers in buffers.items():
         if host_buffers["timeline"].maxlen != timeline_width:
-            host_buffers["timeline"] = deque(host_buffers["timeline"], maxlen=timeline_width)
+            host_buffers["timeline"] = deque(
+                host_buffers["timeline"], maxlen=timeline_width
+            )
         if host_buffers["rtt_history"].maxlen != timeline_width:
-            host_buffers["rtt_history"] = deque(host_buffers["rtt_history"], maxlen=timeline_width)
+            host_buffers["rtt_history"] = deque(
+                host_buffers["rtt_history"], maxlen=timeline_width
+            )
         for status in symbols:
             if host_buffers["categories"][status].maxlen != timeline_width:
                 host_buffers["categories"][status] = deque(
@@ -317,7 +353,9 @@ def build_sparkline(rtt_values, status_symbols, fail_symbol):
     return "".join(spark_chars[idx] for idx in indices)
 
 
-def render_timeline_view(display_entries, buffers, symbols, width, height, header, header_lines=2):
+def render_timeline_view(
+    display_entries, buffers, symbols, width, height, header, header_lines=2
+):
     if width <= 0 or height <= 0:
         return []
 
@@ -343,7 +381,9 @@ def render_timeline_view(display_entries, buffers, symbols, width, height, heade
     return pad_lines(lines, width, height)
 
 
-def render_sparkline_view(display_entries, buffers, symbols, width, height, header, header_lines=2):
+def render_sparkline_view(
+    display_entries, buffers, symbols, width, height, header, header_lines=2
+):
     if width <= 0 or height <= 0:
         return []
 
@@ -361,7 +401,9 @@ def render_sparkline_view(display_entries, buffers, symbols, width, height, head
     for host, label in truncated_entries:
         rtt_values = list(buffers[host]["rtt_history"])[-timeline_width:]
         status_symbols = list(buffers[host]["timeline"])[-timeline_width:]
-        sparkline = build_sparkline(rtt_values, status_symbols, symbols["fail"]).rjust(timeline_width)
+        sparkline = build_sparkline(rtt_values, status_symbols, symbols["fail"]).rjust(
+            timeline_width
+        )
         lines.append(format_status_line(label, sparkline, label_width))
 
     if len(display_entries) > len(truncated_entries) and len(lines) < height:
@@ -384,7 +426,9 @@ def render_main_view(
     header_lines=2,
 ):
     pause_label = "PAUSED" if paused else "LIVE"
-    header = f"MultiPing - {pause_label} results [{mode_label} | {display_mode}] {timestamp}"
+    header = (
+        f"MultiPing - {pause_label} results [{mode_label} | {display_mode}] {timestamp}"
+    )
     if display_mode == "sparkline":
         return render_sparkline_view(
             display_entries, buffers, symbols, width, height, header, header_lines
@@ -448,7 +492,9 @@ def build_display_entries(
     if sort_mode == "failures":
         entries.sort(key=lambda item: (item["fail_count"], item["label"]), reverse=True)
     elif sort_mode == "streak":
-        entries.sort(key=lambda item: (item["fail_streak"], item["label"]), reverse=True)
+        entries.sort(
+            key=lambda item: (item["fail_streak"], item["label"]), reverse=True
+        )
     elif sort_mode == "latency":
         entries.sort(
             key=lambda item: ((item["latest_rtt"] or -1.0), item["label"]),
@@ -488,8 +534,10 @@ def render_help_view(width, height):
         "  a : toggle ASN display",
         "  p : pause/resume display",
         "  s : save snapshot to file",
-        "  h : toggle this help",
+        "  H : show help (press any key to close)",
         "  q : quit",
+        "",
+        "Press any key to close this help screen.",
     ]
     return pad_lines(lines, width, height)
 
@@ -517,13 +565,17 @@ def build_display_lines(
     term_width = term_size.columns
     term_height = term_size.lines
 
-    include_asn = should_show_asn(host_infos, mode_label, show_asn, term_width, asn_width=asn_width)
+    include_asn = should_show_asn(
+        host_infos, mode_label, show_asn, term_width, asn_width=asn_width
+    )
     display_names = build_display_names(host_infos, mode_label, include_asn, asn_width)
 
-    main_width, main_height, summary_width, summary_height, resolved_position = compute_panel_sizes(
-        term_width, term_height, panel_position
+    main_width, main_height, summary_width, summary_height, resolved_position = (
+        compute_panel_sizes(term_width, term_height, panel_position)
     )
-    summary_data = compute_summary_data(host_infos, display_names, buffers, stats, symbols)
+    summary_data = compute_summary_data(
+        host_infos, display_names, buffers, stats, symbols
+    )
 
     display_entries = build_display_entries(
         host_infos,
@@ -633,7 +685,9 @@ def format_timestamp(now_utc, display_tz):
     return f"{timestamp} ({tz_label})"
 
 
-def worker_ping(host_info, timeout, count, slow_threshold, verbose, pause_event, result_queue):
+def worker_ping(
+    host_info, timeout, count, slow_threshold, verbose, pause_event, result_queue
+):
     for result in ping_host(
         host_info["host"],
         timeout,
@@ -769,13 +823,12 @@ def should_retry_asn(ip_address, asn_cache, now, failure_ttl):
     return False
 
 
-def should_show_asn(host_infos, mode, show_asn, term_width, min_timeline_width=10, asn_width=8):
+def should_show_asn(
+    host_infos, mode, show_asn, term_width, min_timeline_width=10, asn_width=8
+):
     if not show_asn:
         return False
-    labels = [
-        format_display_name(info, mode, True, asn_width)
-        for info in host_infos
-    ]
+    labels = [format_display_name(info, mode, True, asn_width) for info in host_infos]
     if not labels:
         return False
     label_width = max(len(label) for label in labels)
@@ -813,7 +866,9 @@ def main(args):
 
     # Check if we have any hosts to ping
     if not all_hosts:
-        print("Error: No hosts specified. Provide hosts as arguments or use -f/--input option.")
+        print(
+            "Error: No hosts specified. Provide hosts as arguments or use -f/--input option."
+        )
         return
 
     display_tz = timezone.utc
@@ -821,7 +876,9 @@ def main(args):
         try:
             display_tz = ZoneInfo(args.timezone)
         except ZoneInfoNotFoundError:
-            print(f"Error: Unknown timezone '{args.timezone}'. Use an IANA name like 'Asia/Tokyo'.")
+            print(
+                f"Error: Unknown timezone '{args.timezone}'. Use an IANA name like 'Asia/Tokyo'."
+            )
             return
     snapshot_tz = display_tz if args.snapshot_timezone == "display" else timezone.utc
 
@@ -829,7 +886,9 @@ def main(args):
     term_size = shutil.get_terminal_size(fallback=(80, 24))
     host_infos, host_info_map = build_host_infos(all_hosts)
     host_labels = [info["alias"] for info in host_infos]
-    _, _, timeline_width, _ = compute_main_layout(host_labels, term_size.columns, term_size.lines)
+    _, _, timeline_width, _ = compute_main_layout(
+        host_labels, term_size.columns, term_size.lines
+    )
     buffers = {
         info["id"]: {
             "timeline": deque(maxlen=timeline_width),
@@ -839,7 +898,14 @@ def main(args):
         for info in host_infos
     }
     stats = {
-        info["id"]: {"success": 0, "fail": 0, "slow": 0, "total": 0, "rtt_sum": 0.0, "rtt_count": 0}
+        info["id"]: {
+            "success": 0,
+            "fail": 0,
+            "slow": 0,
+            "total": 0,
+            "rtt_sum": 0.0,
+            "rtt_count": 0,
+        }
         for info in host_infos
     }
     result_queue = queue.Queue()
@@ -930,16 +996,24 @@ def main(args):
             while running and completed_hosts < len(host_infos):
                 key = read_key()
                 if key:
+                    if show_help:
+                        show_help = False
+                        force_render = True
+                        updated = True
+                        continue
                     if key == "q":
                         running = False
-                    elif key == "h":
-                        show_help = not show_help
+                    elif key in ("H", "h"):
+                        show_help = True
+                        force_render = True
                         updated = True
                     elif key == "n":
                         mode_index = (mode_index + 1) % len(modes)
                         updated = True
                     elif key == "v":
-                        display_mode_index = (display_mode_index + 1) % len(display_modes)
+                        display_mode_index = (display_mode_index + 1) % len(
+                            display_modes
+                        )
                         updated = True
                     elif key == "o":
                         sort_mode_index = (sort_mode_index + 1) % len(sort_modes)
@@ -963,7 +1037,9 @@ def main(args):
                     elif key == "s":
                         now_utc = datetime.now(timezone.utc)
                         snapshot_dt = now_utc.astimezone(snapshot_tz)
-                        snapshot_name = snapshot_dt.strftime("multiping_snapshot_%Y%m%d_%H%M%S.txt")
+                        snapshot_name = snapshot_dt.strftime(
+                            "multiping_snapshot_%Y%m%d_%H%M%S.txt"
+                        )
                         snapshot_lines = build_display_lines(
                             host_infos,
                             buffers,
@@ -981,7 +1057,9 @@ def main(args):
                             status_message,
                             format_timestamp(now_utc, display_tz),
                         )
-                        with open(snapshot_name, "w", encoding="utf-8") as snapshot_file:
+                        with open(
+                            snapshot_name, "w", encoding="utf-8"
+                        ) as snapshot_file:
                             snapshot_file.write("\n".join(snapshot_lines) + "\n")
                         status_message = f"保存: {snapshot_name}"
                         updated = True
@@ -1051,7 +1129,9 @@ def main(args):
                         updated = True
 
                 now = time.time()
-                if force_render or (not paused and (updated or (now - last_render) >= refresh_interval)):
+                if force_render or (
+                    not paused and (updated or (now - last_render) >= refresh_interval)
+                ):
                     render_display(
                         host_infos,
                         buffers,
