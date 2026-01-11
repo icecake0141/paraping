@@ -353,6 +353,82 @@ def render_main_view(
     )
 
 
+def compute_fail_streak(timeline, fail_symbol):
+    streak = 0
+    for symbol in reversed(timeline):
+        if symbol == fail_symbol:
+            streak += 1
+        else:
+            break
+    return streak
+
+
+def latest_rtt_value(rtt_history):
+    if not rtt_history:
+        return None
+    return rtt_history[-1]
+
+
+def build_display_entries(
+    hosts,
+    display_names,
+    buffers,
+    stats,
+    symbols,
+    sort_mode,
+    filter_mode,
+    slow_threshold,
+):
+    entries = []
+    for host in hosts:
+        timeline = buffers[host]["timeline"]
+        latest_rtt = latest_rtt_value(buffers[host]["rtt_history"])
+        fail_streak = compute_fail_streak(timeline, symbols["fail"])
+        fail_count = stats[host]["fail"]
+
+        include = True
+        if filter_mode == "failures":
+            include = fail_count > 0
+        elif filter_mode == "latency":
+            include = latest_rtt is not None and latest_rtt >= slow_threshold
+
+        if include:
+            entries.append(
+                {
+                    "host": host,
+                    "label": display_names.get(host, host),
+                    "fail_count": fail_count,
+                    "fail_streak": fail_streak,
+                    "latest_rtt": latest_rtt,
+                }
+            )
+
+    if sort_mode == "failures":
+        entries.sort(key=lambda item: (item["fail_count"], item["label"]), reverse=True)
+    elif sort_mode == "streak":
+        entries.sort(key=lambda item: (item["fail_streak"], item["label"]), reverse=True)
+    elif sort_mode == "latency":
+        entries.sort(
+            key=lambda item: ((item["latest_rtt"] or -1.0), item["label"]),
+            reverse=True,
+        )
+    elif sort_mode == "host":
+        entries.sort(key=lambda item: item["label"])
+
+    return [(entry["host"], entry["label"]) for entry in entries]
+
+
+def build_status_line(sort_mode, filter_mode):
+    sort_labels = {
+        "failures": "失敗回数",
+        "streak": "連続失敗",
+        "latency": "最新遅延",
+        "host": "ホスト名",
+    }
+    filter_labels = {"failures": "失敗のみ", "latency": "高遅延のみ", "all": "全件"}
+    return f"ソート: {sort_labels.get(sort_mode, sort_mode)} | フィルタ: {filter_labels.get(filter_mode, filter_mode)}"
+
+
 def render_help_view(width, height):
     lines = [
         "MultiPing - Help",
@@ -360,6 +436,8 @@ def render_help_view(width, height):
         "Keys:",
         "  n : cycle display mode (ip/rdns/alias)",
         "  v : toggle view (timeline/sparkline)",
+        "  s : cycle sort (failures/streak/latency/host)",
+        "  f : cycle filter (failures/latency/all)",
         "  a : toggle ASN display",
         "  h : toggle this help",
         "  q : quit",
@@ -376,6 +454,9 @@ def render_display(
     panel_position,
     mode_label,
     display_mode,
+    sort_mode,
+    filter_mode,
+    slow_threshold,
     show_help,
     show_asn,
     asn_width=8,
@@ -393,7 +474,16 @@ def render_display(
     )
     summary_data = compute_summary_data(hosts, display_names, buffers, stats, symbols)
 
-    display_entries = [(host, display_names.get(host, host)) for host in hosts]
+    display_entries = build_display_entries(
+        hosts,
+        display_names,
+        buffers,
+        stats,
+        symbols,
+        sort_mode,
+        filter_mode,
+        slow_threshold,
+    )
     main_lines = render_main_view(
         display_entries,
         buffers,
@@ -422,6 +512,10 @@ def render_display(
         combined_lines = main_lines + [""] + summary_lines
     else:
         combined_lines = main_lines
+
+    status_line = build_status_line(sort_mode, filter_mode)
+    if combined_lines:
+        combined_lines[-1] = status_line[:term_width].ljust(term_width)
 
     print("\x1b[2J\x1b[H" + "\n".join(combined_lines), end="", flush=True)
 
@@ -578,6 +672,10 @@ def main(args):
     show_help = False
     display_modes = ["timeline", "sparkline"]
     display_mode_index = 0
+    sort_modes = ["failures", "streak", "latency", "host"]
+    sort_mode_index = 0
+    filter_modes = ["failures", "latency", "all"]
+    filter_mode_index = 2
     running = True
     show_asn = True
     rdns_timeout = 2.0
@@ -636,6 +734,12 @@ def main(args):
                         updated = True
                     elif key == "v":
                         display_mode_index = (display_mode_index + 1) % len(display_modes)
+                        updated = True
+                    elif key == "s":
+                        sort_mode_index = (sort_mode_index + 1) % len(sort_modes)
+                        updated = True
+                    elif key == "f":
+                        filter_mode_index = (filter_mode_index + 1) % len(filter_modes)
                         updated = True
                     elif key == "a":
                         show_asn = not show_asn
@@ -699,6 +803,9 @@ def main(args):
                         args.panel_position,
                         modes[mode_index],
                         display_modes[display_mode_index],
+                        sort_modes[sort_mode_index],
+                        filter_modes[filter_mode_index],
+                        args.slow_threshold,
                         show_help,
                         show_asn,
                     )
