@@ -20,6 +20,9 @@ import argparse
 import queue
 import sys
 import os
+from collections import deque
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 # Add parent directory to path to import main
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -30,6 +33,16 @@ from main import (
     ping_host,
     main,
     render_help_view,
+    compute_main_layout,
+    compute_panel_sizes,
+    build_display_names,
+    format_display_name,
+    compute_summary_data,
+    format_timestamp,
+    format_timezone_label,
+    build_host_infos,
+    build_sparkline,
+    build_status_line,
 )  # noqa: E402
 
 
@@ -382,6 +395,331 @@ class TestHelpView(unittest.TestCase):
         combined = "\n".join(lines)
         self.assertIn("H : show help", combined)
         self.assertIn("Press any key to close", combined)
+
+
+class TestLayoutComputation(unittest.TestCase):
+    """Test layout computation functions"""
+
+    def test_compute_main_layout_basic(self):
+        """Test basic main layout computation"""
+        host_labels = ["host1.com", "host2.com", "host3.com"]
+        width, label_width, timeline_width, visible_hosts = compute_main_layout(
+            host_labels, 80, 24, header_lines=2
+        )
+        self.assertEqual(width, 80)
+        self.assertGreater(label_width, 0)
+        self.assertGreater(timeline_width, 0)
+        self.assertEqual(visible_hosts, 22)  # 24 - 2 header lines
+
+    def test_compute_main_layout_with_long_hostnames(self):
+        """Test layout with very long hostnames"""
+        host_labels = ["very-long-hostname-that-exceeds-normal-length.example.com"]
+        width, label_width, timeline_width, visible_hosts = compute_main_layout(
+            host_labels, 80, 24
+        )
+        self.assertLessEqual(label_width, 80 // 3)  # Should be capped
+        self.assertGreater(timeline_width, 0)
+
+    def test_compute_panel_sizes_right(self):
+        """Test panel size computation with right panel"""
+        main_w, main_h, summ_w, summ_h, pos = compute_panel_sizes(
+            80, 24, "right"
+        )
+        self.assertGreater(main_w, 0)
+        self.assertGreater(summ_w, 0)
+        self.assertEqual(main_h, 24)
+        self.assertEqual(summ_h, 24)
+        self.assertEqual(pos, "right")
+
+    def test_compute_panel_sizes_none(self):
+        """Test panel size computation with no panel"""
+        main_w, main_h, summ_w, summ_h, pos = compute_panel_sizes(
+            80, 24, "none"
+        )
+        self.assertEqual(main_w, 80)
+        self.assertEqual(main_h, 24)
+        self.assertEqual(summ_w, 0)
+        self.assertEqual(summ_h, 0)
+        self.assertEqual(pos, "none")
+
+    def test_compute_panel_sizes_too_small(self):
+        """Test panel computation falls back to none when terminal too small"""
+        main_w, main_h, summ_w, summ_h, pos = compute_panel_sizes(
+            10, 5, "right"
+        )
+        self.assertEqual(pos, "none")
+
+
+class TestDisplayNames(unittest.TestCase):
+    """Test display name building functions"""
+
+    def test_format_display_name_ip_mode(self):
+        """Test display name formatting in IP mode"""
+        host_info = {
+            "id": 0,
+            "host": "example.com",
+            "alias": "example.com",
+            "ip": "93.184.216.34",
+            "rdns": None,
+            "asn": None,
+        }
+        name = format_display_name(host_info, "ip", False, 8)
+        self.assertEqual(name, "93.184.216.34")
+
+    def test_format_display_name_rdns_mode(self):
+        """Test display name formatting in rDNS mode"""
+        host_info = {
+            "id": 0,
+            "host": "example.com",
+            "alias": "example.com",
+            "ip": "93.184.216.34",
+            "rdns": "example.com",
+            "rdns_pending": False,
+            "asn": None,
+        }
+        name = format_display_name(host_info, "rdns", False, 8)
+        self.assertEqual(name, "example.com")
+
+    def test_format_display_name_alias_mode(self):
+        """Test display name formatting in alias mode"""
+        host_info = {
+            "id": 0,
+            "host": "example.com",
+            "alias": "my-server",
+            "ip": "93.184.216.34",
+            "rdns": None,
+            "asn": None,
+        }
+        name = format_display_name(host_info, "alias", False, 8)
+        self.assertEqual(name, "my-server")
+
+    def test_format_display_name_with_asn(self):
+        """Test display name formatting with ASN"""
+        host_info = {
+            "id": 0,
+            "host": "example.com",
+            "alias": "example.com",
+            "ip": "93.184.216.34",
+            "rdns": None,
+            "asn": "AS15133",
+            "asn_pending": False,
+        }
+        name = format_display_name(host_info, "ip", True, 8)
+        self.assertIn("93.184.216.34", name)
+        self.assertIn("AS15133", name)
+
+    def test_build_display_names(self):
+        """Test building display names for multiple hosts"""
+        host_infos = [
+            {"id": 0, "host": "h1.com", "alias": "h1", "ip": "1.1.1.1", "rdns": None, "asn": None},
+            {"id": 1, "host": "h2.com", "alias": "h2", "ip": "2.2.2.2", "rdns": None, "asn": None},
+        ]
+        names = build_display_names(host_infos, "alias", False, 8)
+        self.assertEqual(names[0], "h1")
+        self.assertEqual(names[1], "h2")
+
+
+class TestSummaryData(unittest.TestCase):
+    """Test summary data computation"""
+
+    def test_compute_summary_data_basic(self):
+        """Test basic summary data computation"""
+        host_infos = [
+            {"id": 0, "alias": "host1.com"},
+        ]
+        display_names = {0: "host1.com"}
+        buffers = {
+            0: {
+                "timeline": deque([".", ".", "x", "."]),
+                "rtt_history": deque([0.01, 0.02, None, 0.015]),
+                "categories": {
+                    "success": deque([1, 2, 4]),
+                    "slow": deque([]),
+                    "fail": deque([3]),
+                },
+            }
+        }
+        stats = {
+            0: {
+                "success": 3,
+                "slow": 0,
+                "fail": 1,
+                "total": 4,
+                "rtt_sum": 0.045,
+                "rtt_count": 3,
+            }
+        }
+        symbols = {"success": ".", "fail": "x", "slow": "!"}
+
+        summary = compute_summary_data(host_infos, display_names, buffers, stats, symbols)
+
+        self.assertEqual(len(summary), 1)
+        self.assertEqual(summary[0]["host"], "host1.com")
+        self.assertEqual(summary[0]["success_rate"], 75.0)
+        self.assertEqual(summary[0]["loss_rate"], 25.0)
+        self.assertIsNotNone(summary[0]["avg_rtt_ms"])
+
+    def test_compute_summary_data_all_success(self):
+        """Test summary with all successful pings"""
+        host_infos = [{"id": 0, "alias": "host1.com"}]
+        display_names = {0: "host1.com"}
+        buffers = {
+            0: {
+                "timeline": deque([".", ".", ".", "."]),
+                "rtt_history": deque([0.01, 0.02, 0.015, 0.018]),
+                "categories": {
+                    "success": deque([1, 2, 3, 4]),
+                    "slow": deque([]),
+                    "fail": deque([]),
+                },
+            }
+        }
+        stats = {
+            0: {
+                "success": 4,
+                "slow": 0,
+                "fail": 0,
+                "total": 4,
+                "rtt_sum": 0.063,
+                "rtt_count": 4,
+            }
+        }
+        symbols = {"success": ".", "fail": "x", "slow": "!"}
+
+        summary = compute_summary_data(host_infos, display_names, buffers, stats, symbols)
+
+        self.assertEqual(summary[0]["success_rate"], 100.0)
+        self.assertEqual(summary[0]["loss_rate"], 0.0)
+        self.assertEqual(summary[0]["streak_type"], "success")
+
+
+class TestTimezoneFormatting(unittest.TestCase):
+    """Test timezone handling functions"""
+
+    def test_format_timestamp_utc(self):
+        """Test timestamp formatting with UTC"""
+        now_utc = datetime(2025, 1, 15, 12, 30, 45, tzinfo=timezone.utc)
+        result = format_timestamp(now_utc, timezone.utc)
+        self.assertIn("2025-01-15", result)
+        self.assertIn("12:30:45", result)
+        self.assertIn("UTC", result)
+
+    def test_format_timestamp_with_timezone(self):
+        """Test timestamp formatting with non-UTC timezone"""
+        now_utc = datetime(2025, 1, 15, 12, 30, 45, tzinfo=timezone.utc)
+        tokyo_tz = ZoneInfo("Asia/Tokyo")
+        result = format_timestamp(now_utc, tokyo_tz)
+        self.assertIn("2025-01-15", result)
+        # Tokyo is UTC+9, so 12:30 UTC = 21:30 JST
+        self.assertIn("21:30:45", result)
+
+    def test_format_timezone_label_utc(self):
+        """Test timezone label formatting for UTC"""
+        now_utc = datetime(2025, 1, 15, 12, 30, 45, tzinfo=timezone.utc)
+        label = format_timezone_label(now_utc, timezone.utc)
+        self.assertEqual(label, "UTC")
+
+
+class TestHostInfoBuilding(unittest.TestCase):
+    """Test host info building functions"""
+
+    @patch("main.socket.gethostbyname")
+    def test_build_host_infos_with_hostname(self, mock_gethostbyname):
+        """Test building host infos with resolvable hostname"""
+        mock_gethostbyname.return_value = "93.184.216.34"
+
+        host_infos, host_map = build_host_infos(["example.com"])
+
+        self.assertEqual(len(host_infos), 1)
+        self.assertEqual(host_infos[0]["host"], "example.com")
+        self.assertEqual(host_infos[0]["ip"], "93.184.216.34")
+        self.assertEqual(host_infos[0]["alias"], "example.com")
+        self.assertIn("example.com", host_map)
+
+    @patch("main.socket.gethostbyname")
+    def test_build_host_infos_with_ip(self, mock_gethostbyname):
+        """Test building host infos with IP address"""
+        mock_gethostbyname.side_effect = OSError()
+
+        host_infos, host_map = build_host_infos(["192.168.1.1"])
+
+        self.assertEqual(len(host_infos), 1)
+        self.assertEqual(host_infos[0]["ip"], "192.168.1.1")
+
+    @patch("main.socket.gethostbyname")
+    def test_build_host_infos_multiple_hosts(self, mock_gethostbyname):
+        """Test building host infos with multiple hosts"""
+        mock_gethostbyname.side_effect = ["1.1.1.1", "2.2.2.2", "3.3.3.3"]
+
+        host_infos, host_map = build_host_infos(["h1.com", "h2.com", "h3.com"])
+
+        self.assertEqual(len(host_infos), 3)
+        self.assertEqual(host_infos[0]["ip"], "1.1.1.1")
+        self.assertEqual(host_infos[1]["ip"], "2.2.2.2")
+        self.assertEqual(host_infos[2]["ip"], "3.3.3.3")
+
+
+class TestSparklineBuilding(unittest.TestCase):
+    """Test sparkline building function"""
+
+    def test_build_sparkline_with_values(self):
+        """Test sparkline building with RTT values"""
+        rtt_values = [0.01, 0.02, 0.03, 0.04, 0.05]
+        status_symbols = [".", ".", ".", ".", "."]
+        fail_symbol = "x"
+
+        result = build_sparkline(rtt_values, status_symbols, fail_symbol)
+
+        self.assertEqual(len(result), 5)
+        # Should use sparkline characters
+        self.assertTrue(all(c in "▁▂▃▄▅▆▇█" for c in result))
+
+    def test_build_sparkline_with_failures(self):
+        """Test sparkline with failed pings (None values)"""
+        rtt_values = [0.01, None, 0.03, None, 0.05]
+        status_symbols = [".", "x", ".", "x", "."]
+        fail_symbol = "x"
+
+        result = build_sparkline(rtt_values, status_symbols, fail_symbol)
+
+        self.assertEqual(len(result), 5)
+
+    def test_build_sparkline_all_same_value(self):
+        """Test sparkline when all RTT values are the same"""
+        rtt_values = [0.02, 0.02, 0.02, 0.02]
+        status_symbols = [".", ".", ".", "."]
+        fail_symbol = "x"
+
+        result = build_sparkline(rtt_values, status_symbols, fail_symbol)
+
+        self.assertEqual(len(result), 4)
+
+
+class TestStatusLine(unittest.TestCase):
+    """Test status line building function"""
+
+    def test_build_status_line_basic(self):
+        """Test basic status line building"""
+        result = build_status_line("failures", "all", False, None)
+        self.assertIn("失敗回数", result)
+        self.assertIn("全件", result)
+        self.assertNotIn("PAUSED", result)
+
+    def test_build_status_line_paused(self):
+        """Test status line when paused"""
+        result = build_status_line("host", "all", True, None)
+        self.assertIn("PAUSED", result)
+
+    def test_build_status_line_with_message(self):
+        """Test status line with custom message"""
+        result = build_status_line("failures", "all", False, "Test message")
+        self.assertIn("Test message", result)
+
+    def test_build_status_line_different_modes(self):
+        """Test status line with different sort and filter modes"""
+        result = build_status_line("latency", "failures", False, None)
+        self.assertIn("最新遅延", result)
+        self.assertIn("失敗のみ", result)
 
 
 if __name__ == "__main__":
