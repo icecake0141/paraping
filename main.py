@@ -927,12 +927,21 @@ def read_key():
 
 def flash_screen():
     """Flash the screen by inverting colors for ~100ms"""
-    # Save cursor position and invert colors (white bg, black fg)
-    sys.stdout.write("\x1b7\x1b[7m\x1b[2J\x1b[H")
+    # ANSI escape sequences for visual flash effect
+    SAVE_CURSOR = "\x1b7"           # Save cursor position
+    INVERT_COLORS = "\x1b[7m"       # Invert colors (white bg, black fg)
+    CLEAR_SCREEN = "\x1b[2J"        # Clear screen
+    MOVE_HOME = "\x1b[H"            # Move cursor to home position
+    RESTORE_COLORS = "\x1b[27m"     # Restore normal colors
+    RESTORE_CURSOR = "\x1b8"        # Restore cursor position
+    FLASH_DURATION_SECONDS = 0.1    # Duration of flash effect
+
+    # Apply inverted colors and clear screen
+    sys.stdout.write(SAVE_CURSOR + INVERT_COLORS + CLEAR_SCREEN + MOVE_HOME)
     sys.stdout.flush()
-    time.sleep(0.1)
-    # Restore normal colors and cursor position
-    sys.stdout.write("\x1b[27m\x1b8")
+    time.sleep(FLASH_DURATION_SECONDS)
+    # Restore normal display
+    sys.stdout.write(RESTORE_COLORS + RESTORE_CURSOR)
     sys.stdout.flush()
 
 
