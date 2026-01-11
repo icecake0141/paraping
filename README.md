@@ -8,6 +8,9 @@ MultiPing is a Python-based tool designed to perform ICMP ping operations to mul
 - Configurable ping parameters (e.g., timeout, count).
 - Simple and intuitive command-line interface.
 
+## Screenshot
+![MultiPing Output](screenshot.png)
+
 ## Purpose
 MultiPing is designed with network administrators and engineers in mind. It provides a fast and efficient way to monitor the connectivity status of multiple devices within a network. Whether you're troubleshooting outages, verifying network configuration, or ensuring uptime, MultiPing can be a valuable addition to your toolkit.
 
