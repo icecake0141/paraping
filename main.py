@@ -2,7 +2,13 @@
 
 import argparse
 import queue
+import select
 import shutil
+import socket
+import sys
+import termios
+import time
+import tty
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 
@@ -98,8 +104,8 @@ def ping_host(host, timeout, count, slow_threshold, verbose):
                 print(f"Error pinging {host}: {e}")
             yield {"host": host, "sequence": i + 1, "status": "fail", "rtt": None}
 
-def compute_main_layout(hosts, width, height, header_lines=2):
-    max_host_len = max((len(host) for host in hosts), default=4)
+def compute_main_layout(host_labels, width, height, header_lines=2):
+    max_host_len = max((len(host) for host in host_labels), default=4)
     label_width = min(max_host_len, max(10, width // 3))
     timeline_width = max(1, width - label_width - 3)
     visible_hosts = max(1, height - header_lines)
@@ -162,10 +168,11 @@ def pad_lines(lines, width, height):
     return padded
 
 
-def compute_summary_data(hosts, buffers, stats, symbols):
+def compute_summary_data(hosts, display_names, buffers, stats, symbols):
     summary = []
     success_symbols = {symbols["success"], symbols["slow"]}
     for host in hosts:
+        display_name = display_names.get(host, host)
         total = stats[host]["total"]
         success = stats[host]["success"] + stats[host]["slow"]
         fail = stats[host]["fail"]
@@ -195,7 +202,7 @@ def compute_summary_data(hosts, buffers, stats, symbols):
             avg_rtt_ms = stats[host]["rtt_sum"] / stats[host]["rtt_count"] * 1000
         summary.append(
             {
-                "host": host,
+                "host": display_name,
                 "success_rate": success_rate,
                 "loss_rate": loss_rate,
                 "streak_type": streak_type,
@@ -230,32 +237,55 @@ def render_summary_view(summary_data, width, height):
     return pad_lines(lines, width, height)
 
 
-def render_main_view(hosts, buffers, symbols, width, height, header_lines=2):
+def render_main_view(display_entries, buffers, symbols, width, height, mode_label, header_lines=2):
     if width <= 0 or height <= 0:
         return []
 
+    host_labels = [entry[1] for entry in display_entries]
     width, label_width, timeline_width, visible_hosts = compute_main_layout(
-        hosts, width, height, header_lines
+        host_labels, width, height, header_lines
     )
-    truncated_hosts = hosts[:visible_hosts]
+    truncated_entries = display_entries[:visible_hosts]
 
     resize_buffers(buffers, timeline_width, symbols)
 
     lines = []
-    lines.append("MultiPing - Live results")
+    lines.append(f"MultiPing - Live results [{mode_label}]")
     lines.append("".join("-" for _ in range(width)))
-    for host in truncated_hosts:
+    for host, label in truncated_entries:
         timeline = "".join(buffers[host]["timeline"]).rjust(timeline_width)
-        lines.append(format_status_line(host, timeline, label_width))
+        lines.append(format_status_line(label, timeline, label_width))
 
-    if len(hosts) > len(truncated_hosts) and len(lines) < height:
-        remaining = len(hosts) - len(truncated_hosts)
+    if len(display_entries) > len(truncated_entries) and len(lines) < height:
+        remaining = len(display_entries) - len(truncated_entries)
         lines.append(f"... ({remaining} host(s) not shown)")
 
     return pad_lines(lines, width, height)
 
 
-def render_display(hosts, buffers, stats, symbols, panel_position, header_lines=2):
+def render_help_view(width, height):
+    lines = [
+        "MultiPing - Help",
+        "-" * width,
+        "Keys:",
+        "  m : cycle display mode (host/name/AS)",
+        "  h : toggle this help",
+        "  q : quit",
+    ]
+    return pad_lines(lines, width, height)
+
+
+def render_display(
+    hosts,
+    display_names,
+    buffers,
+    stats,
+    symbols,
+    panel_position,
+    mode_label,
+    show_help,
+    header_lines=2,
+):
     term_size = shutil.get_terminal_size(fallback=(80, 24))
     term_width = term_size.columns
     term_height = term_size.lines
@@ -263,14 +293,19 @@ def render_display(hosts, buffers, stats, symbols, panel_position, header_lines=
     main_width, main_height, summary_width, summary_height, resolved_position = compute_panel_sizes(
         term_width, term_height, panel_position
     )
-    summary_data = compute_summary_data(hosts, buffers, stats, symbols)
+    summary_data = compute_summary_data(hosts, display_names, buffers, stats, symbols)
 
-    main_lines = render_main_view(hosts, buffers, symbols, main_width, main_height, header_lines)
+    display_entries = [(host, display_names.get(host, host)) for host in hosts]
+    main_lines = render_main_view(
+        display_entries, buffers, symbols, main_width, main_height, mode_label, header_lines
+    )
     summary_lines = render_summary_view(summary_data, summary_width, summary_height)
 
     gap = " "
     combined_lines = []
-    if resolved_position in ("left", "right"):
+    if show_help:
+        combined_lines = render_help_view(term_width, term_height)
+    elif resolved_position in ("left", "right"):
         for main_line, summary_line in zip(main_lines, summary_lines):
             if resolved_position == "left":
                 combined_lines.append(f"{summary_line}{gap}{main_line}")
@@ -290,6 +325,32 @@ def worker_ping(host, timeout, count, slow_threshold, verbose, result_queue):
     for result in ping_host(host, timeout, count, slow_threshold, verbose):
         result_queue.put(result)
     result_queue.put({"host": host, "status": "done"})
+
+
+def get_display_name(host, mode, name_cache, as_cache):
+    if mode == "host":
+        return host
+    if mode == "name":
+        if host not in name_cache:
+            try:
+                name_cache[host] = socket.gethostbyaddr(host)[0]
+            except (socket.herror, socket.gaierror, OSError):
+                name_cache[host] = host
+        return name_cache[host]
+    if mode == "as":
+        if host not in as_cache:
+            as_cache[host] = f"{host} [AS n/a]"
+        return as_cache[host]
+    return host
+
+
+def read_key():
+    if not sys.stdin.isatty():
+        return None
+    ready, _, _ = select.select([sys.stdin], [], [], 0)
+    if ready:
+        return sys.stdin.read(1)
+    return None
 
 def main(args):
 
@@ -336,6 +397,20 @@ def main(args):
         f"count={args.count}, slow-threshold={args.slow_threshold}s"
     )
 
+    modes = ["host", "name", "as"]
+    mode_index = 0
+    show_help = False
+    running = True
+    name_cache = {}
+    as_cache = {}
+    display_names = {host: get_display_name(host, modes[mode_index], name_cache, as_cache) for host in all_hosts}
+
+    stdin_fd = None
+    original_term = None
+    if sys.stdin.isatty():
+        stdin_fd = sys.stdin.fileno()
+        original_term = termios.tcgetattr(stdin_fd)
+
     with ThreadPoolExecutor(max_workers=min(len(all_hosts), 10)) as executor:
         for host in all_hosts:
             executor.submit(
@@ -349,23 +424,67 @@ def main(args):
             )
 
         completed_hosts = 0
-        render_display(all_hosts, buffers, stats, symbols, args.panel_position)
-        while completed_hosts < len(all_hosts):
-            result = result_queue.get()
-            host = result["host"]
-            if result.get("status") == "done":
-                completed_hosts += 1
-                continue
+        updated = True
+        last_render = 0.0
+        refresh_interval = 0.15
+        try:
+            if stdin_fd is not None:
+                tty.setcbreak(stdin_fd)
+            while running and completed_hosts < len(all_hosts):
+                key = read_key()
+                if key:
+                    if key == "q":
+                        running = False
+                    elif key == "h":
+                        show_help = not show_help
+                        updated = True
+                    elif key == "m":
+                        mode_index = (mode_index + 1) % len(modes)
+                        display_names = {
+                            host: get_display_name(host, modes[mode_index], name_cache, as_cache)
+                            for host in all_hosts
+                        }
+                        updated = True
 
-            status = result["status"]
-            buffers[host]["timeline"].append(symbols[status])
-            buffers[host]["categories"][status].append(result["sequence"])
-            stats[host][status] += 1
-            stats[host]["total"] += 1
-            if result.get("rtt") is not None:
-                stats[host]["rtt_sum"] += result["rtt"]
-                stats[host]["rtt_count"] += 1
-            render_display(all_hosts, buffers, stats, symbols, args.panel_position)
+                while True:
+                    try:
+                        result = result_queue.get_nowait()
+                    except queue.Empty:
+                        break
+                    host = result["host"]
+                    if result.get("status") == "done":
+                        completed_hosts += 1
+                        continue
+
+                    status = result["status"]
+                    buffers[host]["timeline"].append(symbols[status])
+                    buffers[host]["categories"][status].append(result["sequence"])
+                    stats[host][status] += 1
+                    stats[host]["total"] += 1
+                    if result.get("rtt") is not None:
+                        stats[host]["rtt_sum"] += result["rtt"]
+                        stats[host]["rtt_count"] += 1
+                    updated = True
+
+                now = time.time()
+                if updated or (now - last_render) >= refresh_interval:
+                    render_display(
+                        all_hosts,
+                        display_names,
+                        buffers,
+                        stats,
+                        symbols,
+                        args.panel_position,
+                        modes[mode_index],
+                        show_help,
+                    )
+                    last_render = now
+                    updated = False
+
+                time.sleep(0.05)
+        finally:
+            if stdin_fd is not None and original_term is not None:
+                termios.tcsetattr(stdin_fd, termios.TCSADRAIN, original_term)
 
     print("\n" + "=" * 60)
     print("SUMMARY")
