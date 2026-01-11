@@ -205,17 +205,18 @@ def pad_lines(lines, width, height):
     return padded
 
 
-def compute_summary_data(hosts, display_names, buffers, stats, symbols):
+def compute_summary_data(host_infos, display_names, buffers, stats, symbols):
     summary = []
     success_symbols = {symbols["success"], symbols["slow"]}
-    for host in hosts:
-        display_name = display_names.get(host, host)
-        total = stats[host]["total"]
-        success = stats[host]["success"] + stats[host]["slow"]
-        fail = stats[host]["fail"]
+    for info in host_infos:
+        host_id = info["id"]
+        display_name = display_names.get(host_id, info["alias"])
+        total = stats[host_id]["total"]
+        success = stats[host_id]["success"] + stats[host_id]["slow"]
+        fail = stats[host_id]["fail"]
         success_rate = (success / total * 100) if total > 0 else 0.0
         loss_rate = (fail / total * 100) if total > 0 else 0.0
-        timeline = list(buffers[host]["timeline"])
+        timeline = list(buffers[host_id]["timeline"])
         streak_type = None
         streak_length = 0
         if timeline:
@@ -235,8 +236,8 @@ def compute_summary_data(hosts, display_names, buffers, stats, symbols):
                     else:
                         break
         avg_rtt_ms = None
-        if stats[host]["rtt_count"] > 0:
-            avg_rtt_ms = stats[host]["rtt_sum"] / stats[host]["rtt_count"] * 1000
+        if stats[host_id]["rtt_count"] > 0:
+            avg_rtt_ms = stats[host_id]["rtt_sum"] / stats[host_id]["rtt_count"] * 1000
         summary.append(
             {
                 "host": display_name,
@@ -399,7 +400,7 @@ def latest_rtt_value(rtt_history):
 
 
 def build_display_entries(
-    hosts,
+    host_infos,
     display_names,
     buffers,
     stats,
@@ -409,11 +410,12 @@ def build_display_entries(
     slow_threshold,
 ):
     entries = []
-    for host in hosts:
-        timeline = buffers[host]["timeline"]
-        latest_rtt = latest_rtt_value(buffers[host]["rtt_history"])
+    for info in host_infos:
+        host_id = info["id"]
+        timeline = buffers[host_id]["timeline"]
+        latest_rtt = latest_rtt_value(buffers[host_id]["rtt_history"])
         fail_streak = compute_fail_streak(timeline, symbols["fail"])
-        fail_count = stats[host]["fail"]
+        fail_count = stats[host_id]["fail"]
 
         include = True
         if filter_mode == "failures":
@@ -424,8 +426,8 @@ def build_display_entries(
         if include:
             entries.append(
                 {
-                    "host": host,
-                    "label": display_names.get(host, host),
+                    "host_id": host_id,
+                    "label": display_names.get(host_id, info["alias"]),
                     "fail_count": fail_count,
                     "fail_streak": fail_streak,
                     "latest_rtt": latest_rtt,
@@ -444,7 +446,7 @@ def build_display_entries(
     elif sort_mode == "host":
         entries.sort(key=lambda item: item["label"])
 
-    return [(entry["host"], entry["label"]) for entry in entries]
+    return [(entry["host_id"], entry["label"]) for entry in entries]
 
 
 def build_status_line(sort_mode, filter_mode, paused, status_message=None):
@@ -482,7 +484,6 @@ def render_help_view(width, height):
 
 
 def build_display_lines(
-    hosts,
     host_infos,
     buffers,
     stats,
@@ -511,10 +512,10 @@ def build_display_lines(
     main_width, main_height, summary_width, summary_height, resolved_position = compute_panel_sizes(
         term_width, term_height, panel_position
     )
-    summary_data = compute_summary_data(hosts, display_names, buffers, stats, symbols)
+    summary_data = compute_summary_data(host_infos, display_names, buffers, stats, symbols)
 
     display_entries = build_display_entries(
-        hosts,
+        host_infos,
         display_names,
         buffers,
         stats,
@@ -562,7 +563,6 @@ def build_display_lines(
 
 
 def render_display(
-    hosts,
     host_infos,
     buffers,
     stats,
@@ -584,7 +584,6 @@ def render_display(
     now_utc = datetime.now(timezone.utc)
     timestamp = format_timestamp(now_utc, display_tz)
     combined_lines = build_display_lines(
-        hosts,
         host_infos,
         buffers,
         stats,
@@ -623,10 +622,17 @@ def format_timestamp(now_utc, display_tz):
     return f"{timestamp} ({tz_label})"
 
 
-def worker_ping(host, timeout, count, slow_threshold, verbose, pause_event, result_queue):
-    for result in ping_host(host, timeout, count, slow_threshold, verbose, pause_event):
-        result_queue.put(result)
-    result_queue.put({"host": host, "status": "done"})
+def worker_ping(host_info, timeout, count, slow_threshold, verbose, pause_event, result_queue):
+    for result in ping_host(
+        host_info["host"],
+        timeout,
+        count,
+        slow_threshold,
+        verbose,
+        pause_event,
+    ):
+        result_queue.put({**result, "host_id": host_info["id"]})
+    result_queue.put({"host_id": host_info["id"], "status": "done"})
 
 
 def resolve_display_name(host_info, mode):
@@ -637,7 +643,7 @@ def resolve_display_name(host_info, mode):
             return "resolving..."
         return host_info["rdns"] or host_info["ip"]
     if mode == "alias":
-        return host_info["alias"]
+        return host_info.get("alias") or host_info.get("host") or host_info["ip"]
     return host_info["ip"]
 
 
@@ -659,19 +665,22 @@ def format_asn_label(host_info, asn_width):
 
 def build_display_names(host_infos, mode, include_asn, asn_width):
     return {
-        host: format_display_name(info, mode, include_asn, asn_width)
-        for host, info in host_infos.items()
+        info["id"]: format_display_name(info, mode, include_asn, asn_width)
+        for info in host_infos
     }
 
 
 def build_host_infos(hosts):
-    host_infos = {}
-    for host in hosts:
+    host_infos = []
+    host_map = {}
+    for index, host in enumerate(hosts):
         try:
             ip_address = socket.gethostbyname(host)
         except (socket.gaierror, OSError):
             ip_address = host
-        host_infos[host] = {
+        info = {
+            "id": index,
+            "host": host,
             "alias": host,
             "ip": ip_address,
             "rdns": None,
@@ -679,7 +688,9 @@ def build_host_infos(hosts):
             "asn": None,
             "asn_pending": False,
         }
-    return host_infos
+        host_infos.append(info)
+        host_map.setdefault(host, []).append(info)
+    return host_infos, host_map
 
 
 def resolve_rdns(ip_address):
@@ -752,7 +763,7 @@ def should_show_asn(host_infos, mode, show_asn, term_width, min_timeline_width=1
         return False
     labels = [
         format_display_name(info, mode, True, asn_width)
-        for info in host_infos.values()
+        for info in host_infos
     ]
     if not labels:
         return False
@@ -805,19 +816,20 @@ def main(args):
 
     symbols = {"success": ".", "fail": "x", "slow": "!"}
     term_size = shutil.get_terminal_size(fallback=(80, 24))
-    _, _, timeline_width, _ = compute_main_layout(all_hosts, term_size.columns, term_size.lines)
-    host_infos = build_host_infos(all_hosts)
+    host_infos, host_info_map = build_host_infos(all_hosts)
+    host_labels = [info["alias"] for info in host_infos]
+    _, _, timeline_width, _ = compute_main_layout(host_labels, term_size.columns, term_size.lines)
     buffers = {
-        host: {
+        info["id"]: {
             "timeline": deque(maxlen=timeline_width),
             "rtt_history": deque(maxlen=timeline_width),
             "categories": {status: deque(maxlen=timeline_width) for status in symbols},
         }
-        for host in all_hosts
+        for info in host_infos
     }
     stats = {
-        host: {"success": 0, "fail": 0, "slow": 0, "total": 0, "rtt_sum": 0.0, "rtt_count": 0}
-        for host in all_hosts
+        info["id"]: {"success": 0, "fail": 0, "slow": 0, "total": 0, "rtt_sum": 0.0, "rtt_count": 0}
+        for info in host_infos
     }
     result_queue = queue.Queue()
 
@@ -870,21 +882,25 @@ def main(args):
         original_term = termios.tcgetattr(stdin_fd)
 
     with ThreadPoolExecutor(max_workers=min(len(all_hosts), 10)) as executor:
-        for host, info in host_infos.items():
-            host_infos[host]["rdns_pending"] = True
+        for host, infos in host_info_map.items():
+            info = infos[0]
+            for entry in infos:
+                entry["rdns_pending"] = True
             rdns_request_queue.put((host, info["ip"]))
             now = time.time()
             if info["ip"] in asn_cache and asn_cache[info["ip"]]["value"] is not None:
                 cached_asn = asn_cache[info["ip"]]["value"]
-                host_infos[host]["asn"] = cached_asn
-                host_infos[host]["asn_pending"] = False
+                for entry in infos:
+                    entry["asn"] = cached_asn
+                    entry["asn_pending"] = False
             elif should_retry_asn(info["ip"], asn_cache, now, asn_failure_ttl):
-                host_infos[host]["asn_pending"] = True
+                for entry in infos:
+                    entry["asn_pending"] = True
                 asn_request_queue.put((host, info["ip"]))
-        for host in all_hosts:
+        for info in host_infos:
             executor.submit(
                 worker_ping,
-                host,
+                info,
                 args.timeout,
                 args.count,
                 args.slow_threshold,
@@ -900,7 +916,7 @@ def main(args):
         try:
             if stdin_fd is not None:
                 tty.setcbreak(stdin_fd)
-            while running and completed_hosts < len(all_hosts):
+            while running and completed_hosts < len(host_infos):
                 key = read_key()
                 if key:
                     if key == "q":
@@ -938,7 +954,6 @@ def main(args):
                         snapshot_dt = now_utc.astimezone(snapshot_tz)
                         snapshot_name = snapshot_dt.strftime("multiping_snapshot_%Y%m%d_%H%M%S.txt")
                         snapshot_lines = build_display_lines(
-                            all_hosts,
                             host_infos,
                             buffers,
                             stats,
@@ -965,8 +980,9 @@ def main(args):
                         host, rdns_value = rdns_result_queue.get_nowait()
                     except queue.Empty:
                         break
-                    host_infos[host]["rdns"] = rdns_value
-                    host_infos[host]["rdns_pending"] = False
+                    for info in host_info_map.get(host, []):
+                        info["rdns"] = rdns_value
+                        info["rdns_pending"] = False
                     if not paused:
                         updated = True
 
@@ -975,9 +991,14 @@ def main(args):
                         host, asn_value = asn_result_queue.get_nowait()
                     except queue.Empty:
                         break
-                    host_infos[host]["asn"] = asn_value
-                    host_infos[host]["asn_pending"] = False
-                    asn_cache[host_infos[host]["ip"]] = {
+                    for info in host_info_map.get(host, []):
+                        info["asn"] = asn_value
+                        info["asn_pending"] = False
+                    if host_info_map.get(host):
+                        ip_address = host_info_map[host][0]["ip"]
+                    else:
+                        ip_address = host
+                    asn_cache[ip_address] = {
                         "value": asn_value,
                         "fetched_at": time.time(),
                     }
@@ -985,14 +1006,15 @@ def main(args):
                         updated = True
 
                 now = time.time()
-                for host in all_hosts:
-                    if host_infos[host]["asn_pending"]:
+                for host, infos in host_info_map.items():
+                    if any(info["asn_pending"] for info in infos):
                         continue
-                    if host_infos[host]["asn"] is not None:
+                    if any(info["asn"] is not None for info in infos):
                         continue
-                    ip_address = host_infos[host]["ip"]
+                    ip_address = infos[0]["ip"]
                     if should_retry_asn(ip_address, asn_cache, now, asn_failure_ttl):
-                        host_infos[host]["asn_pending"] = True
+                        for info in infos:
+                            info["asn_pending"] = True
                         asn_request_queue.put((host, ip_address))
 
                 while True:
@@ -1000,27 +1022,26 @@ def main(args):
                         result = result_queue.get_nowait()
                     except queue.Empty:
                         break
-                    host = result["host"]
+                    host_id = result["host_id"]
                     if result.get("status") == "done":
                         completed_hosts += 1
                         continue
 
                     status = result["status"]
-                    buffers[host]["timeline"].append(symbols[status])
-                    buffers[host]["rtt_history"].append(result.get("rtt"))
-                    buffers[host]["categories"][status].append(result["sequence"])
-                    stats[host][status] += 1
-                    stats[host]["total"] += 1
+                    buffers[host_id]["timeline"].append(symbols[status])
+                    buffers[host_id]["rtt_history"].append(result.get("rtt"))
+                    buffers[host_id]["categories"][status].append(result["sequence"])
+                    stats[host_id][status] += 1
+                    stats[host_id]["total"] += 1
                     if result.get("rtt") is not None:
-                        stats[host]["rtt_sum"] += result["rtt"]
-                        stats[host]["rtt_count"] += 1
+                        stats[host_id]["rtt_sum"] += result["rtt"]
+                        stats[host_id]["rtt_count"] += 1
                     if not paused:
                         updated = True
 
                 now = time.time()
                 if force_render or (not paused and (updated or (now - last_render) >= refresh_interval)):
                     render_display(
-                        all_hosts,
                         host_infos,
                         buffers,
                         stats,
@@ -1054,15 +1075,16 @@ def main(args):
     print("\n" + "=" * 60)
     print("SUMMARY")
     print("=" * 60)
-    for host in all_hosts:
-        success = stats[host]["success"]
-        slow = stats[host]["slow"]
-        fail = stats[host]["fail"]
-        total = stats[host]["total"]
+    for info in host_infos:
+        host_id = info["id"]
+        success = stats[host_id]["success"]
+        slow = stats[host_id]["slow"]
+        fail = stats[host_id]["fail"]
+        total = stats[host_id]["total"]
         percentage = (success / total * 100) if total > 0 else 0
         status = "OK" if success > 0 else "FAILED"
         print(
-            f"{host:30} {success}/{total} replies, {slow} slow, {fail} failed "
+            f"{info['alias']:30} {success}/{total} replies, {slow} slow, {fail} failed "
             f"({percentage:.1f}%) [{status}]"
         )
 
