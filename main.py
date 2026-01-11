@@ -351,6 +351,7 @@ def render_help_view(width, height):
         "Keys:",
         "  n : cycle display mode (ip/rdns/alias)",
         "  v : toggle view (timeline/sparkline)",
+        "  a : toggle ASN display",
         "  h : toggle this help",
         "  q : quit",
     ]
@@ -359,7 +360,7 @@ def render_help_view(width, height):
 
 def render_display(
     hosts,
-    display_names,
+    host_infos,
     buffers,
     stats,
     symbols,
@@ -367,11 +368,16 @@ def render_display(
     mode_label,
     display_mode,
     show_help,
+    show_asn,
+    asn_width=8,
     header_lines=2,
 ):
     term_size = shutil.get_terminal_size(fallback=(80, 24))
     term_width = term_size.columns
     term_height = term_size.lines
+
+    include_asn = should_show_asn(host_infos, mode_label, show_asn, term_width, asn_width=asn_width)
+    display_names = build_display_names(host_infos, mode_label, include_asn, asn_width)
 
     main_width, main_height, summary_width, summary_height, resolved_position = compute_panel_sizes(
         term_width, term_height, panel_position
@@ -427,8 +433,19 @@ def resolve_display_name(host_info, mode):
     return host_info["ip"]
 
 
-def build_display_names(host_infos, mode):
-    return {host: resolve_display_name(info, mode) for host, info in host_infos.items()}
+def format_display_name(host_info, mode, include_asn, asn_width):
+    base_label = resolve_display_name(host_info, mode)
+    if not include_asn:
+        return base_label
+    asn_label = host_info.get("asn") or ""
+    return f"{base_label} {asn_label:<{asn_width}}"
+
+
+def build_display_names(host_infos, mode, include_asn, asn_width):
+    return {
+        host: format_display_name(info, mode, include_asn, asn_width)
+        for host, info in host_infos.items()
+    }
 
 
 def build_host_infos(hosts):
@@ -443,6 +460,8 @@ def build_host_infos(hosts):
             "ip": ip_address,
             "rdns": None,
             "rdns_state": "pending",
+            "asn": None,
+            "asn_state": "pending",
         }
     return host_infos
 
@@ -452,6 +471,41 @@ def resolve_rdns(ip_address):
         return socket.gethostbyaddr(ip_address)[0]
     except (socket.herror, socket.gaierror, OSError):
         return None
+
+
+def resolve_asn(ip_address, timeout=3.0):
+    query = f" -v {ip_address}\n".encode("utf-8")
+    try:
+        with socket.create_connection(("whois.cymru.com", 43), timeout=timeout) as sock:
+            sock.sendall(query)
+            response = sock.recv(4096).decode("utf-8", errors="ignore")
+    except (socket.timeout, OSError):
+        return None
+
+    lines = [line for line in response.splitlines() if line.strip()]
+    if len(lines) < 2:
+        return None
+    parts = [part.strip() for part in lines[1].split("|")]
+    if not parts:
+        return None
+    asn = parts[0].replace("AS", "").strip()
+    if not asn or asn.upper() == "NA":
+        return None
+    return f"AS{asn}"
+
+
+def should_show_asn(host_infos, mode, show_asn, term_width, min_timeline_width=10, asn_width=8):
+    if not show_asn:
+        return False
+    labels = [
+        format_display_name(info, mode, True, asn_width)
+        for info in host_infos.values()
+    ]
+    if not labels:
+        return False
+    label_width = max(len(label) for label in labels)
+    timeline_width = term_width - label_width - 3
+    return timeline_width >= min_timeline_width
 
 
 def read_key():
@@ -515,10 +569,14 @@ def main(args):
     display_modes = ["timeline", "sparkline"]
     display_mode_index = 0
     running = True
-    display_names = build_display_names(host_infos, modes[mode_index])
+    show_asn = True
     rdns_timeout = 2.0
     rdns_futures = {}
     rdns_started = {}
+    asn_timeout = 3.0
+    asn_futures = {}
+    asn_started = {}
+    asn_cache = {}
 
     stdin_fd = None
     original_term = None
@@ -530,6 +588,13 @@ def main(args):
         for host, info in host_infos.items():
             rdns_futures[host] = executor.submit(resolve_rdns, info["ip"])
             rdns_started[host] = time.time()
+            if info["ip"] in asn_cache:
+                cached_asn = asn_cache[info["ip"]]
+                host_infos[host]["asn"] = cached_asn
+                host_infos[host]["asn_state"] = "resolved" if cached_asn else "failed"
+            else:
+                asn_futures[host] = executor.submit(resolve_asn, info["ip"])
+                asn_started[host] = time.time()
         for host in all_hosts:
             executor.submit(
                 worker_ping,
@@ -558,10 +623,12 @@ def main(args):
                         updated = True
                     elif key == "n":
                         mode_index = (mode_index + 1) % len(modes)
-                        display_names = build_display_names(host_infos, modes[mode_index])
                         updated = True
                     elif key == "v":
                         display_mode_index = (display_mode_index + 1) % len(display_modes)
+                        updated = True
+                    elif key == "a":
+                        show_asn = not show_asn
                         updated = True
 
                 for host, future in list(rdns_futures.items()):
@@ -571,14 +638,24 @@ def main(args):
                         host_infos[host]["rdns"] = future.result()
                         host_infos[host]["rdns_state"] = "resolved"
                         updated = True
-                        if modes[mode_index] == "rdns":
-                            display_names = build_display_names(host_infos, modes[mode_index])
                     elif time.time() - rdns_started[host] >= rdns_timeout:
                         future.cancel()
                         host_infos[host]["rdns_state"] = "timeout"
                         updated = True
-                        if modes[mode_index] == "rdns":
-                            display_names = build_display_names(host_infos, modes[mode_index])
+
+                for host, future in list(asn_futures.items()):
+                    if host_infos[host]["asn_state"] != "pending":
+                        continue
+                    if future.done():
+                        asn_value = future.result()
+                        host_infos[host]["asn"] = asn_value
+                        host_infos[host]["asn_state"] = "resolved" if asn_value else "failed"
+                        asn_cache[host_infos[host]["ip"]] = asn_value
+                        updated = True
+                    elif time.time() - asn_started[host] >= asn_timeout:
+                        future.cancel()
+                        host_infos[host]["asn_state"] = "timeout"
+                        updated = True
 
                 while True:
                     try:
@@ -605,7 +682,7 @@ def main(args):
                 if updated or (now - last_render) >= refresh_interval:
                     render_display(
                         all_hosts,
-                        display_names,
+                        host_infos,
                         buffers,
                         stats,
                         symbols,
@@ -613,6 +690,7 @@ def main(args):
                         modes[mode_index],
                         display_modes[display_mode_index],
                         show_help,
+                        show_asn,
                     )
                     last_render = now
                     updated = False
