@@ -67,6 +67,8 @@ python main.py -t 2 -f hosts.txt
 - `--pause-mode`: Pause behavior (`display|ping`).
 - `--timezone`: IANA timezone name for on-screen timestamps.
 - `--snapshot-timezone`: Timezone for snapshot filenames (`utc|display`).
+- `--flash-on-fail`: Flash screen (invert colors) when a ping fails to draw attention.
+- `--bell-on-fail`: Ring terminal bell when a ping fails to draw attention.
 
 ### Interactive Controls
 - `n`: Cycle display name mode (ip/rdns/alias).

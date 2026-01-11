@@ -67,6 +67,8 @@ python main.py -t 2 -f hosts.txt
 - `--pause-mode`: 一時停止の挙動（`display|ping`）。
 - `--timezone`: 表示時刻のタイムゾーン（IANA 名）。
 - `--snapshot-timezone`: スナップショット時刻のタイムゾーン（`utc|display`）。
+- `--flash-on-fail`: ping に失敗したときに画面をフラッシュ（色反転）して注意を惹く。
+- `--bell-on-fail`: ping に失敗したときにターミナルベルを鳴らして注意を惹く。
 
 ### 対話操作
 - `n`: 表示名モード切替（ip/rdns/alias）。

@@ -17,9 +17,9 @@ Unit tests for multiping functionality
 import unittest
 from unittest.mock import patch, MagicMock, mock_open
 import argparse
+import os
 import queue
 import sys
-import os
 from collections import deque
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
@@ -44,6 +44,8 @@ from main import (
     build_sparkline,
     build_status_line,
     get_terminal_size,
+    flash_screen,
+    ring_bell,
 )  # noqa: E402
 
 
@@ -766,7 +768,7 @@ class TestQuitHotkey(unittest.TestCase):
 
     @patch("main.queue.Queue")
     @patch("main.sys.stdin")
-    @patch("main.shutil.get_terminal_size")
+    @patch("main.get_terminal_size")
     @patch("main.ThreadPoolExecutor")
     @patch("main.threading.Thread")
     @patch("main.read_key")
@@ -776,7 +778,7 @@ class TestQuitHotkey(unittest.TestCase):
         """Test that pressing 'q' key exits the program immediately"""
         # Mock terminal properties
         mock_stdin.isatty.return_value = True
-        mock_term_size.return_value = MagicMock(columns=80, lines=24)
+        mock_term_size.return_value = os.terminal_size((80, 24))
 
         # Mock stdin for terminal setup
         mock_stdin.fileno.return_value = 0
@@ -811,6 +813,8 @@ class TestQuitHotkey(unittest.TestCase):
             pause_mode="display",
             timezone=None,
             snapshot_timezone="utc",
+            flash_on_fail=False,
+            bell_on_fail=False,
         )
 
         # Mock executor
@@ -830,7 +834,7 @@ class TestQuitHotkey(unittest.TestCase):
 
     @patch("main.queue.Queue")
     @patch("main.sys.stdin")
-    @patch("main.shutil.get_terminal_size")
+    @patch("main.get_terminal_size")
     @patch("main.ThreadPoolExecutor")
     @patch("main.threading.Thread")
     @patch("main.read_key")
@@ -840,7 +844,7 @@ class TestQuitHotkey(unittest.TestCase):
         """Test that pressing 'q' key exits even when help screen is showing"""
         # Mock terminal properties
         mock_stdin.isatty.return_value = True
-        mock_term_size.return_value = MagicMock(columns=80, lines=24)
+        mock_term_size.return_value = os.terminal_size((80, 24))
 
         # Mock stdin for terminal setup
         mock_stdin.fileno.return_value = 0
@@ -875,6 +879,8 @@ class TestQuitHotkey(unittest.TestCase):
             pause_mode="display",
             timezone=None,
             snapshot_timezone="utc",
+            flash_on_fail=False,
+            bell_on_fail=False,
         )
 
         # Mock executor
@@ -989,6 +995,57 @@ class TestTerminalSize(unittest.TestCase):
                 os.environ["LINES"] = original_lines
             else:
                 os.environ.pop("LINES", None)
+
+
+class TestFlashAndBell(unittest.TestCase):
+    """Test flash and bell notification features"""
+
+    def test_handle_options_flash_on_fail(self):
+        """Test --flash-on-fail option parsing"""
+        with patch("sys.argv", ["main.py", "--flash-on-fail", "example.com"]):
+            args = handle_options()
+            self.assertTrue(args.flash_on_fail)
+
+    def test_handle_options_bell_on_fail(self):
+        """Test --bell-on-fail option parsing"""
+        with patch("sys.argv", ["main.py", "--bell-on-fail", "example.com"]):
+            args = handle_options()
+            self.assertTrue(args.bell_on_fail)
+
+    def test_handle_options_both_flags(self):
+        """Test both flash and bell options together"""
+        with patch("sys.argv", ["main.py", "--flash-on-fail", "--bell-on-fail", "example.com"]):
+            args = handle_options()
+            self.assertTrue(args.flash_on_fail)
+            self.assertTrue(args.bell_on_fail)
+
+    def test_handle_options_default_false(self):
+        """Test that flash and bell options default to False"""
+        with patch("sys.argv", ["main.py", "example.com"]):
+            args = handle_options()
+            self.assertFalse(args.flash_on_fail)
+            self.assertFalse(args.bell_on_fail)
+
+    @patch("main.sys.stdout")
+    @patch("main.time.sleep")
+    def test_flash_screen(self, mock_sleep, mock_stdout):
+        """Test flash_screen function"""
+        flash_screen()
+        # Should have called write to send escape sequences
+        self.assertGreaterEqual(mock_stdout.write.call_count, 2)
+        # Should have slept for ~0.1 seconds
+        mock_sleep.assert_called_once_with(0.1)
+        # Should have called flush
+        self.assertGreaterEqual(mock_stdout.flush.call_count, 2)
+
+    @patch("main.sys.stdout")
+    def test_ring_bell(self, mock_stdout):
+        """Test ring_bell function"""
+        ring_bell()
+        # Should write the bell character
+        mock_stdout.write.assert_called_once_with("\a")
+        # Should flush the output
+        mock_stdout.flush.assert_called_once()
 
 
 if __name__ == "__main__":

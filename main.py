@@ -147,6 +147,16 @@ def handle_options():
         help="Timezone used in snapshot filename (utc|display). Defaults to utc.",
     )
     parser.add_argument(
+        "--flash-on-fail",
+        action="store_true",
+        help="Flash screen (invert colors) when ping fails",
+    )
+    parser.add_argument(
+        "--bell-on-fail",
+        action="store_true",
+        help="Ring terminal bell when ping fails",
+    )
+    parser.add_argument(
         "hosts", nargs="*", help="Hosts to ping (IP addresses or hostnames)"
     )
 
@@ -915,6 +925,32 @@ def read_key():
     return None
 
 
+def flash_screen():
+    """Flash the screen by inverting colors for ~100ms"""
+    # ANSI escape sequences for visual flash effect
+    SAVE_CURSOR = "\x1b7"           # Save cursor position
+    INVERT_COLORS = "\x1b[7m"       # Invert colors (white bg, black fg)
+    CLEAR_SCREEN = "\x1b[2J"        # Clear screen
+    MOVE_HOME = "\x1b[H"            # Move cursor to home position
+    RESTORE_COLORS = "\x1b[27m"     # Restore normal colors
+    RESTORE_CURSOR = "\x1b8"        # Restore cursor position
+    FLASH_DURATION_SECONDS = 0.1    # Duration of flash effect
+
+    # Apply inverted colors and clear screen
+    sys.stdout.write(SAVE_CURSOR + INVERT_COLORS + CLEAR_SCREEN + MOVE_HOME)
+    sys.stdout.flush()
+    time.sleep(FLASH_DURATION_SECONDS)
+    # Restore normal display
+    sys.stdout.write(RESTORE_COLORS + RESTORE_CURSOR)
+    sys.stdout.flush()
+
+
+def ring_bell():
+    """Ring the terminal bell"""
+    sys.stdout.write("\a")
+    sys.stdout.flush()
+
+
 def main(args):
 
     # Validate count parameter - allow 0 for infinite
@@ -1204,6 +1240,14 @@ def main(args):
                     if result.get("rtt") is not None:
                         stats[host_id]["rtt_sum"] += result["rtt"]
                         stats[host_id]["rtt_count"] += 1
+
+                    # Trigger flash or bell on ping failure
+                    if status == "fail":
+                        if args.flash_on_fail:
+                            flash_screen()
+                        if args.bell_on_fail:
+                            ring_bell()
+
                     if not paused:
                         updated = True
 
