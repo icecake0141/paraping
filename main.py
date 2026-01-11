@@ -12,6 +12,7 @@
 # Review required for correctness, security, and licensing.
 
 import argparse
+import copy
 import os
 import queue
 import select
@@ -27,6 +28,12 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from scapy.all import ICMP, IP, sr  # type: ignore[attr-defined]
+
+
+# Constants for time navigation feature
+HISTORY_DURATION_MINUTES = 30  # Store up to 30 minutes of history
+SNAPSHOT_INTERVAL_SECONDS = 1.0  # Take snapshot every second
+ARROW_KEY_READ_TIMEOUT = 0.01  # Timeout for reading arrow key escape sequences
 
 
 # Get terminal size by querying the actual terminal, not env vars
@@ -613,6 +620,7 @@ def render_help_view(width, height):
         "  a : toggle ASN display",
         "  p : pause/resume display",
         "  s : save snapshot to file",
+        "  <- / -> : navigate backward/forward in time (1 page)",
         "  H : show help (press any key to close)",
         "  q : quit",
         "",
@@ -917,11 +925,30 @@ def should_show_asn(
 
 
 def read_key():
+    """
+    Read a key from stdin, handling multi-byte sequences like arrow keys.
+    Returns special strings for arrow keys: 'arrow_left', 'arrow_right', 'arrow_up', 'arrow_down'
+    """
     if not sys.stdin.isatty():
         return None
     ready, _, _ = select.select([sys.stdin], [], [], 0)
     if ready:
-        return sys.stdin.read(1)
+        char = sys.stdin.read(1)
+        # Check for escape sequence (arrow keys start with ESC)
+        if char == '\x1b':
+            # Check if more characters are available
+            ready, _, _ = select.select([sys.stdin], [], [], ARROW_KEY_READ_TIMEOUT)
+            if ready:
+                seq = sys.stdin.read(2)
+                if seq == '[A':
+                    return 'arrow_up'
+                elif seq == '[B':
+                    return 'arrow_down'
+                elif seq == '[C':
+                    return 'arrow_right'
+                elif seq == '[D':
+                    return 'arrow_left'
+        return char
     return None
 
 
@@ -949,6 +976,46 @@ def ring_bell():
     """Ring the terminal bell"""
     sys.stdout.write("\a")
     sys.stdout.flush()
+
+
+def create_state_snapshot(buffers, stats, timestamp):
+    """
+    Create a deep copy snapshot of current buffers and stats.
+
+    Args:
+        buffers: Current buffer state
+        stats: Current statistics
+        timestamp: Timestamp for this snapshot
+
+    Returns:
+        Dict with snapshot data
+    """
+    # Deep copy buffers (deques and their contents)
+    buffers_copy = {}
+    for host_id, host_buffers in buffers.items():
+        buffers_copy[host_id] = {
+            "timeline": deque(
+                host_buffers["timeline"],
+                maxlen=host_buffers["timeline"].maxlen
+            ),
+            "rtt_history": deque(
+                host_buffers["rtt_history"],
+                maxlen=host_buffers["rtt_history"].maxlen
+            ),
+            "categories": {
+                status: deque(cat_deque, maxlen=cat_deque.maxlen)
+                for status, cat_deque in host_buffers["categories"].items()
+            }
+        }
+
+    # Deep copy stats
+    stats_copy = copy.deepcopy(stats)
+
+    return {
+        "timestamp": timestamp,
+        "buffers": buffers_copy,
+        "stats": stats_copy,
+    }
 
 
 def main(args):
@@ -1046,6 +1113,16 @@ def main(args):
     asn_cache = {}
     asn_timeout = 3.0
     asn_failure_ttl = 300.0
+
+    # History navigation state
+    # Store snapshots at regular intervals for time navigation
+    max_history_snapshots = int(
+        HISTORY_DURATION_MINUTES * 60 / SNAPSHOT_INTERVAL_SECONDS
+    )
+    history_buffer = deque(maxlen=max_history_snapshots)
+    history_offset = 0  # 0 = live, >0 = viewing history
+    last_snapshot_time = 0.0
+
     rdns_request_queue = queue.Queue()
     rdns_result_queue = queue.Queue()
     asn_request_queue = queue.Queue()
@@ -1178,6 +1255,27 @@ def main(args):
                             snapshot_file.write("\n".join(snapshot_lines) + "\n")
                         status_message = f"Saved: {snapshot_name}"
                         updated = True
+                    elif key == "arrow_left":
+                        # Go back in time (increase offset)
+                        if history_offset < len(history_buffer) - 1:
+                            history_offset += 1
+                            force_render = True
+                            updated = True
+                            snapshot = history_buffer[-(history_offset + 1)]
+                            elapsed_seconds = int(time.time() - snapshot["timestamp"])
+                            status_message = f"Viewing {elapsed_seconds}s ago"
+                    elif key == "arrow_right":
+                        # Go forward in time (decrease offset, toward live)
+                        if history_offset > 0:
+                            history_offset -= 1
+                            force_render = True
+                            updated = True
+                            if history_offset == 0:
+                                status_message = "Returned to LIVE view"
+                            else:
+                                snapshot = history_buffer[-(history_offset + 1)]
+                                elapsed_seconds = int(time.time() - snapshot["timestamp"])
+                                status_message = f"Viewing {elapsed_seconds}s ago"
 
                 while True:
                     try:
@@ -1252,13 +1350,33 @@ def main(args):
                         updated = True
 
                 now = time.time()
+
+                # Periodically save snapshots for history navigation
+                if (history_offset == 0 and
+                        (now - last_snapshot_time) >= SNAPSHOT_INTERVAL_SECONDS):
+                    snapshot = create_state_snapshot(buffers, stats, now)
+                    history_buffer.append(snapshot)
+                    last_snapshot_time = now
+
+                # Determine which buffers/stats to use for rendering
+                render_buffers = buffers
+                render_stats = stats
+                render_paused = paused
+                if history_offset > 0:
+                    # Use historical data
+                    if history_offset <= len(history_buffer):
+                        snapshot = history_buffer[-(history_offset + 1)]
+                        render_buffers = snapshot["buffers"]
+                        render_stats = snapshot["stats"]
+                        render_paused = True  # Show as paused when viewing history
+
                 if force_render or (
                     not paused and (updated or (now - last_render) >= refresh_interval)
                 ):
                     render_display(
                         host_infos,
-                        buffers,
-                        stats,
+                        render_buffers,
+                        render_stats,
                         symbols,
                         args.panel_position,
                         modes[mode_index],
@@ -1268,7 +1386,7 @@ def main(args):
                         args.slow_threshold,
                         show_help,
                         show_asn,
-                        paused,
+                        render_paused,
                         status_message,
                         display_tz,
                     )

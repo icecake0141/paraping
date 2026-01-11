@@ -78,6 +78,7 @@ python main.py -t 2 -f hosts.txt
 - `a`: Toggle ASN display (auto hides when space is tight).
 - `p`: Pause/resume (display only or ping + display).
 - `s`: Save a snapshot to `multiping_snapshot_YYYYMMDD_HHMMSS.txt`.
+- `←` / `→`: Navigate backward/forward in time (view monitoring history up to 30 minutes).
 - `H`: Show help (press any key to close).
 - `q`: Quit.
 

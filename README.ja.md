@@ -78,6 +78,7 @@ python main.py -t 2 -f hosts.txt
 - `a`: ASN 表示の切替（スペース不足時は自動的に非表示）。
 - `p`: 一時停止/再開（表示のみ or ping + 表示）。
 - `s`: `multiping_snapshot_YYYYMMDD_HHMMSS.txt` を保存。
+- `←` / `→`: 時間を遡る/進める（最大30分前まで監視履歴を表示可能）。
 - `H`: ヘルプ表示（任意キーで閉じる）。
 - `q`: 終了。
 

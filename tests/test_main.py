@@ -46,6 +46,8 @@ from main import (
     get_terminal_size,
     flash_screen,
     ring_bell,
+    read_key,
+    create_state_snapshot,
 )  # noqa: E402
 
 
@@ -1046,6 +1048,138 @@ class TestFlashAndBell(unittest.TestCase):
         mock_stdout.write.assert_called_once_with("\a")
         # Should flush the output
         mock_stdout.flush.assert_called_once()
+
+
+class TestArrowKeyNavigation(unittest.TestCase):
+    """Test arrow key navigation for history viewing"""
+
+    @patch("main.select.select")
+    @patch("main.sys.stdin")
+    def test_read_key_arrow_left(self, mock_stdin, mock_select):
+        """Test reading left arrow key"""
+        mock_stdin.isatty.return_value = True
+        # First select returns ready, second for escape sequence
+        mock_select.side_effect = [
+            ([mock_stdin], [], []),
+            ([mock_stdin], [], []),
+        ]
+        # Simulate ESC [ D sequence
+        mock_stdin.read.side_effect = ['\x1b', '[D']
+
+        result = read_key()
+        self.assertEqual(result, 'arrow_left')
+
+    @patch("main.select.select")
+    @patch("main.sys.stdin")
+    def test_read_key_arrow_right(self, mock_stdin, mock_select):
+        """Test reading right arrow key"""
+        mock_stdin.isatty.return_value = True
+        mock_select.side_effect = [
+            ([mock_stdin], [], []),
+            ([mock_stdin], [], []),
+        ]
+        mock_stdin.read.side_effect = ['\x1b', '[C']
+
+        result = read_key()
+        self.assertEqual(result, 'arrow_right')
+
+    @patch("main.select.select")
+    @patch("main.sys.stdin")
+    def test_read_key_arrow_up(self, mock_stdin, mock_select):
+        """Test reading up arrow key"""
+        mock_stdin.isatty.return_value = True
+        mock_select.side_effect = [
+            ([mock_stdin], [], []),
+            ([mock_stdin], [], []),
+        ]
+        mock_stdin.read.side_effect = ['\x1b', '[A']
+
+        result = read_key()
+        self.assertEqual(result, 'arrow_up')
+
+    @patch("main.select.select")
+    @patch("main.sys.stdin")
+    def test_read_key_arrow_down(self, mock_stdin, mock_select):
+        """Test reading down arrow key"""
+        mock_stdin.isatty.return_value = True
+        mock_select.side_effect = [
+            ([mock_stdin], [], []),
+            ([mock_stdin], [], []),
+        ]
+        mock_stdin.read.side_effect = ['\x1b', '[B']
+
+        result = read_key()
+        self.assertEqual(result, 'arrow_down')
+
+    @patch("main.select.select")
+    @patch("main.sys.stdin")
+    def test_read_key_normal_character(self, mock_stdin, mock_select):
+        """Test reading a normal character (not arrow key)"""
+        mock_stdin.isatty.return_value = True
+        mock_select.return_value = ([mock_stdin], [], [])
+        mock_stdin.read.return_value = 'q'
+
+        result = read_key()
+        self.assertEqual(result, 'q')
+
+    def test_create_state_snapshot(self):
+        """Test creating a state snapshot"""
+        # Create test buffers
+        buffers = {
+            0: {
+                "timeline": deque([".", ".", "x"], maxlen=10),
+                "rtt_history": deque([0.01, 0.02, None], maxlen=10),
+                "categories": {
+                    "success": deque([1, 2], maxlen=10),
+                    "slow": deque([], maxlen=10),
+                    "fail": deque([3], maxlen=10),
+                }
+            }
+        }
+
+        # Create test stats
+        stats = {
+            0: {
+                "success": 2,
+                "slow": 0,
+                "fail": 1,
+                "total": 3,
+                "rtt_sum": 0.03,
+                "rtt_count": 2,
+            }
+        }
+
+        timestamp = 12345.67
+
+        # Create snapshot
+        snapshot = create_state_snapshot(buffers, stats, timestamp)
+
+        # Verify snapshot structure
+        self.assertEqual(snapshot["timestamp"], timestamp)
+        self.assertIn("buffers", snapshot)
+        self.assertIn("stats", snapshot)
+
+        # Verify buffers were deep copied
+        self.assertEqual(list(snapshot["buffers"][0]["timeline"]), [".", ".", "x"])
+        self.assertEqual(list(snapshot["buffers"][0]["rtt_history"]), [0.01, 0.02, None])
+
+        # Verify stats were deep copied
+        self.assertEqual(snapshot["stats"][0]["success"], 2)
+        self.assertEqual(snapshot["stats"][0]["fail"], 1)
+
+        # Verify it's a deep copy (modifying original doesn't affect snapshot)
+        buffers[0]["timeline"].append("!")
+        stats[0]["success"] = 100
+
+        self.assertEqual(list(snapshot["buffers"][0]["timeline"]), [".", ".", "x"])
+        self.assertEqual(snapshot["stats"][0]["success"], 2)
+
+    def test_help_view_includes_arrow_keys(self):
+        """Test that help view includes arrow key documentation"""
+        lines = render_help_view(80, 24)
+        combined = "\n".join(lines)
+        self.assertIn("<- / ->", combined)
+        self.assertIn("navigate", combined.lower())
 
 
 if __name__ == "__main__":
