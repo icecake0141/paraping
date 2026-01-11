@@ -147,6 +147,16 @@ def handle_options():
         help="Timezone used in snapshot filename (utc|display). Defaults to utc.",
     )
     parser.add_argument(
+        "--flash-on-fail",
+        action="store_true",
+        help="Flash screen (invert colors) when ping fails",
+    )
+    parser.add_argument(
+        "--bell-on-fail",
+        action="store_true",
+        help="Ring terminal bell when ping fails",
+    )
+    parser.add_argument(
         "hosts", nargs="*", help="Hosts to ping (IP addresses or hostnames)"
     )
 
@@ -589,15 +599,19 @@ def build_display_entries(
 
 def build_status_line(sort_mode, filter_mode, paused, status_message=None):
     sort_labels = {
-        "failures": "失敗回数",
-        "streak": "連続失敗",
-        "latency": "最新遅延",
-        "host": "ホスト名",
+        "failures": "Failure Count",
+        "streak": "Failure Streak",
+        "latency": "Latest Latency",
+        "host": "Host Name",
     }
-    filter_labels = {"failures": "失敗のみ", "latency": "高遅延のみ", "all": "全件"}
+    filter_labels = {
+        "failures": "Failures Only",
+        "latency": "High Latency Only",
+        "all": "All Items",
+    }
     sort_label = sort_labels.get(sort_mode, sort_mode)
     filter_label = filter_labels.get(filter_mode, filter_mode)
-    status = f"ソート: {sort_label} | フィルタ: {filter_label}"
+    status = f"Sort: {sort_label} | Filter: {filter_label}"
     if paused:
         status += " | PAUSED"
     if status_message:
@@ -929,6 +943,32 @@ def read_key():
     return None
 
 
+def flash_screen():
+    """Flash the screen by inverting colors for ~100ms"""
+    # ANSI escape sequences for visual flash effect
+    SAVE_CURSOR = "\x1b7"           # Save cursor position
+    INVERT_COLORS = "\x1b[7m"       # Invert colors (white bg, black fg)
+    CLEAR_SCREEN = "\x1b[2J"        # Clear screen
+    MOVE_HOME = "\x1b[H"            # Move cursor to home position
+    RESTORE_COLORS = "\x1b[27m"     # Restore normal colors
+    RESTORE_CURSOR = "\x1b8"        # Restore cursor position
+    FLASH_DURATION_SECONDS = 0.1    # Duration of flash effect
+
+    # Apply inverted colors and clear screen
+    sys.stdout.write(SAVE_CURSOR + INVERT_COLORS + CLEAR_SCREEN + MOVE_HOME)
+    sys.stdout.flush()
+    time.sleep(FLASH_DURATION_SECONDS)
+    # Restore normal display
+    sys.stdout.write(RESTORE_COLORS + RESTORE_CURSOR)
+    sys.stdout.flush()
+
+
+def ring_bell():
+    """Ring the terminal bell"""
+    sys.stdout.write("\a")
+    sys.stdout.flush()
+
+
 def main(args):
 
     # Validate count parameter - allow 0 for infinite
@@ -1089,13 +1129,13 @@ def main(args):
             while running and (not expect_completion or completed_hosts < len(host_infos)):
                 key = read_key()
                 if key:
-                    if show_help:
+                    if key == "q":
+                        running = False
+                    elif show_help:
                         show_help = False
                         force_render = True
                         updated = True
                         continue
-                    if key == "q":
-                        running = False
                     elif key in ("H", "h"):
                         show_help = True
                         force_render = True
@@ -1119,7 +1159,7 @@ def main(args):
                         updated = True
                     elif key == "p":
                         paused = not paused
-                        status_message = "一時停止中" if paused else "再開しました"
+                        status_message = "Paused" if paused else "Resumed"
                         if pause_mode == "ping":
                             if paused:
                                 pause_event.set()
@@ -1154,7 +1194,7 @@ def main(args):
                             snapshot_name, "w", encoding="utf-8"
                         ) as snapshot_file:
                             snapshot_file.write("\n".join(snapshot_lines) + "\n")
-                        status_message = f"保存: {snapshot_name}"
+                        status_message = f"Saved: {snapshot_name}"
                         updated = True
 
                 while True:
@@ -1218,6 +1258,14 @@ def main(args):
                     if result.get("rtt") is not None:
                         stats[host_id]["rtt_sum"] += result["rtt"]
                         stats[host_id]["rtt_count"] += 1
+
+                    # Trigger flash or bell on ping failure
+                    if status == "fail":
+                        if args.flash_on_fail:
+                            flash_screen()
+                        if args.bell_on_fail:
+                            ring_bell()
+
                     if not paused:
                         updated = True
 

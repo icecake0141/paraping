@@ -17,9 +17,9 @@ Unit tests for multiping functionality
 import unittest
 from unittest.mock import patch, MagicMock, mock_open
 import argparse
+import os
 import queue
 import sys
-import os
 from collections import deque
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
@@ -44,6 +44,9 @@ from main import (
     build_host_infos,
     build_sparkline,
     build_status_line,
+    get_terminal_size,
+    flash_screen,
+    ring_bell,
 )  # noqa: E402
 
 
@@ -820,8 +823,8 @@ class TestStatusLine(unittest.TestCase):
     def test_build_status_line_basic(self):
         """Test basic status line building"""
         result = build_status_line("failures", "all", False, None)
-        self.assertIn("失敗回数", result)
-        self.assertIn("全件", result)
+        self.assertIn("Failure Count", result)
+        self.assertIn("All Items", result)
         self.assertNotIn("PAUSED", result)
 
     def test_build_status_line_paused(self):
@@ -837,8 +840,293 @@ class TestStatusLine(unittest.TestCase):
     def test_build_status_line_different_modes(self):
         """Test status line with different sort and filter modes"""
         result = build_status_line("latency", "failures", False, None)
-        self.assertIn("最新遅延", result)
-        self.assertIn("失敗のみ", result)
+        self.assertIn("Latest Latency", result)
+        self.assertIn("Failures Only", result)
+
+
+class TestQuitHotkey(unittest.TestCase):
+    """Test quit hotkey functionality"""
+
+    @patch("main.queue.Queue")
+    @patch("main.sys.stdin")
+    @patch("main.get_terminal_size")
+    @patch("main.ThreadPoolExecutor")
+    @patch("main.threading.Thread")
+    @patch("main.read_key")
+    def test_quit_key_exits_immediately(
+        self, mock_read_key, mock_thread, mock_executor, mock_term_size, mock_stdin, mock_queue
+    ):
+        """Test that pressing 'q' key exits the program immediately"""
+        # Mock terminal properties
+        mock_stdin.isatty.return_value = True
+        mock_term_size.return_value = os.terminal_size((80, 24))
+
+        # Mock stdin for terminal setup
+        mock_stdin.fileno.return_value = 0
+
+        # Mock queue to simulate completion
+        result_queue = MagicMock()
+        # Always raise Empty to simulate no results
+        result_queue.get_nowait.side_effect = queue.Empty
+        empty_queue = MagicMock()
+        empty_queue.get_nowait.side_effect = queue.Empty
+        # Queue instances: result_queue, rdns_request_queue, rdns_result_queue, asn_request_queue, asn_result_queue
+        mock_queue.side_effect = [
+            result_queue,  # result_queue
+            MagicMock(),   # rdns_request_queue
+            empty_queue,   # rdns_result_queue
+            MagicMock(),   # asn_request_queue
+            empty_queue,   # asn_result_queue
+        ]
+
+        # Mock read_key to return 'q' after a few iterations
+        mock_read_key.side_effect = [None, None, "q"]
+
+        args = argparse.Namespace(
+            timeout=1,
+            count=0,  # Infinite count to ensure it would run forever without 'q'
+            interval=1.0,
+            slow_threshold=0.5,
+            verbose=False,
+            hosts=["host1.com"],
+            input=None,
+            panel_position="right",
+            pause_mode="display",
+            timezone=None,
+            snapshot_timezone="utc",
+            flash_on_fail=False,
+            bell_on_fail=False,
+        )
+
+        # Mock executor
+        mock_executor_instance = MagicMock()
+        mock_executor.return_value.__enter__.return_value = mock_executor_instance
+        mock_executor.return_value.__exit__.return_value = False
+        mock_executor_instance.submit.return_value = MagicMock()
+
+        mock_thread.return_value = MagicMock()
+
+        # Mock termios functions
+        with patch("main.termios.tcgetattr", return_value=MagicMock()):
+            with patch("main.termios.tcsetattr"):
+                with patch("main.tty.setcbreak"):
+                    # Should exit without raising exception when 'q' is pressed
+                    main(args)
+
+    @patch("main.queue.Queue")
+    @patch("main.sys.stdin")
+    @patch("main.get_terminal_size")
+    @patch("main.ThreadPoolExecutor")
+    @patch("main.threading.Thread")
+    @patch("main.read_key")
+    def test_quit_key_exits_from_help_screen(
+        self, mock_read_key, mock_thread, mock_executor, mock_term_size, mock_stdin, mock_queue
+    ):
+        """Test that pressing 'q' key exits even when help screen is showing"""
+        # Mock terminal properties
+        mock_stdin.isatty.return_value = True
+        mock_term_size.return_value = os.terminal_size((80, 24))
+
+        # Mock stdin for terminal setup
+        mock_stdin.fileno.return_value = 0
+
+        # Mock queue to simulate completion
+        result_queue = MagicMock()
+        # Always raise Empty to simulate no results
+        result_queue.get_nowait.side_effect = queue.Empty
+        empty_queue = MagicMock()
+        empty_queue.get_nowait.side_effect = queue.Empty
+        # Queue instances: result_queue, rdns_request_queue, rdns_result_queue, asn_request_queue, asn_result_queue
+        mock_queue.side_effect = [
+            result_queue,  # result_queue
+            MagicMock(),   # rdns_request_queue
+            empty_queue,   # rdns_result_queue
+            MagicMock(),   # asn_request_queue
+            empty_queue,   # asn_result_queue
+        ]
+
+        # Mock read_key to open help screen with 'H', then press 'q' to quit
+        mock_read_key.side_effect = [None, "H", "q"]
+
+        args = argparse.Namespace(
+            timeout=1,
+            count=0,  # Infinite count
+            interval=1.0,
+            slow_threshold=0.5,
+            verbose=False,
+            hosts=["host1.com"],
+            input=None,
+            panel_position="right",
+            pause_mode="display",
+            timezone=None,
+            snapshot_timezone="utc",
+            flash_on_fail=False,
+            bell_on_fail=False,
+        )
+
+        # Mock executor
+        mock_executor_instance = MagicMock()
+        mock_executor.return_value.__enter__.return_value = mock_executor_instance
+        mock_executor.return_value.__exit__.return_value = False
+        mock_executor_instance.submit.return_value = MagicMock()
+
+        mock_thread.return_value = MagicMock()
+
+        # Mock termios functions
+        with patch("main.termios.tcgetattr", return_value=MagicMock()):
+            with patch("main.termios.tcsetattr"):
+                with patch("main.tty.setcbreak"):
+                    # Should exit when 'q' is pressed, even with help screen open
+                    main(args)
+
+
+class TestTerminalSize(unittest.TestCase):
+    """Test terminal size retrieval function"""
+
+    @patch("main.os.get_terminal_size")
+    @patch("main.sys.stdout")
+    def test_get_terminal_size_from_stdout(
+        self, mock_stdout, mock_os_get_size
+    ):
+        """Test getting terminal size from stdout"""
+        mock_stdout.isatty.return_value = True
+        mock_stdout.fileno.return_value = 1
+        mock_os_get_size.return_value = MagicMock(columns=100, lines=50)
+
+        result = get_terminal_size()
+
+        self.assertEqual(result.columns, 100)
+        self.assertEqual(result.lines, 50)
+        mock_os_get_size.assert_called_once_with(1)
+
+    @patch("main.os.get_terminal_size")
+    @patch("main.sys.stdout")
+    @patch("main.sys.stderr")
+    def test_get_terminal_size_fallback_to_stderr(
+        self, mock_stderr, mock_stdout, mock_os_get_size
+    ):
+        """Test fallback to stderr when stdout fails"""
+        mock_stdout.isatty.return_value = False
+        mock_stderr.isatty.return_value = True
+        mock_stderr.fileno.return_value = 2
+        mock_os_get_size.return_value = MagicMock(columns=120, lines=40)
+
+        result = get_terminal_size()
+
+        self.assertEqual(result.columns, 120)
+        self.assertEqual(result.lines, 40)
+
+    @patch("main.os.get_terminal_size")
+    @patch("main.sys.stdout")
+    @patch("main.sys.stderr")
+    @patch("main.sys.stdin")
+    def test_get_terminal_size_fallback_to_default(
+        self, mock_stdin, mock_stderr, mock_stdout, mock_os_get_size
+    ):
+        """Test fallback to default size when no tty available"""
+        mock_stdout.isatty.return_value = False
+        mock_stderr.isatty.return_value = False
+        mock_stdin.isatty.return_value = False
+
+        result = get_terminal_size(fallback=(80, 24))
+
+        self.assertEqual(result.columns, 80)
+        self.assertEqual(result.lines, 24)
+
+    @patch("main.os.get_terminal_size")
+    @patch("main.sys.stdout")
+    def test_get_terminal_size_handles_os_error(
+        self, mock_stdout, mock_os_get_size
+    ):
+        """Test handling of OSError when querying terminal size"""
+        mock_stdout.isatty.return_value = True
+        mock_stdout.fileno.return_value = 1
+        mock_os_get_size.side_effect = OSError("Not a terminal")
+
+        result = get_terminal_size(fallback=(80, 24))
+
+        self.assertEqual(result.columns, 80)
+        self.assertEqual(result.lines, 24)
+
+    def test_get_terminal_size_ignores_env_vars(self):
+        """Test that get_terminal_size ignores COLUMNS/LINES env vars"""
+        # Set environment variables
+        original_columns = os.environ.get("COLUMNS")
+        original_lines = os.environ.get("LINES")
+
+        try:
+            os.environ["COLUMNS"] = "50"
+            os.environ["LINES"] = "20"
+
+            # Our function should bypass env vars and query actual terminal
+            # If running in a TTY, it should get the real size, not 50x20
+            result = get_terminal_size(fallback=(80, 24))
+
+            # The result should either be the actual terminal size
+            # (not 50x20) or the fallback (80x24) if no TTY available
+            # It should NOT be 50x20 from the env vars
+            self.assertNotEqual((result.columns, result.lines), (50, 20))
+        finally:
+            # Restore original env vars
+            if original_columns is not None:
+                os.environ["COLUMNS"] = original_columns
+            else:
+                os.environ.pop("COLUMNS", None)
+            if original_lines is not None:
+                os.environ["LINES"] = original_lines
+            else:
+                os.environ.pop("LINES", None)
+
+
+class TestFlashAndBell(unittest.TestCase):
+    """Test flash and bell notification features"""
+
+    def test_handle_options_flash_on_fail(self):
+        """Test --flash-on-fail option parsing"""
+        with patch("sys.argv", ["main.py", "--flash-on-fail", "example.com"]):
+            args = handle_options()
+            self.assertTrue(args.flash_on_fail)
+
+    def test_handle_options_bell_on_fail(self):
+        """Test --bell-on-fail option parsing"""
+        with patch("sys.argv", ["main.py", "--bell-on-fail", "example.com"]):
+            args = handle_options()
+            self.assertTrue(args.bell_on_fail)
+
+    def test_handle_options_both_flags(self):
+        """Test both flash and bell options together"""
+        with patch("sys.argv", ["main.py", "--flash-on-fail", "--bell-on-fail", "example.com"]):
+            args = handle_options()
+            self.assertTrue(args.flash_on_fail)
+            self.assertTrue(args.bell_on_fail)
+
+    def test_handle_options_default_false(self):
+        """Test that flash and bell options default to False"""
+        with patch("sys.argv", ["main.py", "example.com"]):
+            args = handle_options()
+            self.assertFalse(args.flash_on_fail)
+            self.assertFalse(args.bell_on_fail)
+
+    @patch("main.sys.stdout")
+    @patch("main.time.sleep")
+    def test_flash_screen(self, mock_sleep, mock_stdout):
+        """Test flash_screen function"""
+        flash_screen()
+        # Should have called write to send escape sequences
+        self.assertGreaterEqual(mock_stdout.write.call_count, 2)
+        # Should have slept for ~0.1 seconds
+        mock_sleep.assert_called_once_with(0.1)
+        # Should have called flush
+        self.assertGreaterEqual(mock_stdout.flush.call_count, 2)
+
+    @patch("main.sys.stdout")
+    def test_ring_bell(self, mock_stdout):
+        """Test ring_bell function"""
+        ring_bell()
+        # Should write the bell character
+        mock_stdout.write.assert_called_once_with("\a")
+        # Should flush the output
+        mock_stdout.flush.assert_called_once()
 
 
 if __name__ == "__main__":
