@@ -633,6 +633,8 @@ def resolve_display_name(host_info, mode):
     if mode == "ip":
         return host_info["ip"]
     if mode == "rdns":
+        if host_info.get("rdns_pending"):
+            return "resolving..."
         return host_info["rdns"] or host_info["ip"]
     if mode == "alias":
         return host_info["alias"]
@@ -643,8 +645,16 @@ def format_display_name(host_info, mode, include_asn, asn_width):
     base_label = resolve_display_name(host_info, mode)
     if not include_asn:
         return base_label
-    asn_label = host_info.get("asn") or ""
-    return f"{base_label} {asn_label:<{asn_width}}"
+    asn_label = format_asn_label(host_info, asn_width)
+    return f"{base_label} {asn_label}"
+
+
+def format_asn_label(host_info, asn_width):
+    if host_info.get("asn_pending"):
+        label = "resolving..."
+    else:
+        label = host_info.get("asn") or ""
+    return f"{label[:asn_width]:<{asn_width}}"
 
 
 def build_display_names(host_infos, mode, include_asn, asn_width):
@@ -665,9 +675,9 @@ def build_host_infos(hosts):
             "alias": host,
             "ip": ip_address,
             "rdns": None,
-            "rdns_state": "pending",
+            "rdns_pending": False,
             "asn": None,
-            "asn_state": "pending",
+            "asn_pending": False,
         }
     return host_infos
 
@@ -698,6 +708,43 @@ def resolve_asn(ip_address, timeout=3.0):
     if not asn or asn.upper() == "NA":
         return None
     return f"AS{asn}"
+
+
+def rdns_worker(request_queue, result_queue, stop_event):
+    while not stop_event.is_set():
+        try:
+            item = request_queue.get(timeout=0.1)
+        except queue.Empty:
+            continue
+        if item is None:
+            request_queue.task_done()
+            break
+        host, ip_address = item
+        result_queue.put((host, resolve_rdns(ip_address)))
+        request_queue.task_done()
+
+
+def asn_worker(request_queue, result_queue, stop_event, timeout):
+    while not stop_event.is_set():
+        try:
+            item = request_queue.get(timeout=0.1)
+        except queue.Empty:
+            continue
+        if item is None:
+            request_queue.task_done()
+            break
+        host, ip_address = item
+        result_queue.put((host, resolve_asn(ip_address, timeout=timeout)))
+        request_queue.task_done()
+
+
+def should_retry_asn(ip_address, asn_cache, now, failure_ttl):
+    cached = asn_cache.get(ip_address)
+    if cached is None:
+        return True
+    if cached["value"] is None and (now - cached["fetched_at"]) >= failure_ttl:
+        return True
+    return False
 
 
 def should_show_asn(host_infos, mode, show_asn, term_width, min_timeline_width=10, asn_width=8):
@@ -795,13 +842,26 @@ def main(args):
     status_message = None
     force_render = False
     show_asn = True
-    rdns_timeout = 2.0
-    rdns_futures = {}
-    rdns_started = {}
-    asn_timeout = 3.0
-    asn_futures = {}
-    asn_started = {}
     asn_cache = {}
+    asn_timeout = 3.0
+    asn_failure_ttl = 300.0
+    rdns_request_queue = queue.Queue()
+    rdns_result_queue = queue.Queue()
+    asn_request_queue = queue.Queue()
+    asn_result_queue = queue.Queue()
+    worker_stop = threading.Event()
+    rdns_thread = threading.Thread(
+        target=rdns_worker,
+        args=(rdns_request_queue, rdns_result_queue, worker_stop),
+        daemon=True,
+    )
+    asn_thread = threading.Thread(
+        target=asn_worker,
+        args=(asn_request_queue, asn_result_queue, worker_stop, asn_timeout),
+        daemon=True,
+    )
+    rdns_thread.start()
+    asn_thread.start()
 
     stdin_fd = None
     original_term = None
@@ -811,15 +871,16 @@ def main(args):
 
     with ThreadPoolExecutor(max_workers=min(len(all_hosts), 10)) as executor:
         for host, info in host_infos.items():
-            rdns_futures[host] = executor.submit(resolve_rdns, info["ip"])
-            rdns_started[host] = time.time()
-            if info["ip"] in asn_cache:
-                cached_asn = asn_cache[info["ip"]]
+            host_infos[host]["rdns_pending"] = True
+            rdns_request_queue.put((host, info["ip"]))
+            now = time.time()
+            if info["ip"] in asn_cache and asn_cache[info["ip"]]["value"] is not None:
+                cached_asn = asn_cache[info["ip"]]["value"]
                 host_infos[host]["asn"] = cached_asn
-                host_infos[host]["asn_state"] = "resolved" if cached_asn else "failed"
-            else:
-                asn_futures[host] = executor.submit(resolve_asn, info["ip"])
-                asn_started[host] = time.time()
+                host_infos[host]["asn_pending"] = False
+            elif should_retry_asn(info["ip"], asn_cache, now, asn_failure_ttl):
+                host_infos[host]["asn_pending"] = True
+                asn_request_queue.put((host, info["ip"]))
         for host in all_hosts:
             executor.submit(
                 worker_ping,
@@ -899,35 +960,40 @@ def main(args):
                         status_message = f"保存: {snapshot_name}"
                         updated = True
 
-                for host, future in list(rdns_futures.items()):
-                    if host_infos[host]["rdns_state"] != "pending":
-                        continue
-                    if future.done():
-                        host_infos[host]["rdns"] = future.result()
-                        host_infos[host]["rdns_state"] = "resolved"
-                        if not paused:
-                            updated = True
-                    elif time.time() - rdns_started[host] >= rdns_timeout:
-                        future.cancel()
-                        host_infos[host]["rdns_state"] = "timeout"
-                        if not paused:
-                            updated = True
+                while True:
+                    try:
+                        host, rdns_value = rdns_result_queue.get_nowait()
+                    except queue.Empty:
+                        break
+                    host_infos[host]["rdns"] = rdns_value
+                    host_infos[host]["rdns_pending"] = False
+                    if not paused:
+                        updated = True
 
-                for host, future in list(asn_futures.items()):
-                    if host_infos[host]["asn_state"] != "pending":
+                while True:
+                    try:
+                        host, asn_value = asn_result_queue.get_nowait()
+                    except queue.Empty:
+                        break
+                    host_infos[host]["asn"] = asn_value
+                    host_infos[host]["asn_pending"] = False
+                    asn_cache[host_infos[host]["ip"]] = {
+                        "value": asn_value,
+                        "fetched_at": time.time(),
+                    }
+                    if not paused:
+                        updated = True
+
+                now = time.time()
+                for host in all_hosts:
+                    if host_infos[host]["asn_pending"]:
                         continue
-                    if future.done():
-                        asn_value = future.result()
-                        host_infos[host]["asn"] = asn_value
-                        host_infos[host]["asn_state"] = "resolved" if asn_value else "failed"
-                        asn_cache[host_infos[host]["ip"]] = asn_value
-                        if not paused:
-                            updated = True
-                    elif time.time() - asn_started[host] >= asn_timeout:
-                        future.cancel()
-                        host_infos[host]["asn_state"] = "timeout"
-                        if not paused:
-                            updated = True
+                    if host_infos[host]["asn"] is not None:
+                        continue
+                    ip_address = host_infos[host]["ip"]
+                    if should_retry_asn(ip_address, asn_cache, now, asn_failure_ttl):
+                        host_infos[host]["asn_pending"] = True
+                        asn_request_queue.put((host, ip_address))
 
                 while True:
                     try:
@@ -977,6 +1043,11 @@ def main(args):
 
                 time.sleep(0.05)
         finally:
+            worker_stop.set()
+            rdns_request_queue.put(None)
+            asn_request_queue.put(None)
+            rdns_thread.join(timeout=1.0)
+            asn_thread.join(timeout=1.0)
             if stdin_fd is not None and original_term is not None:
                 termios.tcsetattr(stdin_fd, termios.TCSADRAIN, original_term)
 
