@@ -329,13 +329,16 @@ def render_summary_view(summary_data, width, height):
             streak_label = f"F{entry['streak_length']}"
         elif entry["streak_type"] == "success":
             streak_label = f"S{entry['streak_length']}"
-        
+
         # Build the status suffix (everything except hostname)
-        status_suffix = f": ok {entry['success_rate']:.1f}% loss {entry['loss_rate']:.1f}% streak {streak_label}"
-        
+        status_suffix = (
+            f": ok {entry['success_rate']:.1f}% "
+            f"loss {entry['loss_rate']:.1f}% streak {streak_label}"
+        )
+
         # Calculate available space for hostname
         available_for_host = width - len(status_suffix)
-        
+
         if available_for_host > 0:
             # Truncate hostname to fit, preserving the status info
             host_display = entry['host'][:available_for_host]
@@ -346,10 +349,10 @@ def render_summary_view(summary_data, width, height):
                 f"{entry['host']}: ok {entry['success_rate']:.1f}% "
                 f"loss {entry['loss_rate']:.1f}% streak {streak_label}"
             )
-        
+
         # Ensure the line doesn't exceed width
         lines.append(full_line[:width])
-        
+
         # Format the avg rtt line
         if entry["avg_rtt_ms"] is not None:
             rtt_line = f"  avg rtt {entry['avg_rtt_ms']:.1f} ms"

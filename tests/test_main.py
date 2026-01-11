@@ -643,14 +643,17 @@ class TestSummaryData(unittest.TestCase):
                 "avg_rtt_ms": 42.3,
             }
         ]
-        
+
         width = 40
         height = 10
         lines = render_summary_view(summary_data, width, height)
-        
+
         # All lines should be exactly 'width' characters
         for line in lines:
-            self.assertEqual(len(line), width, f"Line '{line}' has length {len(line)}, expected {width}")
+            self.assertEqual(
+                len(line), width,
+                f"Line '{line}' has length {len(line)}, expected {width}"
+            )
 
     def test_render_summary_view_truncates_long_hostnames(self):
         """Test that long hostnames are truncated to fit"""
@@ -664,16 +667,16 @@ class TestSummaryData(unittest.TestCase):
                 "avg_rtt_ms": 25.0,
             }
         ]
-        
+
         # Use a reasonable width that can fit the status info
         width = 50
         height = 10
         lines = render_summary_view(summary_data, width, height)
-        
+
         # Check all lines fit within width
         for line in lines:
             self.assertEqual(len(line), width)
-        
+
         # The host info line should contain essential info when width is sufficient
         host_line = lines[2]  # First line is "Summary", second is separator
         self.assertIn("ok", host_line)
@@ -699,11 +702,11 @@ class TestSummaryData(unittest.TestCase):
                 "avg_rtt_ms": 45.2,
             },
         ]
-        
+
         width = 35
         height = 20
         lines = render_summary_view(summary_data, width, height)
-        
+
         # All lines should fit within width
         for line in lines:
             self.assertEqual(len(line), width)
