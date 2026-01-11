@@ -57,9 +57,10 @@ python main.py -t 2 -f hosts.txt
 ```
 
 ### Command-line Options
-- `-t`, `--timeout`: Timeout in seconds for each ping.
-- `-c`, `--count`: Number of ping attempts per host.
-- `--slow-threshold`: RTT threshold (seconds) to mark a ping as slow.
+- `-t`, `--timeout`: Timeout in seconds for each ping (default: 1).
+- `-c`, `--count`: Number of ping attempts per host (default: 0 for infinite).
+- `-i`, `--interval`: Interval in seconds between pings per host (default: 1.0, range: 0.1-60.0).
+- `--slow-threshold`: RTT threshold (seconds) to mark a ping as slow (default: 0.5).
 - `-v`, `--verbose`: Print raw per-packet output (non-UI).
 - `-f`, `--input`: Read hosts from a file (one per line; `#` comments supported).
 - `--panel-position`: Summary panel position (`right|left|top|bottom|none`).

@@ -47,14 +47,21 @@ def handle_options():
         "-c",
         "--count",
         type=int,
-        default=4,
-        help="Number of ping attempts per host (default: 4)",
+        default=0,
+        help="Number of ping attempts per host (default: 0 for infinite)",
     )
     parser.add_argument(
         "--slow-threshold",
         type=float,
         default=0.5,
         help="Threshold in seconds for slow ping (default: 0.5)",
+    )
+    parser.add_argument(
+        "-i",
+        "--interval",
+        type=float,
+        default=1.0,
+        help="Interval in seconds between pings per host (default: 1.0, range: 0.1-60.0)",
     )
     parser.add_argument(
         "-v",
@@ -132,15 +139,17 @@ def read_input_file(input_file):
 # Ping a single host
 
 
-def ping_host(host, timeout, count, slow_threshold, verbose, pause_event=None):
+def ping_host(host, timeout, count, slow_threshold, verbose, pause_event=None, interval=1.0):
     """
     Ping a single host with the specified parameters.
 
     Args:
         host: The hostname or IP address to ping
         timeout: Timeout in seconds for each ping
-        count: Number of ping attempts
+        count: Number of ping attempts (0 for infinite)
         verbose: Whether to show detailed output
+        pause_event: Event to pause pinging
+        interval: Interval in seconds between pings
 
     Yields:
         A dict with host, sequence, status, and rtt
@@ -148,7 +157,12 @@ def ping_host(host, timeout, count, slow_threshold, verbose, pause_event=None):
     if verbose:
         print(f"\n--- Pinging {host} ---")
 
-    for i in range(count):
+    i = 0
+    while True:
+        # Check if we should stop (only when count is not 0)
+        if count > 0 and i >= count:
+            break
+
         if pause_event is not None:
             while pause_event.is_set():
                 time.sleep(0.05)
@@ -180,6 +194,12 @@ def ping_host(host, timeout, count, slow_threshold, verbose, pause_event=None):
             if verbose:
                 print(f"Error pinging {host}: {e}")
             yield {"host": host, "sequence": i + 1, "status": "fail", "rtt": None}
+
+        i += 1
+
+        # Sleep for interval between pings (but not after the last ping when count > 0)
+        if count == 0 or i < count:
+            time.sleep(interval)
 
 
 def compute_main_layout(host_labels, width, height, header_lines=2):
@@ -514,7 +534,9 @@ def build_status_line(sort_mode, filter_mode, paused, status_message=None):
         "host": "ホスト名",
     }
     filter_labels = {"failures": "失敗のみ", "latency": "高遅延のみ", "all": "全件"}
-    status = f"ソート: {sort_labels.get(sort_mode, sort_mode)} | フィルタ: {filter_labels.get(filter_mode, filter_mode)}"
+    sort_label = sort_labels.get(sort_mode, sort_mode)
+    filter_label = filter_labels.get(filter_mode, filter_mode)
+    status = f"ソート: {sort_label} | フィルタ: {filter_label}"
     if paused:
         status += " | PAUSED"
     if status_message:
@@ -686,7 +708,7 @@ def format_timestamp(now_utc, display_tz):
 
 
 def worker_ping(
-    host_info, timeout, count, slow_threshold, verbose, pause_event, result_queue
+    host_info, timeout, count, slow_threshold, verbose, pause_event, result_queue, interval
 ):
     for result in ping_host(
         host_info["host"],
@@ -695,6 +717,7 @@ def worker_ping(
         slow_threshold,
         verbose,
         pause_event,
+        interval,
     ):
         result_queue.put({**result, "host_id": host_info["id"]})
     result_queue.put({"host_id": host_info["id"], "status": "done"})
@@ -847,9 +870,14 @@ def read_key():
 
 def main(args):
 
-    # Validate count parameter
-    if args.count <= 0:
-        print("Error: Count must be a positive number.")
+    # Validate count parameter - allow 0 for infinite
+    if args.count < 0:
+        print("Error: Count must be a non-negative number (0 for infinite).")
+        return
+
+    # Validate interval parameter
+    if args.interval < 0.1 or args.interval > 60.0:
+        print("Error: Interval must be between 0.1 and 60.0 seconds.")
         return
 
     # Collect all hosts to ping
@@ -910,9 +938,10 @@ def main(args):
     }
     result_queue = queue.Queue()
 
+    count_display = "infinite" if args.count == 0 else str(args.count)
     print(
         f"MultiPing - Pinging {len(all_hosts)} host(s) with timeout={args.timeout}s, "
-        f"count={args.count}, slow-threshold={args.slow_threshold}s"
+        f"count={count_display}, interval={args.interval}s, slow-threshold={args.slow_threshold}s"
     )
 
     modes = ["ip", "rdns", "alias"]
@@ -984,16 +1013,19 @@ def main(args):
                 args.verbose,
                 pause_event,
                 result_queue,
+                args.interval,
             )
 
         completed_hosts = 0
         updated = True
         last_render = 0.0
         refresh_interval = 0.15
+        # When count is 0 (infinite), workers never complete, so we wait for user to quit
+        expect_completion = args.count > 0
         try:
             if stdin_fd is not None:
                 tty.setcbreak(stdin_fd)
-            while running and completed_hosts < len(host_infos):
+            while running and (not expect_completion or completed_hosts < len(host_infos)):
                 key = read_key()
                 if key:
                     if show_help:

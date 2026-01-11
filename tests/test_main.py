@@ -54,7 +54,8 @@ class TestHandleOptions(unittest.TestCase):
         with patch("sys.argv", ["main.py", "example.com"]):
             args = handle_options()
             self.assertEqual(args.timeout, 1)
-            self.assertEqual(args.count, 4)
+            self.assertEqual(args.count, 0)
+            self.assertEqual(args.interval, 1.0)
             self.assertEqual(args.verbose, False)
             self.assertEqual(args.hosts, ["example.com"])
 
@@ -82,6 +83,18 @@ class TestHandleOptions(unittest.TestCase):
             args = handle_options()
             self.assertEqual(len(args.hosts), 3)
             self.assertIn("host1.com", args.hosts)
+
+    def test_custom_interval(self):
+        """Test custom interval option"""
+        with patch("sys.argv", ["main.py", "-i", "0.5", "example.com"]):
+            args = handle_options()
+            self.assertEqual(args.interval, 0.5)
+
+    def test_infinite_count(self):
+        """Test infinite count (count=0)"""
+        with patch("sys.argv", ["main.py", "-c", "0", "example.com"]):
+            args = handle_options()
+            self.assertEqual(args.count, 0)
 
 
 class TestReadInputFile(unittest.TestCase):
@@ -254,6 +267,7 @@ class TestMain(unittest.TestCase):
         args = argparse.Namespace(
             timeout=1,
             count=4,
+            interval=1.0,
             slow_threshold=0.5,
             verbose=False,
             hosts=["host1.com", "host2.com"],
@@ -285,7 +299,8 @@ class TestMain(unittest.TestCase):
         """Test main function with invalid count"""
         args = argparse.Namespace(
             timeout=1,
-            count=0,
+            count=-1,
+            interval=1.0,
             verbose=False,
             hosts=["host1.com"],
             input=None,
@@ -303,6 +318,7 @@ class TestMain(unittest.TestCase):
         args = argparse.Namespace(
             timeout=1,
             count=4,
+            interval=1.0,
             verbose=False,
             hosts=[],
             input=None,
@@ -357,6 +373,7 @@ class TestMain(unittest.TestCase):
         args = argparse.Namespace(
             timeout=1,
             count=4,
+            interval=1.0,
             slow_threshold=0.5,
             verbose=False,
             hosts=[],
@@ -384,6 +401,27 @@ class TestMain(unittest.TestCase):
         main(args)
 
         mock_read_file.assert_called_once_with("hosts.txt")
+
+    @patch("builtins.print")
+    def test_main_with_invalid_interval(self, mock_print):
+        """Test main function with invalid interval"""
+        args = argparse.Namespace(
+            timeout=1,
+            count=4,
+            interval=100.0,  # Too large
+            verbose=False,
+            hosts=["host1.com"],
+            input=None,
+            pause_mode="display",
+            timezone=None,
+            snapshot_timezone="utc",
+        )
+
+        main(args)
+        mock_print.assert_called()
+        # Check that it printed the error message
+        call_args = [str(call) for call in mock_print.call_args_list]
+        self.assertTrue(any("Interval" in str(call) for call in call_args))
 
 
 class TestHelpView(unittest.TestCase):

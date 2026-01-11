@@ -57,9 +57,10 @@ python main.py -t 2 -f hosts.txt
 ```
 
 ### コマンドラインオプション
-- `-t`, `--timeout`: 1 回の ping のタイムアウト（秒）。
-- `-c`, `--count`: 各ホストの試行回数。
-- `--slow-threshold`: 遅延判定の閾値（秒）。
+- `-t`, `--timeout`: 1 回の ping のタイムアウト（秒、デフォルト: 1）。
+- `-c`, `--count`: 各ホストの試行回数（デフォルト: 0 で無限）。
+- `-i`, `--interval`: ホストごとの ping 間隔（秒、デフォルト: 1.0、範囲: 0.1-60.0）。
+- `--slow-threshold`: 遅延判定の閾値（秒、デフォルト: 0.5）。
 - `-v`, `--verbose`: 詳細ログ出力（UI なし）。
 - `-f`, `--input`: ホスト一覧ファイル（1 行 1 ホスト、`#` はコメント）。
 - `--panel-position`: サマリーパネルの位置（`right|left|top|bottom|none`）。
