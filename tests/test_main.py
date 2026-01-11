@@ -17,9 +17,9 @@ Unit tests for multiping functionality
 import unittest
 from unittest.mock import patch, MagicMock, mock_open
 import argparse
+import os
 import queue
 import sys
-import os
 from collections import deque
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
@@ -768,7 +768,7 @@ class TestQuitHotkey(unittest.TestCase):
 
     @patch("main.queue.Queue")
     @patch("main.sys.stdin")
-    @patch("main.shutil.get_terminal_size")
+    @patch("main.get_terminal_size")
     @patch("main.ThreadPoolExecutor")
     @patch("main.threading.Thread")
     @patch("main.read_key")
@@ -778,7 +778,7 @@ class TestQuitHotkey(unittest.TestCase):
         """Test that pressing 'q' key exits the program immediately"""
         # Mock terminal properties
         mock_stdin.isatty.return_value = True
-        mock_term_size.return_value = MagicMock(columns=80, lines=24)
+        mock_term_size.return_value = os.terminal_size((80, 24))
 
         # Mock stdin for terminal setup
         mock_stdin.fileno.return_value = 0
@@ -813,6 +813,8 @@ class TestQuitHotkey(unittest.TestCase):
             pause_mode="display",
             timezone=None,
             snapshot_timezone="utc",
+            flash_on_fail=False,
+            bell_on_fail=False,
         )
 
         # Mock executor
@@ -832,7 +834,7 @@ class TestQuitHotkey(unittest.TestCase):
 
     @patch("main.queue.Queue")
     @patch("main.sys.stdin")
-    @patch("main.shutil.get_terminal_size")
+    @patch("main.get_terminal_size")
     @patch("main.ThreadPoolExecutor")
     @patch("main.threading.Thread")
     @patch("main.read_key")
@@ -842,7 +844,7 @@ class TestQuitHotkey(unittest.TestCase):
         """Test that pressing 'q' key exits even when help screen is showing"""
         # Mock terminal properties
         mock_stdin.isatty.return_value = True
-        mock_term_size.return_value = MagicMock(columns=80, lines=24)
+        mock_term_size.return_value = os.terminal_size((80, 24))
 
         # Mock stdin for terminal setup
         mock_stdin.fileno.return_value = 0
@@ -877,6 +879,8 @@ class TestQuitHotkey(unittest.TestCase):
             pause_mode="display",
             timezone=None,
             snapshot_timezone="utc",
+            flash_on_fail=False,
+            bell_on_fail=False,
         )
 
         # Mock executor
