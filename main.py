@@ -15,6 +15,8 @@ from concurrent.futures import ThreadPoolExecutor
 from scapy.all import ICMP, IP, sr
 
 # A handler for command line options
+
+
 def handle_options():
 
     parser = argparse.ArgumentParser(description="MultiPing - Perform ICMP ping operations to multiple hosts concurrently")
@@ -35,7 +37,10 @@ def handle_options():
     args = parser.parse_args()
     return args
 
+
 # Read input file. The file contains a list of hosts (IP addresses or hostnames)
+
+
 def read_input_file(input_file):
 
     host_list = []
@@ -57,17 +62,20 @@ def read_input_file(input_file):
 
     return host_list
 
+
 # Ping a single host
+
+
 def ping_host(host, timeout, count, slow_threshold, verbose):
     """
     Ping a single host with the specified parameters.
-    
+
     Args:
         host: The hostname or IP address to ping
         timeout: Timeout in seconds for each ping
         count: Number of ping attempts
         verbose: Whether to show detailed output
-    
+
     Yields:
         A dict with host, sequence, status, and rtt
     """
@@ -78,7 +86,7 @@ def ping_host(host, timeout, count, slow_threshold, verbose):
         try:
             # Create ICMP packet
             icmp = IP(dst=host)/ICMP()
-            
+
             # Send ICMP packet
             ans, unans = sr(icmp, timeout=timeout, verbose=0)
 
@@ -103,6 +111,7 @@ def ping_host(host, timeout, count, slow_threshold, verbose):
             if verbose:
                 print(f"Error pinging {host}: {e}")
             yield {"host": host, "sequence": i + 1, "status": "fail", "rtt": None}
+
 
 def compute_main_layout(host_labels, width, height, header_lines=2):
     max_host_len = max((len(host) for host in host_labels), default=4)
@@ -516,30 +525,31 @@ def read_key():
         return sys.stdin.read(1)
     return None
 
+
 def main(args):
 
     # Validate count parameter
     if args.count <= 0:
         print("Error: Count must be a positive number.")
         return
-    
+
     # Collect all hosts to ping
     all_hosts = []
-    
+
     # Add hosts from command line arguments
     if args.hosts:
         all_hosts.extend(args.hosts)
-    
+
     # Add hosts from input file if provided
     if args.input:
         file_hosts = read_input_file(args.input)
         all_hosts.extend(file_hosts)
-    
+
     # Check if we have any hosts to ping
     if not all_hosts:
         print("Error: No hosts specified. Provide hosts as arguments or use -f/--input option.")
         return
-    
+
     symbols = {"success": ".", "fail": "x", "slow": "!"}
     term_size = shutil.get_terminal_size(fallback=(80, 24))
     _, _, timeline_width, _ = compute_main_layout(all_hosts, term_size.columns, term_size.lines)
@@ -714,6 +724,7 @@ def main(args):
             f"{host:30} {success}/{total} replies, {slow} slow, {fail} failed "
             f"({percentage:.1f}%) [{status}]"
         )
+
 
 if __name__ == "__main__":
     # Handle command line options
