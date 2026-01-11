@@ -331,7 +331,6 @@ def resize_buffers(buffers, timeline_width, symbols):
                 )
 
 
-
 def pad_lines(lines, width, height):
     padded = [line[:width].ljust(width) for line in lines[:height]]
     while len(padded) < height:
@@ -424,12 +423,11 @@ def render_summary_view(summary_data, width, height):
             rtt_line = f"  avg rtt {entry['avg_rtt_ms']:.1f} ms"
         else:
             rtt_line = "  avg rtt n/a"
-        
-        # Format the TTL line
+
+        # Add TTL to the rtt line if available
         if entry.get("latest_ttl") is not None:
-            ttl_line = f"  ttl {entry['latest_ttl']}"
             rtt_line += f" ttl {entry['latest_ttl']}"
-        
+
         lines.append(rtt_line[:width])
 
     return pad_lines(lines, width, height)
@@ -565,7 +563,6 @@ def latest_ttl_value(ttl_history):
     if not ttl_history:
         return None
     return ttl_history[-1]
-
 
 
 def latest_rtt_value(rtt_history):
