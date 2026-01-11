@@ -342,15 +342,12 @@ def render_summary_view(summary_data, width, height):
         if available_for_host > 0:
             # Truncate hostname to fit, preserving the status info
             host_display = entry['host'][:available_for_host]
-            full_line = f"{host_display}{status_suffix}"
         else:
-            # Not enough room for both hostname and status, just show what fits
-            full_line = (
-                f"{entry['host']}: ok {entry['success_rate']:.1f}% "
-                f"loss {entry['loss_rate']:.1f}% streak {streak_label}"
-            )
+            # Not enough room for status suffix, just use full hostname
+            host_display = entry['host']
 
-        # Ensure the line doesn't exceed width
+        # Build the full line and truncate to width
+        full_line = f"{host_display}{status_suffix}"
         lines.append(full_line[:width])
 
         # Format the avg rtt line
