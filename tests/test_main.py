@@ -147,6 +147,18 @@ class TestReadInputFile(unittest.TestCase):
 class TestPingHost(unittest.TestCase):
     """Test ping host functionality"""
 
+    @staticmethod
+    def _create_mock_received_packet_with_ttl(ttl=64):
+        """Helper method to create a mock received packet with TTL"""
+        mock_received = MagicMock()
+        mock_received.time = 0.001
+        # Mock IP layer with TTL
+        mock_ip_layer = MagicMock()
+        mock_ip_layer.ttl = ttl
+        mock_received.__getitem__ = MagicMock(return_value=mock_ip_layer)
+        mock_received.__contains__ = MagicMock(return_value=True)
+        return mock_received
+
     @patch("main.ICMP")
     @patch("main.IP")
     @patch("main.sr")
@@ -159,13 +171,7 @@ class TestPingHost(unittest.TestCase):
         # Mock successful ping response - ans should be a truthy list
         mock_sent = MagicMock()
         mock_sent.time = 0.0
-        mock_received = MagicMock()
-        mock_received.time = 0.001
-        # Mock IP layer with TTL
-        mock_ip_layer = MagicMock()
-        mock_ip_layer.ttl = 64
-        mock_received.__getitem__ = MagicMock(return_value=mock_ip_layer)
-        mock_received.__contains__ = MagicMock(return_value=True)
+        mock_received = self._create_mock_received_packet_with_ttl(ttl=64)
         mock_sr.return_value = ([[mock_sent, mock_received]], [])
 
         results = list(ping_host("example.com", 1, 4, 0.5, False))
@@ -208,13 +214,7 @@ class TestPingHost(unittest.TestCase):
         # Mock alternating success/failure
         mock_sent = MagicMock()
         mock_sent.time = 0.0
-        mock_received = MagicMock()
-        mock_received.time = 0.001
-        # Mock IP layer with TTL
-        mock_ip_layer = MagicMock()
-        mock_ip_layer.ttl = 64
-        mock_received.__getitem__ = MagicMock(return_value=mock_ip_layer)
-        mock_received.__contains__ = MagicMock(return_value=True)
+        mock_received = self._create_mock_received_packet_with_ttl(ttl=64)
         mock_sr.side_effect = [
             ([[mock_sent, mock_received]], []),
             ([], [MagicMock()]),
@@ -1362,7 +1362,7 @@ class TestTTLFunctionality(unittest.TestCase):
     def test_latest_ttl_value(self):
         """Test extracting latest TTL value from history"""
         from collections import deque
-        
+
         ttl_history = deque([64, 64, 128, 56])
         result = latest_ttl_value(ttl_history)
         self.assertEqual(result, 56)
@@ -1370,7 +1370,7 @@ class TestTTLFunctionality(unittest.TestCase):
     def test_latest_ttl_value_empty(self):
         """Test latest TTL with empty history"""
         from collections import deque
-        
+
         ttl_history = deque([])
         result = latest_ttl_value(ttl_history)
         self.assertIsNone(result)
@@ -1378,7 +1378,7 @@ class TestTTLFunctionality(unittest.TestCase):
     def test_latest_ttl_value_with_none(self):
         """Test latest TTL when last value is None"""
         from collections import deque
-        
+
         ttl_history = deque([64, 64, None])
         result = latest_ttl_value(ttl_history)
         self.assertIsNone(result)
