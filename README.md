@@ -36,11 +36,44 @@ MultiPing is an interactive, terminal-based ICMP monitor that pings many hosts i
 - Root/administrator privileges to send ICMP packets.
 - Network access for optional ASN lookups.
 
+### Linux-Specific: Privileged ICMP Helper (Optional)
+
+On Linux, you can use the included `ping_helper` binary with capability-based privileges instead of running Python as root. This is more secure as it limits raw socket access to a single small binary.
+
+**Dependencies:**
+- `gcc` (for building the helper)
+- `libcap2-bin` (for setting capabilities with `setcap`)
+
+Install dependencies on Debian/Ubuntu:
+```bash
+sudo apt-get install gcc libcap2-bin
+```
+
+**Build and configure the helper:**
+```bash
+# Build the helper binary
+make build
+
+# Set capabilities (requires sudo)
+sudo make setcap
+
+# Test the helper
+python3 ping_wrapper.py google.com
+```
+
+**Note for macOS/BSD users:** The `setcap` command is Linux-specific and not available on macOS or BSD systems. On these platforms, you would need to use the setuid bit instead (e.g., `sudo chown root:wheel ping_helper && sudo chmod u+s ping_helper`), but this is not recommended for security reasons. It's better to run the main Python script with `sudo` on these platforms.
+
+**Security Note:** Never grant `cap_net_raw` or any capabilities to `/usr/bin/python3` or other general-purpose interpreters. Only grant the minimal required privilege to the specific `ping_helper` binary.
+
 ## Installation
 ```bash
 git clone https://github.com/icecake0141/multiping.git
 cd multiping
 python -m pip install -r requirements.txt
+
+# Optional: Build the privileged ICMP helper (Linux only)
+make build
+sudo make setcap
 ```
 
 ## Usage
