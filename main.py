@@ -12,6 +12,8 @@ import time
 import tty
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from scapy.all import ICMP, IP, sr
 
@@ -39,6 +41,19 @@ def handle_options():
         default='display',
         choices=['display', 'ping'],
         help='Pause behavior: display (stop updates only) or ping (pause ping + updates)',
+    )
+    parser.add_argument(
+        '--timezone',
+        type=str,
+        default=None,
+        help='Display timezone (IANA name, e.g. Asia/Tokyo). Defaults to UTC.',
+    )
+    parser.add_argument(
+        '--snapshot-timezone',
+        type=str,
+        default='utc',
+        choices=['utc', 'display'],
+        help='Timezone used in snapshot filename (utc|display). Defaults to utc.',
     )
     parser.add_argument('hosts', nargs='*', help='Hosts to ping (IP addresses or hostnames)')
 
@@ -353,10 +368,11 @@ def render_main_view(
     mode_label,
     display_mode,
     paused,
+    timestamp,
     header_lines=2,
 ):
     pause_label = "PAUSED" if paused else "LIVE"
-    header = f"MultiPing - {pause_label} results [{mode_label} | {display_mode}]"
+    header = f"MultiPing - {pause_label} results [{mode_label} | {display_mode}] {timestamp}"
     if display_mode == "sparkline":
         return render_sparkline_view(
             display_entries, buffers, symbols, width, height, header, header_lines
@@ -481,6 +497,7 @@ def build_display_lines(
     show_asn,
     paused,
     status_message,
+    timestamp,
     asn_width=8,
     header_lines=2,
 ):
@@ -515,6 +532,7 @@ def build_display_lines(
         mode_label,
         display_mode,
         paused,
+        timestamp,
         header_lines,
     )
     summary_lines = render_summary_view(summary_data, summary_width, summary_height)
@@ -559,9 +577,12 @@ def render_display(
     show_asn,
     paused,
     status_message,
+    display_tz,
     asn_width=8,
     header_lines=2,
 ):
+    now_utc = datetime.now(timezone.utc)
+    timestamp = format_timestamp(now_utc, display_tz)
     combined_lines = build_display_lines(
         hosts,
         host_infos,
@@ -578,11 +599,28 @@ def render_display(
         show_asn,
         paused,
         status_message,
+        timestamp,
         asn_width,
         header_lines,
     )
 
     print("\x1b[2J\x1b[H" + "\n".join(combined_lines), end="", flush=True)
+
+
+def format_timezone_label(now_utc, display_tz):
+    tzinfo = now_utc.astimezone(display_tz).tzinfo
+    tz_name = tzinfo.tzname(now_utc) if tzinfo else None
+    if tz_name:
+        return tz_name
+    if hasattr(display_tz, "key"):
+        return display_tz.key
+    return "UTC"
+
+
+def format_timestamp(now_utc, display_tz):
+    timestamp = now_utc.astimezone(display_tz).strftime("%Y-%m-%d %H:%M:%S")
+    tz_label = format_timezone_label(now_utc, display_tz)
+    return f"{timestamp} ({tz_label})"
 
 
 def worker_ping(host, timeout, count, slow_threshold, verbose, pause_event, result_queue):
@@ -709,6 +747,15 @@ def main(args):
         print("Error: No hosts specified. Provide hosts as arguments or use -f/--input option.")
         return
 
+    display_tz = timezone.utc
+    if args.timezone:
+        try:
+            display_tz = ZoneInfo(args.timezone)
+        except ZoneInfoNotFoundError:
+            print(f"Error: Unknown timezone '{args.timezone}'. Use an IANA name like 'Asia/Tokyo'.")
+            return
+    snapshot_tz = display_tz if args.snapshot_timezone == "display" else timezone.utc
+
     symbols = {"success": ".", "fail": "x", "slow": "!"}
     term_size = shutil.get_terminal_size(fallback=(80, 24))
     _, _, timeline_width, _ = compute_main_layout(all_hosts, term_size.columns, term_size.lines)
@@ -826,7 +873,9 @@ def main(args):
                         force_render = True
                         updated = True
                     elif key == "s":
-                        snapshot_name = time.strftime("multiping_snapshot_%Y%m%d_%H%M%S.txt")
+                        now_utc = datetime.now(timezone.utc)
+                        snapshot_dt = now_utc.astimezone(snapshot_tz)
+                        snapshot_name = snapshot_dt.strftime("multiping_snapshot_%Y%m%d_%H%M%S.txt")
                         snapshot_lines = build_display_lines(
                             all_hosts,
                             host_infos,
@@ -843,6 +892,7 @@ def main(args):
                             show_asn,
                             paused,
                             status_message,
+                            format_timestamp(now_utc, display_tz),
                         )
                         with open(snapshot_name, "w", encoding="utf-8") as snapshot_file:
                             snapshot_file.write("\n".join(snapshot_lines) + "\n")
@@ -919,6 +969,7 @@ def main(args):
                         show_asn,
                         paused,
                         status_message,
+                        display_tz,
                     )
                     last_render = now
                     updated = False
