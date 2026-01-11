@@ -43,6 +43,14 @@ For example, to ping `example.com` and `google.com` with a timeout of 2 seconds:
 python main.py -t 2 example.com google.com
 ```
 
+### Execution Result
+
+Here is an example of what the output looks like when running MultiPing:
+
+![Execution Result](execution_result.png)
+
+The output shows detailed information about the ICMP packets, including IP header details (version, TTL, protocol, source/destination addresses) and ICMP header information (type, code, checksum).
+
 ## Notes
 - MultiPing requires `root` or administrative permissions to send ICMP packets.
 - Results may vary based on network conditions and privileges.
