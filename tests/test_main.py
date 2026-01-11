@@ -49,6 +49,7 @@ from main import (
     ring_bell,
     read_key,
     create_state_snapshot,
+    latest_ttl_value,
 )  # noqa: E402
 
 
@@ -160,6 +161,11 @@ class TestPingHost(unittest.TestCase):
         mock_sent.time = 0.0
         mock_received = MagicMock()
         mock_received.time = 0.001
+        # Mock IP layer with TTL
+        mock_ip_layer = MagicMock()
+        mock_ip_layer.ttl = 64
+        mock_received.__getitem__ = MagicMock(return_value=mock_ip_layer)
+        mock_received.__contains__ = MagicMock(return_value=True)
         mock_sr.return_value = ([[mock_sent, mock_received]], [])
 
         results = list(ping_host("example.com", 1, 4, 0.5, False))
@@ -168,6 +174,7 @@ class TestPingHost(unittest.TestCase):
         for result in results:
             self.assertEqual(result["host"], "example.com")
             self.assertIn(result["status"], ["success", "slow"])
+            self.assertEqual(result["ttl"], 64)
 
     @patch("main.ICMP")
     @patch("main.IP")
@@ -187,6 +194,7 @@ class TestPingHost(unittest.TestCase):
         for result in results:
             self.assertEqual(result["host"], "example.com")
             self.assertEqual(result["status"], "fail")
+            self.assertIsNone(result["ttl"])
 
     @patch("main.ICMP")
     @patch("main.IP")
@@ -202,6 +210,11 @@ class TestPingHost(unittest.TestCase):
         mock_sent.time = 0.0
         mock_received = MagicMock()
         mock_received.time = 0.001
+        # Mock IP layer with TTL
+        mock_ip_layer = MagicMock()
+        mock_ip_layer.ttl = 64
+        mock_received.__getitem__ = MagicMock(return_value=mock_ip_layer)
+        mock_received.__contains__ = MagicMock(return_value=True)
         mock_sr.side_effect = [
             ([[mock_sent, mock_received]], []),
             ([], [MagicMock()]),
@@ -216,6 +229,12 @@ class TestPingHost(unittest.TestCase):
         fail_count = sum(1 for r in results if r["status"] == "fail")
         self.assertEqual(success_count, 2)
         self.assertEqual(fail_count, 2)
+        # Check TTL is present in successful pings
+        for r in results:
+            if r["status"] in ["success", "slow"]:
+                self.assertEqual(r["ttl"], 64)
+            else:
+                self.assertIsNone(r["ttl"])
 
     @patch("main.ICMP")
     @patch("main.IP")
@@ -234,6 +253,7 @@ class TestPingHost(unittest.TestCase):
         for result in results:
             self.assertEqual(result["host"], "example.com")
             self.assertEqual(result["status"], "fail")
+            self.assertIsNone(result["ttl"])
 
 
 class TestMain(unittest.TestCase):
@@ -576,6 +596,7 @@ class TestSummaryData(unittest.TestCase):
             0: {
                 "timeline": deque([".", ".", "x", "."]),
                 "rtt_history": deque([0.01, 0.02, None, 0.015]),
+                "ttl_history": deque([64, 64, None, 64]),
                 "categories": {
                     "success": deque([1, 2, 4]),
                     "slow": deque([]),
@@ -602,6 +623,7 @@ class TestSummaryData(unittest.TestCase):
         self.assertEqual(summary[0]["success_rate"], 75.0)
         self.assertEqual(summary[0]["loss_rate"], 25.0)
         self.assertIsNotNone(summary[0]["avg_rtt_ms"])
+        self.assertEqual(summary[0]["latest_ttl"], 64)
 
     def test_compute_summary_data_all_success(self):
         """Test summary with all successful pings"""
@@ -611,6 +633,7 @@ class TestSummaryData(unittest.TestCase):
             0: {
                 "timeline": deque([".", ".", ".", "."]),
                 "rtt_history": deque([0.01, 0.02, 0.015, 0.018]),
+                "ttl_history": deque([64, 64, 64, 64]),
                 "categories": {
                     "success": deque([1, 2, 3, 4]),
                     "slow": deque([]),
@@ -1276,6 +1299,7 @@ class TestArrowKeyNavigation(unittest.TestCase):
             0: {
                 "timeline": deque([".", ".", "x"], maxlen=10),
                 "rtt_history": deque([0.01, 0.02, None], maxlen=10),
+                "ttl_history": deque([64, 64, None], maxlen=10),
                 "categories": {
                     "success": deque([1, 2], maxlen=10),
                     "slow": deque([], maxlen=10),
@@ -1309,6 +1333,7 @@ class TestArrowKeyNavigation(unittest.TestCase):
         # Verify buffers were deep copied
         self.assertEqual(list(snapshot["buffers"][0]["timeline"]), [".", ".", "x"])
         self.assertEqual(list(snapshot["buffers"][0]["rtt_history"]), [0.01, 0.02, None])
+        self.assertEqual(list(snapshot["buffers"][0]["ttl_history"]), [64, 64, None])
 
         # Verify stats were deep copied
         self.assertEqual(snapshot["stats"][0]["success"], 2)
@@ -1316,9 +1341,11 @@ class TestArrowKeyNavigation(unittest.TestCase):
 
         # Verify it's a deep copy (modifying original doesn't affect snapshot)
         buffers[0]["timeline"].append("!")
+        buffers[0]["ttl_history"].append(128)
         stats[0]["success"] = 100
 
         self.assertEqual(list(snapshot["buffers"][0]["timeline"]), [".", ".", "x"])
+        self.assertEqual(list(snapshot["buffers"][0]["ttl_history"]), [64, 64, None])
         self.assertEqual(snapshot["stats"][0]["success"], 2)
 
     def test_help_view_includes_arrow_keys(self):
@@ -1327,6 +1354,57 @@ class TestArrowKeyNavigation(unittest.TestCase):
         combined = "\n".join(lines)
         self.assertIn("<- / ->", combined)
         self.assertIn("navigate", combined.lower())
+
+
+class TestTTLFunctionality(unittest.TestCase):
+    """Test TTL capture and display functionality"""
+
+    def test_latest_ttl_value(self):
+        """Test extracting latest TTL value from history"""
+        from collections import deque
+        
+        ttl_history = deque([64, 64, 128, 56])
+        result = latest_ttl_value(ttl_history)
+        self.assertEqual(result, 56)
+
+    def test_latest_ttl_value_empty(self):
+        """Test latest TTL with empty history"""
+        from collections import deque
+        
+        ttl_history = deque([])
+        result = latest_ttl_value(ttl_history)
+        self.assertIsNone(result)
+
+    def test_latest_ttl_value_with_none(self):
+        """Test latest TTL when last value is None"""
+        from collections import deque
+        
+        ttl_history = deque([64, 64, None])
+        result = latest_ttl_value(ttl_history)
+        self.assertIsNone(result)
+
+    def test_summary_view_includes_ttl(self):
+        """Test that summary view includes TTL information"""
+        summary_data = [
+            {
+                "host": "example.com",
+                "success_rate": 100.0,
+                "loss_rate": 0.0,
+                "streak_type": "success",
+                "streak_length": 5,
+                "avg_rtt_ms": 25.0,
+                "latest_ttl": 64,
+            }
+        ]
+
+        width = 50
+        height = 10
+        lines = render_summary_view(summary_data, width, height)
+
+        # Find the rtt line which should now include TTL
+        combined = "\n".join(lines)
+        self.assertIn("ttl 64", combined)
+        self.assertIn("avg rtt", combined)
 
 
 if __name__ == "__main__":

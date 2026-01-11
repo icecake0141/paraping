@@ -329,7 +329,7 @@ def resize_buffers(buffers, timeline_width, symbols):
                 host_buffers["categories"][status] = deque(
                     host_buffers["categories"][status], maxlen=timeline_width
                 )
-                )
+
 
 
 def pad_lines(lines, width, height):
