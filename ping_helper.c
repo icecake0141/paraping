@@ -148,6 +148,15 @@ int main(int argc, char *argv[]) {
             return 7;
         }
 
+        /* Ensure remaining time is non-negative (guards against clock adjustments) */
+        if (remaining.tv_sec < 0) {
+            remaining.tv_sec = 0;
+            remaining.tv_usec = 0;
+        }
+        if (remaining.tv_usec < 0) {
+            remaining.tv_usec = 0;
+        }
+
         /* Wait for data with remaining timeout */
         fd_set read_fds;
         FD_ZERO(&read_fds);
@@ -185,6 +194,12 @@ int main(int argc, char *argv[]) {
         /* Parse IP header to get to ICMP header */
         struct ip *ip_hdr = (struct ip *)recv_buf;
         int ip_header_len = ip_hdr->ip_hl * 4;
+        
+        /* Validate IP header length is reasonable (min 20, max 60 bytes) */
+        if (ip_header_len < 20 || ip_header_len > 60) {
+            /* Invalid IP header length, skip packet */
+            continue;
+        }
         
         if (recv_len < ip_header_len + ICMP_HEADER_SIZE) {
             /* Packet too short, skip it and continue waiting */
