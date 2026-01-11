@@ -43,6 +43,7 @@ from main import (
     build_host_infos,
     build_sparkline,
     build_status_line,
+    get_terminal_size,
 )  # noqa: E402
 
 
@@ -235,7 +236,7 @@ class TestMain(unittest.TestCase):
 
     @patch("main.queue.Queue")
     @patch("main.sys.stdin")
-    @patch("main.shutil.get_terminal_size")
+    @patch("main.get_terminal_size")
     @patch("main.ThreadPoolExecutor")
     @patch("main.threading.Thread")
     def test_main_with_hosts(
@@ -332,7 +333,7 @@ class TestMain(unittest.TestCase):
 
     @patch("main.queue.Queue")
     @patch("main.sys.stdin")
-    @patch("main.shutil.get_terminal_size")
+    @patch("main.get_terminal_size")
     @patch("main.read_input_file")
     @patch("main.ThreadPoolExecutor")
     @patch("main.threading.Thread")
@@ -890,6 +891,104 @@ class TestQuitHotkey(unittest.TestCase):
                 with patch("main.tty.setcbreak"):
                     # Should exit when 'q' is pressed, even with help screen open
                     main(args)
+
+
+class TestTerminalSize(unittest.TestCase):
+    """Test terminal size retrieval function"""
+
+    @patch("main.os.get_terminal_size")
+    @patch("main.sys.stdout")
+    def test_get_terminal_size_from_stdout(
+        self, mock_stdout, mock_os_get_size
+    ):
+        """Test getting terminal size from stdout"""
+        mock_stdout.isatty.return_value = True
+        mock_stdout.fileno.return_value = 1
+        mock_os_get_size.return_value = MagicMock(columns=100, lines=50)
+
+        result = get_terminal_size()
+
+        self.assertEqual(result.columns, 100)
+        self.assertEqual(result.lines, 50)
+        mock_os_get_size.assert_called_once_with(1)
+
+    @patch("main.os.get_terminal_size")
+    @patch("main.sys.stdout")
+    @patch("main.sys.stderr")
+    def test_get_terminal_size_fallback_to_stderr(
+        self, mock_stderr, mock_stdout, mock_os_get_size
+    ):
+        """Test fallback to stderr when stdout fails"""
+        mock_stdout.isatty.return_value = False
+        mock_stderr.isatty.return_value = True
+        mock_stderr.fileno.return_value = 2
+        mock_os_get_size.return_value = MagicMock(columns=120, lines=40)
+
+        result = get_terminal_size()
+
+        self.assertEqual(result.columns, 120)
+        self.assertEqual(result.lines, 40)
+
+    @patch("main.os.get_terminal_size")
+    @patch("main.sys.stdout")
+    @patch("main.sys.stderr")
+    @patch("main.sys.stdin")
+    def test_get_terminal_size_fallback_to_default(
+        self, mock_stdin, mock_stderr, mock_stdout, mock_os_get_size
+    ):
+        """Test fallback to default size when no tty available"""
+        mock_stdout.isatty.return_value = False
+        mock_stderr.isatty.return_value = False
+        mock_stdin.isatty.return_value = False
+
+        result = get_terminal_size(fallback=(80, 24))
+
+        self.assertEqual(result.columns, 80)
+        self.assertEqual(result.lines, 24)
+
+    @patch("main.os.get_terminal_size")
+    @patch("main.sys.stdout")
+    def test_get_terminal_size_handles_os_error(
+        self, mock_stdout, mock_os_get_size
+    ):
+        """Test handling of OSError when querying terminal size"""
+        mock_stdout.isatty.return_value = True
+        mock_stdout.fileno.return_value = 1
+        mock_os_get_size.side_effect = OSError("Not a terminal")
+
+        result = get_terminal_size(fallback=(80, 24))
+
+        self.assertEqual(result.columns, 80)
+        self.assertEqual(result.lines, 24)
+
+    def test_get_terminal_size_ignores_env_vars(self):
+        """Test that get_terminal_size ignores COLUMNS/LINES env vars"""
+        # Set environment variables
+        original_columns = os.environ.get("COLUMNS")
+        original_lines = os.environ.get("LINES")
+
+        try:
+            os.environ["COLUMNS"] = "50"
+            os.environ["LINES"] = "20"
+
+            # Our function should bypass env vars and query actual terminal
+            # If running in a TTY, it should get the real size, not 50x20
+            result = get_terminal_size(fallback=(80, 24))
+
+            # The result should either be the actual terminal size
+            # (not 50x20) or the fallback (80x24) if no TTY available
+            # It should NOT be 50x20 from the env vars
+            self.assertNotEqual((result.columns, result.lines), (50, 20))
+        finally:
+            # Restore original env vars
+            if original_columns is not None:
+                os.environ["COLUMNS"] = original_columns
+            else:
+                os.environ.pop("COLUMNS", None)
+            if original_lines is not None:
+                os.environ["LINES"] = original_lines
+            else:
+                os.environ.pop("LINES", None)
 
 
 if __name__ == "__main__":
