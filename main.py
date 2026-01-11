@@ -12,9 +12,9 @@
 # Review required for correctness, security, and licensing.
 
 import argparse
+import os
 import queue
 import select
-import shutil
 import socket
 import sys
 import termios
@@ -27,6 +27,47 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from scapy.all import ICMP, IP, sr  # type: ignore[attr-defined]
+
+
+# Get terminal size by querying the actual terminal, not environment variables
+def get_terminal_size(fallback=(80, 24)):
+    """
+    Get the terminal size by directly querying the terminal.
+    
+    This function uses os.get_terminal_size() which queries the actual terminal
+    instead of checking COLUMNS/LINES environment variables first (like shutil does).
+    This ensures the size updates when the terminal is resized.
+    
+    Args:
+        fallback: Tuple of (columns, lines) to use if terminal size cannot be determined
+    
+    Returns:
+        os.terminal_size with columns and lines attributes
+    """
+    try:
+        # Try stdout first
+        if sys.stdout.isatty():
+            return os.get_terminal_size(sys.stdout.fileno())
+    except (AttributeError, ValueError, OSError):
+        pass
+    
+    try:
+        # Try stderr if stdout fails
+        if sys.stderr.isatty():
+            return os.get_terminal_size(sys.stderr.fileno())
+    except (AttributeError, ValueError, OSError):
+        pass
+    
+    try:
+        # Try stdin as last resort
+        if sys.stdin.isatty():
+            return os.get_terminal_size(sys.stdin.fileno())
+    except (AttributeError, ValueError, OSError):
+        pass
+    
+    # Fall back to default size
+    return os.terminal_size(fallback)
+
 
 # A handler for command line options
 
@@ -583,7 +624,7 @@ def build_display_lines(
     asn_width=8,
     header_lines=2,
 ):
-    term_size = shutil.get_terminal_size(fallback=(80, 24))
+    term_size = get_terminal_size(fallback=(80, 24))
     term_width = term_size.columns
     term_height = term_size.lines
 
@@ -911,7 +952,7 @@ def main(args):
     snapshot_tz = display_tz if args.snapshot_timezone == "display" else timezone.utc
 
     symbols = {"success": ".", "fail": "x", "slow": "!"}
-    term_size = shutil.get_terminal_size(fallback=(80, 24))
+    term_size = get_terminal_size(fallback=(80, 24))
     host_infos, host_info_map = build_host_infos(all_hosts)
     host_labels = [info["alias"] for info in host_infos]
     _, _, timeline_width, _ = compute_main_layout(
