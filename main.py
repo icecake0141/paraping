@@ -154,6 +154,8 @@ def resize_buffers(buffers, timeline_width, symbols):
     for host, host_buffers in buffers.items():
         if host_buffers["timeline"].maxlen != timeline_width:
             host_buffers["timeline"] = deque(host_buffers["timeline"], maxlen=timeline_width)
+        if host_buffers["rtt_history"].maxlen != timeline_width:
+            host_buffers["rtt_history"] = deque(host_buffers["rtt_history"], maxlen=timeline_width)
         for status in symbols:
             if host_buffers["categories"][status].maxlen != timeline_width:
                 host_buffers["categories"][status] = deque(
@@ -237,7 +239,38 @@ def render_summary_view(summary_data, width, height):
     return pad_lines(lines, width, height)
 
 
-def render_main_view(display_entries, buffers, symbols, width, height, mode_label, header_lines=2):
+def build_sparkline(rtt_values, status_symbols, fail_symbol):
+    spark_chars = "▁▂▃▄▅▆▇█"
+    if rtt_values:
+        numeric_values = [value for value in rtt_values if value is not None]
+    else:
+        numeric_values = []
+
+    if numeric_values:
+        min_val = min(numeric_values)
+        max_val = max(numeric_values)
+        span = max_val - min_val
+        if span == 0:
+            span = 1
+        indices = []
+        for value in rtt_values:
+            if value is None:
+                indices.append(0)
+            else:
+                idx = round((value - min_val) / span * (len(spark_chars) - 1))
+                indices.append(max(0, min(len(spark_chars) - 1, idx)))
+    else:
+        indices = []
+        for symbol in status_symbols:
+            if symbol == fail_symbol:
+                indices.append(0)
+            else:
+                indices.append(len(spark_chars) - 1)
+
+    return "".join(spark_chars[idx] for idx in indices)
+
+
+def render_timeline_view(display_entries, buffers, symbols, width, height, header, header_lines=2):
     if width <= 0 or height <= 0:
         return []
 
@@ -250,7 +283,7 @@ def render_main_view(display_entries, buffers, symbols, width, height, mode_labe
     resize_buffers(buffers, timeline_width, symbols)
 
     lines = []
-    lines.append(f"MultiPing - Live results [{mode_label}]")
+    lines.append(header)
     lines.append("".join("-" for _ in range(width)))
     for host, label in truncated_entries:
         timeline = "".join(buffers[host]["timeline"]).rjust(timeline_width)
@@ -263,12 +296,61 @@ def render_main_view(display_entries, buffers, symbols, width, height, mode_labe
     return pad_lines(lines, width, height)
 
 
+def render_sparkline_view(display_entries, buffers, symbols, width, height, header, header_lines=2):
+    if width <= 0 or height <= 0:
+        return []
+
+    host_labels = [entry[1] for entry in display_entries]
+    width, label_width, timeline_width, visible_hosts = compute_main_layout(
+        host_labels, width, height, header_lines
+    )
+    truncated_entries = display_entries[:visible_hosts]
+
+    resize_buffers(buffers, timeline_width, symbols)
+
+    lines = []
+    lines.append(header)
+    lines.append("".join("-" for _ in range(width)))
+    for host, label in truncated_entries:
+        rtt_values = list(buffers[host]["rtt_history"])[-timeline_width:]
+        status_symbols = list(buffers[host]["timeline"])[-timeline_width:]
+        sparkline = build_sparkline(rtt_values, status_symbols, symbols["fail"]).rjust(timeline_width)
+        lines.append(format_status_line(label, sparkline, label_width))
+
+    if len(display_entries) > len(truncated_entries) and len(lines) < height:
+        remaining = len(display_entries) - len(truncated_entries)
+        lines.append(f"... ({remaining} host(s) not shown)")
+
+    return pad_lines(lines, width, height)
+
+
+def render_main_view(
+    display_entries,
+    buffers,
+    symbols,
+    width,
+    height,
+    mode_label,
+    display_mode,
+    header_lines=2,
+):
+    header = f"MultiPing - Live results [{mode_label} | {display_mode}]"
+    if display_mode == "sparkline":
+        return render_sparkline_view(
+            display_entries, buffers, symbols, width, height, header, header_lines
+        )
+    return render_timeline_view(
+        display_entries, buffers, symbols, width, height, header, header_lines
+    )
+
+
 def render_help_view(width, height):
     lines = [
         "MultiPing - Help",
         "-" * width,
         "Keys:",
         "  n : cycle display mode (ip/rdns/alias)",
+        "  v : toggle view (timeline/sparkline)",
         "  h : toggle this help",
         "  q : quit",
     ]
@@ -283,6 +365,7 @@ def render_display(
     symbols,
     panel_position,
     mode_label,
+    display_mode,
     show_help,
     header_lines=2,
 ):
@@ -297,7 +380,14 @@ def render_display(
 
     display_entries = [(host, display_names.get(host, host)) for host in hosts]
     main_lines = render_main_view(
-        display_entries, buffers, symbols, main_width, main_height, mode_label, header_lines
+        display_entries,
+        buffers,
+        symbols,
+        main_width,
+        main_height,
+        mode_label,
+        display_mode,
+        header_lines,
     )
     summary_lines = render_summary_view(summary_data, summary_width, summary_height)
 
@@ -403,6 +493,7 @@ def main(args):
     buffers = {
         host: {
             "timeline": deque(maxlen=timeline_width),
+            "rtt_history": deque(maxlen=timeline_width),
             "categories": {status: deque(maxlen=timeline_width) for status in symbols},
         }
         for host in all_hosts
@@ -421,6 +512,8 @@ def main(args):
     modes = ["ip", "rdns", "alias"]
     mode_index = 0
     show_help = False
+    display_modes = ["timeline", "sparkline"]
+    display_mode_index = 0
     running = True
     display_names = build_display_names(host_infos, modes[mode_index])
     rdns_timeout = 2.0
@@ -467,6 +560,9 @@ def main(args):
                         mode_index = (mode_index + 1) % len(modes)
                         display_names = build_display_names(host_infos, modes[mode_index])
                         updated = True
+                    elif key == "v":
+                        display_mode_index = (display_mode_index + 1) % len(display_modes)
+                        updated = True
 
                 for host, future in list(rdns_futures.items()):
                     if host_infos[host]["rdns_state"] != "pending":
@@ -496,6 +592,7 @@ def main(args):
 
                     status = result["status"]
                     buffers[host]["timeline"].append(symbols[status])
+                    buffers[host]["rtt_history"].append(result.get("rtt"))
                     buffers[host]["categories"][status].append(result["sequence"])
                     stats[host][status] += 1
                     stats[host]["total"] += 1
@@ -514,6 +611,7 @@ def main(args):
                         symbols,
                         args.panel_position,
                         modes[mode_index],
+                        display_modes[display_mode_index],
                         show_help,
                     )
                     last_render = now
