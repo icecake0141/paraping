@@ -1206,7 +1206,7 @@ def main(args):
             while running and (not expect_completion or completed_hosts < len(host_infos)):
                 key = read_key()
                 if key:
-                    if key == "q":
+                    if key in ("q", "Q"):
                         running = False
                     elif show_help:
                         show_help = False

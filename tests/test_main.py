@@ -921,6 +921,72 @@ class TestQuitHotkey(unittest.TestCase):
     @patch("main.ThreadPoolExecutor")
     @patch("main.threading.Thread")
     @patch("main.read_key")
+    def test_quit_key_uppercase_exits_immediately(
+        self, mock_read_key, mock_thread, mock_executor, mock_term_size, mock_stdin, mock_queue
+    ):
+        """Test that pressing 'Q' key (uppercase) exits the program immediately"""
+        # Mock terminal properties
+        mock_stdin.isatty.return_value = True
+        mock_term_size.return_value = os.terminal_size((80, 24))
+
+        # Mock stdin for terminal setup
+        mock_stdin.fileno.return_value = 0
+
+        # Mock queue to simulate completion
+        result_queue = MagicMock()
+        # Always raise Empty to simulate no results
+        result_queue.get_nowait.side_effect = queue.Empty
+        empty_queue = MagicMock()
+        empty_queue.get_nowait.side_effect = queue.Empty
+        # Queue instances: result_queue, rdns_request_queue, rdns_result_queue, asn_request_queue, asn_result_queue
+        mock_queue.side_effect = [
+            result_queue,  # result_queue
+            MagicMock(),   # rdns_request_queue
+            empty_queue,   # rdns_result_queue
+            MagicMock(),   # asn_request_queue
+            empty_queue,   # asn_result_queue
+        ]
+
+        # Mock read_key to return 'Q' (uppercase) after a few iterations
+        mock_read_key.side_effect = [None, None, "Q"]
+
+        args = argparse.Namespace(
+            timeout=1,
+            count=0,  # Infinite count to ensure it would run forever without 'Q'
+            interval=1.0,
+            slow_threshold=0.5,
+            verbose=False,
+            hosts=["host1.com"],
+            input=None,
+            panel_position="right",
+            pause_mode="display",
+            timezone=None,
+            snapshot_timezone="utc",
+            flash_on_fail=False,
+            bell_on_fail=False,
+        )
+
+        # Mock executor
+        mock_executor_instance = MagicMock()
+        mock_executor.return_value.__enter__.return_value = mock_executor_instance
+        mock_executor.return_value.__exit__.return_value = False
+        mock_executor_instance.submit.return_value = MagicMock()
+
+        mock_thread.return_value = MagicMock()
+
+        # Mock termios functions
+        with patch("main.termios.tcgetattr", return_value=MagicMock()):
+            with patch("main.termios.tcsetattr"):
+                with patch("main.tty.setcbreak"):
+                    # Should exit without raising exception when 'Q' is pressed
+                    main(args)
+
+    @patch("main.queue.Queue")
+    @patch("main.sys.stdin")
+    @patch("main.get_terminal_size")
+    @patch("main.ThreadPoolExecutor")
+    @patch("main.threading.Thread")
+    @patch("main.read_key")
     def test_quit_key_exits_from_help_screen(
         self, mock_read_key, mock_thread, mock_executor, mock_term_size, mock_stdin, mock_queue
     ):
