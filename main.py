@@ -1,4 +1,15 @@
 #!/usr/bin/env python3
+# Copyright 2025 Multiping contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# This file was created or modified with the assistance of an AI (Large Language Model).
+# Review required for correctness, security, and licensing.
 
 import argparse
 import queue
@@ -15,7 +26,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from scapy.all import ICMP, IP, sr
+from scapy.all import ICMP, IP, sr  # type: ignore[attr-defined]
 
 # A handler for command line options
 

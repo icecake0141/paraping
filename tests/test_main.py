@@ -1,4 +1,15 @@
 #!/usr/bin/env python3
+# Copyright 2025 Multiping contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# This file was created or modified with the assistance of an AI (Large Language Model).
+# Review required for correctness, security, and licensing.
 """
 Unit tests for multiping functionality
 """
@@ -190,25 +201,44 @@ class TestPingHost(unittest.TestCase):
 class TestMain(unittest.TestCase):
     """Test main function"""
 
+    @patch('main.threading.Thread')
     @patch('main.queue.Queue')
     @patch('main.sys.stdin')
     @patch('main.shutil.get_terminal_size')
     @patch('main.ThreadPoolExecutor')
-    def test_main_with_hosts(self, mock_executor, mock_term_size, mock_stdin, mock_queue):
+    def test_main_with_hosts(self, mock_executor, mock_term_size, mock_stdin, mock_queue, mock_thread):
         """Test main function with hosts"""
         # Mock terminal properties
         mock_stdin.isatty.return_value = False
         mock_term_size.return_value = MagicMock(columns=80, lines=24)
 
-        # Mock queue to simulate completion
-        queue_instance = MagicMock()
-        # First return "done" for each host, then raise Empty
-        queue_instance.get_nowait.side_effect = [
-            {"host": "host1.com", "status": "done"},
-            {"host": "host2.com", "status": "done"},
-            queue.Empty()
+        # Mock queues to simulate completion
+        result_queue = MagicMock()
+        result_items = [
+            {"host_id": 0, "status": "done"},
+            {"host_id": 1, "status": "done"},
         ]
-        mock_queue.return_value = queue_instance
+
+        def result_get_nowait():
+            if result_items:
+                return result_items.pop(0)
+            raise queue.Empty()
+
+        result_queue.get_nowait.side_effect = result_get_nowait
+        rdns_request_queue = MagicMock()
+        rdns_result_queue = MagicMock()
+        rdns_result_queue.get_nowait.side_effect = queue.Empty()
+        asn_request_queue = MagicMock()
+        asn_result_queue = MagicMock()
+        asn_result_queue.get_nowait.side_effect = queue.Empty()
+        mock_queue.side_effect = [
+            result_queue,
+            rdns_request_queue,
+            rdns_result_queue,
+            asn_request_queue,
+            asn_result_queue,
+        ]
+        mock_thread.return_value = MagicMock()
 
         args = argparse.Namespace(
             timeout=1,
@@ -217,7 +247,10 @@ class TestMain(unittest.TestCase):
             verbose=False,
             hosts=['host1.com', 'host2.com'],
             input=None,
-            panel_position='right'
+            panel_position='right',
+            timezone=None,
+            snapshot_timezone='utc',
+            pause_mode='display',
         )
 
         # Mock executor
@@ -262,12 +295,21 @@ class TestMain(unittest.TestCase):
         main(args)
         mock_print.assert_called()
 
+    @patch('main.threading.Thread')
     @patch('main.queue.Queue')
     @patch('main.sys.stdin')
     @patch('main.shutil.get_terminal_size')
     @patch('main.read_input_file')
     @patch('main.ThreadPoolExecutor')
-    def test_main_with_input_file(self, mock_executor, mock_read_file, mock_term_size, mock_stdin, mock_queue):
+    def test_main_with_input_file(
+        self,
+        mock_executor,
+        mock_read_file,
+        mock_term_size,
+        mock_stdin,
+        mock_queue,
+        mock_thread,
+    ):
         """Test main function with input file"""
         # Mock terminal properties
         mock_stdin.isatty.return_value = False
@@ -275,15 +317,33 @@ class TestMain(unittest.TestCase):
 
         mock_read_file.return_value = ['host1.com', 'host2.com']
 
-        # Mock queue to simulate completion
-        queue_instance = MagicMock()
-        # First return "done" for each host, then raise Empty
-        queue_instance.get_nowait.side_effect = [
-            {"host": "host1.com", "status": "done"},
-            {"host": "host2.com", "status": "done"},
-            queue.Empty()
+        # Mock queues to simulate completion
+        result_queue = MagicMock()
+        result_items = [
+            {"host_id": 0, "status": "done"},
+            {"host_id": 1, "status": "done"},
         ]
-        mock_queue.return_value = queue_instance
+
+        def result_get_nowait():
+            if result_items:
+                return result_items.pop(0)
+            raise queue.Empty()
+
+        result_queue.get_nowait.side_effect = result_get_nowait
+        rdns_request_queue = MagicMock()
+        rdns_result_queue = MagicMock()
+        rdns_result_queue.get_nowait.side_effect = queue.Empty()
+        asn_request_queue = MagicMock()
+        asn_result_queue = MagicMock()
+        asn_result_queue.get_nowait.side_effect = queue.Empty()
+        mock_queue.side_effect = [
+            result_queue,
+            rdns_request_queue,
+            rdns_result_queue,
+            asn_request_queue,
+            asn_result_queue,
+        ]
+        mock_thread.return_value = MagicMock()
 
         args = argparse.Namespace(
             timeout=1,
@@ -292,7 +352,10 @@ class TestMain(unittest.TestCase):
             verbose=False,
             hosts=[],
             input='hosts.txt',
-            panel_position='right'
+            panel_position='right',
+            timezone=None,
+            snapshot_timezone='utc',
+            pause_mode='display',
         )
 
         # Mock executor
