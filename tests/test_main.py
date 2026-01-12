@@ -728,6 +728,66 @@ class TestSummaryData(unittest.TestCase):
         self.assertEqual(summary[0]["loss_rate"], 0.0)
         self.assertEqual(summary[0]["streak_type"], "success")
 
+    def test_compute_summary_data_respects_ordered_host_ids(self):
+        """Test summary data order follows ordered host ids."""
+        host_infos = [
+            {"id": 0, "alias": "host1.com"},
+            {"id": 1, "alias": "host2.com"},
+        ]
+        display_names = {0: "alpha", 1: "beta"}
+        buffers = {
+            0: {
+                "timeline": deque(["."]),
+                "rtt_history": deque([0.01]),
+                "ttl_history": deque([64]),
+                "categories": {
+                    "success": deque([1]),
+                    "slow": deque([]),
+                    "fail": deque([]),
+                },
+            },
+            1: {
+                "timeline": deque(["x"]),
+                "rtt_history": deque([None]),
+                "ttl_history": deque([None]),
+                "categories": {
+                    "success": deque([]),
+                    "slow": deque([]),
+                    "fail": deque([1]),
+                },
+            },
+        }
+        stats = {
+            0: {
+                "success": 1,
+                "slow": 0,
+                "fail": 0,
+                "total": 1,
+                "rtt_sum": 0.01,
+                "rtt_count": 1,
+            },
+            1: {
+                "success": 0,
+                "slow": 0,
+                "fail": 1,
+                "total": 1,
+                "rtt_sum": 0.0,
+                "rtt_count": 0,
+            },
+        }
+        symbols = {"success": ".", "fail": "x", "slow": "!"}
+
+        summary = compute_summary_data(
+            host_infos,
+            display_names,
+            buffers,
+            stats,
+            symbols,
+            ordered_host_ids=[1, 0],
+        )
+
+        self.assertEqual([entry["host"] for entry in summary], ["beta", "alpha"])
+
     def test_render_summary_view_fits_width(self):
         """Test that summary view lines don't exceed specified width"""
         summary_data = [

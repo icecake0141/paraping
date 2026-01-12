@@ -503,11 +503,26 @@ def pad_lines(lines, width, height):
     return padded
 
 
-def compute_summary_data(host_infos, display_names, buffers, stats, symbols):
+def compute_summary_data(
+    host_infos,
+    display_names,
+    buffers,
+    stats,
+    symbols,
+    ordered_host_ids=None,
+):
     summary = []
     success_symbols = {symbols["success"], symbols["slow"]}
-    for info in host_infos:
-        host_id = info["id"]
+    info_by_id = {info["id"]: info for info in host_infos}
+    host_ids = (
+        ordered_host_ids
+        if ordered_host_ids is not None
+        else [info["id"] for info in host_infos]
+    )
+    for host_id in host_ids:
+        info = info_by_id.get(host_id)
+        if info is None:
+            continue
         display_name = display_names.get(host_id, info["alias"])
         total = stats[host_id]["total"]
         success = stats[host_id]["success"] + stats[host_id]["slow"]
@@ -1048,7 +1063,12 @@ def build_display_lines(
             main_height = adjusted_main_height
             summary_height = term_height - main_height - gap_size
     summary_data = compute_summary_data(
-        host_infos, display_names, buffers, stats, symbols
+        host_infos,
+        display_names,
+        buffers,
+        stats,
+        symbols,
+        ordered_host_ids=[host_id for host_id, _label in display_entries],
     )
     main_lines = render_main_view(
         display_entries,
