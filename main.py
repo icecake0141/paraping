@@ -212,6 +212,7 @@ def ping_host(
     slow_threshold,
     verbose,
     pause_event=None,
+    stop_event=None,
     interval=1.0,
     helper_path="./ping_helper",
 ):
@@ -224,6 +225,7 @@ def ping_host(
         count: Number of ping attempts (0 for infinite)
         verbose: Whether to show detailed output
         pause_event: Event to pause pinging
+        stop_event: Event to stop pinging and exit
         interval: Interval in seconds between pings
         helper_path: Path to ping_helper binary
 
@@ -251,12 +253,16 @@ def ping_host(
 
     i = 0
     while True:
+        if stop_event is not None and stop_event.is_set():
+            break
         # Check if we should stop (only when count is not 0)
         if count > 0 and i >= count:
             break
 
         if pause_event is not None:
             while pause_event.is_set():
+                if stop_event is not None and stop_event.is_set():
+                    return
                 time.sleep(0.05)
         try:
             rtt_ms, ttl = ping_with_helper(
@@ -299,7 +305,8 @@ def ping_host(
 
         # Sleep for interval between pings (but not after the last ping when count > 0)
         if count == 0 or i < count:
-            time.sleep(interval)
+            if stop_event is None or not stop_event.is_set():
+                time.sleep(interval)
 
 
 def compute_main_layout(host_labels, width, height, header_lines=2):
@@ -854,6 +861,7 @@ def worker_ping(
     slow_threshold,
     verbose,
     pause_event,
+    stop_event,
     result_queue,
     interval,
     helper_path,
@@ -865,6 +873,7 @@ def worker_ping(
         slow_threshold,
         verbose,
         pause_event,
+        stop_event,
         interval,
         helper_path,
     ):
@@ -1196,6 +1205,7 @@ def main(args):
     paused = False
     pause_mode = args.pause_mode
     pause_event = threading.Event()
+    stop_event = threading.Event()
     status_message = None
     force_render = False
     show_asn = True
@@ -1261,6 +1271,7 @@ def main(args):
                 args.slow_threshold,
                 args.verbose,
                 pause_event,
+                stop_event,
                 result_queue,
                 args.interval,
                 args.ping_helper,
@@ -1280,6 +1291,7 @@ def main(args):
                 if key:
                     if key in ("q", "Q"):
                         running = False
+                        stop_event.set()
                     elif show_help:
                         show_help = False
                         force_render = True
@@ -1486,7 +1498,11 @@ def main(args):
                     force_render = False
 
                 time.sleep(0.05)
+        except KeyboardInterrupt:
+            running = False
+            stop_event.set()
         finally:
+            stop_event.set()
             worker_stop.set()
             rdns_request_queue.put(None)
             asn_request_queue.put(None)
