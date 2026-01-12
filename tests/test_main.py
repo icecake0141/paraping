@@ -53,6 +53,9 @@ from main import (
     latest_ttl_value,
     toggle_panel_visibility,
     compute_history_page_step,
+    build_activity_indicator,
+    build_colored_sparkline,
+    build_colored_timeline,
 )  # noqa: E402
 
 
@@ -259,6 +262,7 @@ class TestMain(unittest.TestCase):
             interval=1.0,
             slow_threshold=0.5,
             verbose=False,
+            color=False,
             hosts=["host1.com", "host2.com"],
             input=None,
             panel_position="right",
@@ -292,6 +296,7 @@ class TestMain(unittest.TestCase):
             count=-1,
             interval=1.0,
             verbose=False,
+            color=False,
             hosts=["host1.com"],
             input=None,
             pause_mode="display",
@@ -311,6 +316,7 @@ class TestMain(unittest.TestCase):
             count=4,
             interval=1.0,
             verbose=False,
+            color=False,
             hosts=["host1.com"],
             input=None,
             pause_mode="display",
@@ -332,6 +338,7 @@ class TestMain(unittest.TestCase):
             count=4,
             interval=1.0,
             verbose=False,
+            color=False,
             hosts=[],
             input=None,
             pause_mode="display",
@@ -389,6 +396,7 @@ class TestMain(unittest.TestCase):
             interval=1.0,
             slow_threshold=0.5,
             verbose=False,
+            color=False,
             hosts=[],
             input="hosts.txt",
             panel_position="right",
@@ -424,6 +432,7 @@ class TestMain(unittest.TestCase):
             count=4,
             interval=100.0,  # Too large
             verbose=False,
+            color=False,
             hosts=["host1.com"],
             input=None,
             pause_mode="display",
@@ -900,6 +909,46 @@ class TestSparklineBuilding(unittest.TestCase):
         self.assertEqual(len(result), 4)
 
 
+class TestActivityIndicator(unittest.TestCase):
+    """Test activity indicator behavior"""
+
+    def test_activity_indicator_moves(self):
+        """Indicator should move between ticks"""
+        first = build_activity_indicator(datetime.fromtimestamp(0, tz=timezone.utc))
+        second = build_activity_indicator(
+            datetime.fromtimestamp(0.25, tz=timezone.utc)
+        )
+        self.assertEqual(len(first), 10)
+        self.assertEqual(len(second), 10)
+        self.assertNotEqual(first, second)
+
+
+class TestColorOutput(unittest.TestCase):
+    """Test colored output helpers"""
+
+    def test_build_colored_timeline_adds_color_codes(self):
+        """Colored timeline should include ANSI color codes"""
+        symbols = {"success": ".", "fail": "x", "slow": "!"}
+        timeline = [".", "!", "x"]
+        colored = build_colored_timeline(timeline, symbols, use_color=True)
+        self.assertIn("\x1b[34m", colored)
+        self.assertIn("\x1b[33m", colored)
+        self.assertIn("\x1b[31m", colored)
+        self.assertIn("\x1b[0m", colored)
+
+    def test_build_colored_sparkline_respects_status_symbols(self):
+        """Colored sparkline should map statuses to colors"""
+        symbols = {"success": ".", "fail": "x", "slow": "!"}
+        sparkline = "▁▂▃"
+        status_symbols = [".", "!", "x"]
+        colored = build_colored_sparkline(
+            sparkline, status_symbols, symbols, use_color=True
+        )
+        self.assertIn("\x1b[34m", colored)
+        self.assertIn("\x1b[33m", colored)
+        self.assertIn("\x1b[31m", colored)
+
+
 class TestStatusLine(unittest.TestCase):
     """Test status line building function"""
 
@@ -991,6 +1040,7 @@ class TestQuitHotkey(unittest.TestCase):
             interval=1.0,
             slow_threshold=0.5,
             verbose=False,
+            color=False,
             hosts=["host1.com"],
             input=None,
             panel_position="right",
@@ -1058,6 +1108,7 @@ class TestQuitHotkey(unittest.TestCase):
             interval=1.0,
             slow_threshold=0.5,
             verbose=False,
+            color=False,
             hosts=["host1.com"],
             input=None,
             panel_position="right",
@@ -1125,6 +1176,7 @@ class TestQuitHotkey(unittest.TestCase):
             interval=1.0,
             slow_threshold=0.5,
             verbose=False,
+            color=False,
             hosts=["host1.com"],
             input=None,
             panel_position="right",

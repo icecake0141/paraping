@@ -15,6 +15,7 @@ import argparse
 import copy
 import os
 import queue
+import re
 import select
 import socket
 import sys
@@ -34,6 +35,16 @@ from ping_wrapper import ping_with_helper
 HISTORY_DURATION_MINUTES = 30  # Store up to 30 minutes of history
 SNAPSHOT_INTERVAL_SECONDS = 1.0  # Take snapshot every second
 ARROW_KEY_READ_TIMEOUT = 0.01  # Timeout for reading arrow key escape sequences
+ACTIVITY_INDICATOR_WIDTH = 10
+ACTIVITY_INDICATOR_HEIGHT = 4
+ACTIVITY_INDICATOR_SPEED_HZ = 4
+ANSI_RESET = "\x1b[0m"
+STATUS_COLORS = {
+    "success": "\x1b[34m",  # Blue
+    "slow": "\x1b[33m",     # Yellow
+    "fail": "\x1b[31m",     # Red
+}
+ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 
 # Get terminal size by querying the actual terminal, not env vars
@@ -76,6 +87,110 @@ def get_terminal_size(fallback=(80, 24)):
 
     # Fall back to default size
     return os.terminal_size(fallback)
+
+
+def strip_ansi(text):
+    return ANSI_ESCAPE_RE.sub("", text)
+
+
+def visible_len(text):
+    return len(strip_ansi(text))
+
+
+def truncate_visible(text, width):
+    result = []
+    visible_count = 0
+    index = 0
+    while index < len(text) and visible_count < width:
+        if text[index] == "\x1b":
+            match = ANSI_ESCAPE_RE.match(text, index)
+            if match:
+                result.append(match.group(0))
+                index = match.end()
+                continue
+        result.append(text[index])
+        index += 1
+        visible_count += 1
+    truncated = "".join(result)
+    if "\x1b[" in truncated and not truncated.endswith(ANSI_RESET):
+        truncated += ANSI_RESET
+    return truncated, visible_count
+
+
+def pad_visible(text, width):
+    truncated, visible_count = truncate_visible(text, width)
+    if visible_count < width:
+        truncated += " " * (width - visible_count)
+    return truncated
+
+
+def rjust_visible(text, width):
+    padding = width - visible_len(text)
+    if padding <= 0:
+        return text
+    return f"{' ' * padding}{text}"
+
+
+def colorize_text(text, status, use_color):
+    if not use_color or not status:
+        return text
+    color = STATUS_COLORS.get(status)
+    if not color:
+        return text
+    return f"{color}{text}{ANSI_RESET}"
+
+
+def status_from_symbol(symbol, symbols):
+    for status, status_symbol in symbols.items():
+        if symbol == status_symbol:
+            return status
+    return None
+
+
+def latest_status_from_timeline(timeline, symbols):
+    if not timeline:
+        return None
+    return status_from_symbol(timeline[-1], symbols)
+
+
+def build_colored_timeline(timeline, symbols, use_color):
+    return "".join(
+        colorize_text(symbol, status_from_symbol(symbol, symbols), use_color)
+        for symbol in timeline
+    )
+
+
+def build_colored_sparkline(sparkline, status_symbols, symbols, use_color):
+    if not use_color:
+        return sparkline
+    colored = []
+    for char, symbol in zip(sparkline, status_symbols):
+        status = status_from_symbol(symbol, symbols)
+        colored.append(colorize_text(char, status, use_color))
+    return "".join(colored)
+
+
+def build_activity_indicator(
+    now_utc,
+    width=ACTIVITY_INDICATOR_WIDTH,
+    max_height=ACTIVITY_INDICATOR_HEIGHT,
+    speed_hz=ACTIVITY_INDICATOR_SPEED_HZ,
+):
+    if width <= 0:
+        return ""
+    tick = int(now_utc.timestamp() * speed_hz)
+    span = max(1, width - 1)
+    cycle = span * 2
+    position = tick % cycle
+    if position > span:
+        position = cycle - position
+    spark_chars = "▁▂▃▄▅▆▇█"
+    peak = min(max_height, len(spark_chars) - 1)
+    levels = []
+    for index in range(width):
+        height = max(0, peak - abs(index - position))
+        levels.append(spark_chars[height] if height > 0 else spark_chars[0])
+    return "".join(levels)
 
 
 # A handler for command line options
@@ -162,6 +277,11 @@ def handle_options():
         "--bell-on-fail",
         action="store_true",
         help="Ring terminal bell when ping fails",
+    )
+    parser.add_argument(
+        "--color",
+        action="store_true",
+        help="Enable colored output (blue=success, yellow=slow, red=fail)",
     )
     parser.add_argument(
         "--ping-helper",
@@ -352,7 +472,7 @@ def compute_panel_sizes(
 
 
 def format_status_line(host, timeline, label_width):
-    return f"{host:<{label_width}} | {timeline}"
+    return f"{pad_visible(host, label_width)} | {timeline}"
 
 
 def resize_buffers(buffers, timeline_width, symbols):
@@ -377,7 +497,7 @@ def resize_buffers(buffers, timeline_width, symbols):
 
 
 def pad_lines(lines, width, height):
-    padded = [line[:width].ljust(width) for line in lines[:height]]
+    padded = [pad_visible(line, width) for line in lines[:height]]
     while len(padded) < height:
         padded.append("".ljust(width))
     return padded
@@ -512,7 +632,14 @@ def build_sparkline(rtt_values, status_symbols, fail_symbol):
 
 
 def render_timeline_view(
-    display_entries, buffers, symbols, width, height, header, header_lines=2
+    display_entries,
+    buffers,
+    symbols,
+    width,
+    height,
+    header,
+    use_color=False,
+    header_lines=2,
 ):
     if width <= 0 or height <= 0:
         return []
@@ -529,8 +656,12 @@ def render_timeline_view(
     lines.append(header)
     lines.append("".join("-" for _ in range(width)))
     for host, label in truncated_entries:
-        timeline = "".join(buffers[host]["timeline"]).rjust(timeline_width)
-        lines.append(format_status_line(label, timeline, label_width))
+        timeline_symbols = list(buffers[host]["timeline"])
+        timeline = build_colored_timeline(timeline_symbols, symbols, use_color)
+        timeline = rjust_visible(timeline, timeline_width)
+        status = latest_status_from_timeline(timeline_symbols, symbols)
+        colored_label = colorize_text(label, status, use_color)
+        lines.append(format_status_line(colored_label, timeline, label_width))
 
     if len(display_entries) > len(truncated_entries) and len(lines) < height:
         remaining = len(display_entries) - len(truncated_entries)
@@ -540,7 +671,14 @@ def render_timeline_view(
 
 
 def render_sparkline_view(
-    display_entries, buffers, symbols, width, height, header, header_lines=2
+    display_entries,
+    buffers,
+    symbols,
+    width,
+    height,
+    header,
+    use_color=False,
+    header_lines=2,
 ):
     if width <= 0 or height <= 0:
         return []
@@ -559,10 +697,14 @@ def render_sparkline_view(
     for host, label in truncated_entries:
         rtt_values = list(buffers[host]["rtt_history"])[-timeline_width:]
         status_symbols = list(buffers[host]["timeline"])[-timeline_width:]
-        sparkline = build_sparkline(rtt_values, status_symbols, symbols["fail"]).rjust(
-            timeline_width
+        sparkline = build_sparkline(rtt_values, status_symbols, symbols["fail"])
+        sparkline = build_colored_sparkline(
+            sparkline, status_symbols, symbols, use_color
         )
-        lines.append(format_status_line(label, sparkline, label_width))
+        sparkline = rjust_visible(sparkline, timeline_width)
+        status = latest_status_from_timeline(status_symbols, symbols)
+        colored_label = colorize_text(label, status, use_color)
+        lines.append(format_status_line(colored_label, sparkline, label_width))
 
     if len(display_entries) > len(truncated_entries) and len(lines) < height:
         remaining = len(display_entries) - len(truncated_entries)
@@ -581,18 +723,36 @@ def render_main_view(
     display_mode,
     paused,
     timestamp,
+    activity_indicator="",
+    use_color=False,
     header_lines=2,
 ):
     pause_label = "PAUSED" if paused else "LIVE"
     header = (
         f"MultiPing - {pause_label} results [{mode_label} | {display_mode}] {timestamp}"
     )
+    if activity_indicator:
+        header = f"{header} {activity_indicator}"
     if display_mode == "sparkline":
         return render_sparkline_view(
-            display_entries, buffers, symbols, width, height, header, header_lines
+            display_entries,
+            buffers,
+            symbols,
+            width,
+            height,
+            header,
+            use_color,
+            header_lines,
         )
     return render_timeline_view(
-        display_entries, buffers, symbols, width, height, header, header_lines
+        display_entries,
+        buffers,
+        symbols,
+        width,
+        height,
+        header,
+        use_color,
+        header_lines,
     )
 
 
@@ -794,6 +954,8 @@ def build_display_lines(
     paused,
     status_message,
     timestamp,
+    activity_indicator="",
+    use_color=False,
     asn_width=8,
     header_lines=2,
 ):
@@ -844,6 +1006,8 @@ def build_display_lines(
         display_mode,
         paused,
         timestamp,
+        activity_indicator,
+        use_color,
         header_lines,
     )
     summary_lines = render_summary_view(
@@ -893,11 +1057,15 @@ def render_display(
     paused,
     status_message,
     display_tz,
+    use_color=False,
     asn_width=8,
     header_lines=2,
 ):
     now_utc = datetime.now(timezone.utc)
     timestamp = format_timestamp(now_utc, display_tz)
+    activity_indicator = ""
+    if not paused:
+        activity_indicator = build_activity_indicator(now_utc)
     combined_lines = build_display_lines(
         host_infos,
         buffers,
@@ -915,6 +1083,8 @@ def render_display(
         paused,
         status_message,
         timestamp,
+        activity_indicator,
+        use_color,
         asn_width,
         header_lines,
     )
@@ -1330,6 +1500,7 @@ def main(args):
     status_message = None
     force_render = False
     show_asn = True
+    use_color = args.color and sys.stdout.isatty()
     asn_cache = {}
     asn_timeout = 3.0
     asn_failure_ttl = 300.0
@@ -1496,6 +1667,8 @@ def main(args):
                             paused,
                             status_message,
                             format_timestamp(now_utc, display_tz),
+                            "",
+                            False,
                         )
                         with open(
                             snapshot_name, "w", encoding="utf-8"
@@ -1666,6 +1839,7 @@ def main(args):
                         render_paused,
                         status_message,
                         display_tz,
+                        use_color,
                     )
                     last_render = now
                     updated = False

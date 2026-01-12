@@ -21,10 +21,12 @@ MultiPing is an interactive, terminal-based ICMP monitor that pings many hosts i
 ## Features
 - Concurrent ICMP ping to multiple hosts (capability-based helper binary).
 - Live timeline or sparkline visualization with success/slow/fail markers.
+- Animated activity indicator (Knight Rider-style) while pings are running.
 - Summary panel with host statistics, aggregate counts, and TTL display.
 - Sort and filter results by failures, streaks, latency, or host name.
 - Toggle display name mode: IP, reverse DNS, or alias.
 - Optional ASN display (fetched from Team Cymru) with auto-retry.
+- Optional colored output for success/slow/fail states.
 - Pause modes: freeze display only or pause ping + display.
 - Snapshot export to a timestamped text file.
 - Configurable timezone for timestamps and snapshot naming.
@@ -109,6 +111,7 @@ python main.py 1.1.1.1 8.8.8.8
 - `--snapshot-timezone`: Timezone for snapshot filenames (`utc|display`).
 - `--flash-on-fail`: Flash screen (invert colors) when a ping fails to draw attention.
 - `--bell-on-fail`: Ring terminal bell when a ping fails to draw attention.
+- `--color`: Enable colored output (blue=success, yellow=slow, red=fail).
 - `--ping-helper`: Path to the `ping_helper` binary (default: `./ping_helper`).
 
 ### Interactive Controls
@@ -129,6 +132,7 @@ python main.py 1.1.1.1 8.8.8.8
 - `.` success
 - `!` slow (RTT >= `--slow-threshold`)
 - `x` failure/timeout
+- When `--color` is enabled: blue=success, yellow=slow, red=failure.
 
 ## Notes
 - ICMP requires elevated privileges (run with `sudo` or Administrator on Windows).
