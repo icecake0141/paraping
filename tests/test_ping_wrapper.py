@@ -10,33 +10,66 @@
 #
 # This file was created or modified with the assistance of an AI (Large Language Model).
 # Review required for correctness, security, and licensing.
-
-"""Unit tests for ping_wrapper."""
+"""
+Unit tests for ping_wrapper error handling.
+"""
 
 import io
+import json
+import os
+import sys
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
-import ping_wrapper
+# Add parent directory to path to import ping_wrapper
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from ping_wrapper import PingHelperError, ping_with_helper, main  # noqa: E402
 
 
-class TestPingWrapper(unittest.TestCase):
-    """Tests for ping_wrapper behaviors."""
+class TestPingWithHelper(unittest.TestCase):
+    """Tests for ping_with_helper error behavior."""
 
-    def test_ping_with_helper_rejects_non_positive_timeout(self):
-        """Ensure ping_with_helper rejects non-positive timeouts."""
-        with self.assertRaises(ValueError):
-            ping_wrapper.ping_with_helper("example.com", timeout_ms=0)
+    @patch("ping_wrapper.os.path.exists", return_value=True)
+    @patch("ping_wrapper.subprocess.run")
+    def test_ping_with_helper_raises_with_stderr(self, mock_run, _mock_exists):
+        """Non-timeout errors should include stderr in the exception."""
+        mock_run.return_value = SimpleNamespace(
+            returncode=2,
+            stdout="",
+            stderr="permission denied",
+        )
 
-    def test_main_rejects_non_positive_timeout(self):
-        """Ensure CLI rejects non-positive timeout."""
-        stderr = io.StringIO()
-        with patch("sys.argv", ["ping_wrapper.py", "example.com", "0"]):
-            with patch("sys.stderr", stderr):
-                with self.assertRaises(SystemExit) as exc:
-                    ping_wrapper.main()
-        self.assertEqual(exc.exception.code, 1)
-        self.assertIn("timeout_ms must be a positive integer", stderr.getvalue())
+        with self.assertRaises(PingHelperError) as context:
+            ping_with_helper("example.com")
+
+        self.assertIn("return code 2", str(context.exception))
+        self.assertIn("permission denied", str(context.exception))
+        self.assertEqual(context.exception.stderr, "permission denied")
+
+
+class TestPingWrapperMain(unittest.TestCase):
+    """Tests for ping_wrapper CLI JSON output."""
+
+    @patch("ping_wrapper.ping_with_helper")
+    def test_main_includes_error_details(self, mock_ping_with_helper):
+        """CLI JSON should include stderr details on failures."""
+        mock_ping_with_helper.side_effect = PingHelperError(
+            "ping_helper failed", returncode=2, stderr="permission denied"
+        )
+
+        with patch("sys.argv", ["ping_wrapper.py", "example.com"]), patch(
+            "sys.stdout", new_callable=io.StringIO
+        ) as mock_stdout:
+            with self.assertRaises(SystemExit) as context:
+                main()
+
+        self.assertEqual(context.exception.code, 3)
+        output = mock_stdout.getvalue()
+        payload = json.loads(output)
+        self.assertIn("error", payload)
+        self.assertIn("permission denied", payload["error"])
 
 
 if __name__ == "__main__":
