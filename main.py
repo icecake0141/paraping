@@ -1047,6 +1047,8 @@ def read_key():
 
 def flash_screen():
     """Flash the screen by inverting colors for ~100ms"""
+    if not sys.stdout.isatty():
+        return
     # ANSI escape sequences for visual flash effect
     SAVE_CURSOR = "\x1b7"           # Save cursor position
     INVERT_COLORS = "\x1b[7m"       # Invert colors (white bg, black fg)
@@ -1067,6 +1069,8 @@ def flash_screen():
 
 def ring_bell():
     """Ring the terminal bell"""
+    if not sys.stdout.isatty():
+        return
     sys.stdout.write("\a")
     sys.stdout.flush()
 
