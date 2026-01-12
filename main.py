@@ -922,12 +922,15 @@ def resolve_display_name(host_info, mode):
     return host_info["ip"]
 
 
-def format_display_name(host_info, mode, include_asn, asn_width):
+def format_display_name(host_info, mode, include_asn, asn_width, base_label_width=0):
     base_label = resolve_display_name(host_info, mode)
     if not include_asn:
         return base_label
+    padded_label = (
+        f"{base_label:<{base_label_width}}" if base_label_width else base_label
+    )
     asn_label = format_asn_label(host_info, asn_width)
-    return f"{base_label} {asn_label}"
+    return f"{padded_label} {asn_label}"
 
 
 def format_asn_label(host_info, asn_width):
@@ -939,8 +942,15 @@ def format_asn_label(host_info, asn_width):
 
 
 def build_display_names(host_infos, mode, include_asn, asn_width):
+    base_label_width = 0
+    if include_asn:
+        base_label_width = max(
+            (len(resolve_display_name(info, mode)) for info in host_infos), default=0
+        )
     return {
-        info["id"]: format_display_name(info, mode, include_asn, asn_width)
+        info["id"]: format_display_name(
+            info, mode, include_asn, asn_width, base_label_width
+        )
         for info in host_infos
     }
 
@@ -1050,7 +1060,13 @@ def should_show_asn(
 ):
     if not show_asn:
         return False
-    labels = [format_display_name(info, mode, True, asn_width) for info in host_infos]
+    base_label_width = max(
+        (len(resolve_display_name(info, mode)) for info in host_infos), default=0
+    )
+    labels = [
+        format_display_name(info, mode, True, asn_width, base_label_width)
+        for info in host_infos
+    ]
     if not labels:
         return False
     label_width = max(len(label) for label in labels)
