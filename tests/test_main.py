@@ -661,7 +661,7 @@ class TestSummaryData(unittest.TestCase):
 
         width = 40
         height = 10
-        lines = render_summary_view(summary_data, width, height)
+        lines = render_summary_view(summary_data, width, height, "rates")
 
         # All lines should be exactly 'width' characters
         for line in lines:
@@ -686,7 +686,7 @@ class TestSummaryData(unittest.TestCase):
         # Use a reasonable width that can fit the status info
         width = 50
         height = 10
-        lines = render_summary_view(summary_data, width, height)
+        lines = render_summary_view(summary_data, width, height, "rates")
 
         # Check all lines fit within width
         for line in lines:
@@ -720,7 +720,7 @@ class TestSummaryData(unittest.TestCase):
 
         width = 35
         height = 20
-        lines = render_summary_view(summary_data, width, height)
+        lines = render_summary_view(summary_data, width, height, "rates")
 
         # All lines should fit within width
         for line in lines:
@@ -834,24 +834,24 @@ class TestStatusLine(unittest.TestCase):
 
     def test_build_status_line_basic(self):
         """Test basic status line building"""
-        result = build_status_line("failures", "all", False, None)
+        result = build_status_line("failures", "all", "rates", False, None)
         self.assertIn("Failure Count", result)
         self.assertIn("All Items", result)
         self.assertNotIn("PAUSED", result)
 
     def test_build_status_line_paused(self):
         """Test status line when paused"""
-        result = build_status_line("host", "all", True, None)
+        result = build_status_line("host", "all", "rates", True, None)
         self.assertIn("PAUSED", result)
 
     def test_build_status_line_with_message(self):
         """Test status line with custom message"""
-        result = build_status_line("failures", "all", False, "Test message")
+        result = build_status_line("failures", "all", "rates", False, "Test message")
         self.assertIn("Test message", result)
 
     def test_build_status_line_different_modes(self):
         """Test status line with different sort and filter modes"""
-        result = build_status_line("latency", "failures", False, None)
+        result = build_status_line("latency", "failures", "rates", False, None)
         self.assertIn("Latest Latency", result)
         self.assertIn("Failures Only", result)
 
@@ -1409,12 +1409,11 @@ class TestTTLFunctionality(unittest.TestCase):
 
         width = 50
         height = 10
-        lines = render_summary_view(summary_data, width, height)
+        lines = render_summary_view(summary_data, width, height, "ttl")
 
-        # Find the rtt line which should now include TTL
+        # Ensure TTL is shown in TTL mode
         combined = "\n".join(lines)
         self.assertIn("ttl 64", combined)
-        self.assertIn("avg rtt", combined)
 
 
 if __name__ == "__main__":

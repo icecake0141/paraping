@@ -112,6 +112,7 @@ python main.py -t 2 -f hosts.txt
 - `o`: ソート切替（failures/streak/latency/host）。
 - `f`: フィルタ切替（failures/latency/all）。
 - `a`: ASN 表示の切替（スペース不足時は自動的に非表示）。
+- `m`: サマリー表示内容の切替（成功率/平均 RTT/TTL/連続回数）。
 - `w`: サマリーパネルの表示切替。
 - `p`: 一時停止/再開（表示のみ or ping + 表示）。
 - `s`: `multiping_snapshot_YYYYMMDD_HHMMSS.txt` を保存。

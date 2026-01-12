@@ -117,6 +117,7 @@ python main.py 1.1.1.1 8.8.8.8
 - `o`: Cycle sort (failures/streak/latency/host).
 - `f`: Cycle filter (failures/latency/all).
 - `a`: Toggle ASN display (auto hides when space is tight).
+- `m`: Cycle summary info (rates/avg RTT/TTL/streak).
 - `w`: Toggle the summary panel on/off.
 - `p`: Pause/resume (display only or ping + display).
 - `s`: Save a snapshot to `multiping_snapshot_YYYYMMDD_HHMMSS.txt`.

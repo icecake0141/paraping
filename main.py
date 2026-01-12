@@ -431,49 +431,51 @@ def compute_summary_data(host_infos, display_names, buffers, stats, symbols):
     return summary
 
 
-def render_summary_view(summary_data, width, height):
-    if width <= 0 or height <= 0:
-        return []
-
-    lines = ["Summary", "-" * width]
-    for entry in summary_data:
+def format_summary_line(entry, width, summary_mode):
+    if summary_mode == "rtt":
+        if entry["avg_rtt_ms"] is not None:
+            status_suffix = f": avg rtt {entry['avg_rtt_ms']:.1f} ms"
+        else:
+            status_suffix = ": avg rtt n/a"
+    elif summary_mode == "ttl":
+        latest_ttl = entry.get("latest_ttl")
+        status_suffix = f": ttl {latest_ttl}" if latest_ttl is not None else ": ttl n/a"
+    elif summary_mode == "streak":
         streak_label = "-"
         if entry["streak_type"] == "fail":
             streak_label = f"F{entry['streak_length']}"
         elif entry["streak_type"] == "success":
             streak_label = f"S{entry['streak_length']}"
-
-        # Build the status suffix (everything except hostname)
+        status_suffix = f": streak {streak_label}"
+    else:
         status_suffix = (
-            f": ok {entry['success_rate']:.1f}% "
-            f"loss {entry['loss_rate']:.1f}% streak {streak_label}"
+            f": ok {entry['success_rate']:.1f}% loss {entry['loss_rate']:.1f}%"
         )
 
-        # Calculate available space for hostname
-        available_for_host = width - len(status_suffix)
+    available_for_host = width - len(status_suffix)
+    if available_for_host > 0:
+        host_display = entry["host"][:available_for_host]
+    else:
+        host_display = entry["host"]
 
-        if available_for_host > 0:
-            # Truncate hostname to fit, preserving the status info
-            host_display = entry['host'][:available_for_host]
-        else:
-            # Not enough room for status suffix, just use full hostname
-            host_display = entry['host']
+    full_line = f"{host_display}{status_suffix}"
+    return full_line[:width]
 
-        # Build the full line and truncate to width
-        full_line = f"{host_display}{status_suffix}"
-        lines.append(full_line[:width])
 
-        # Format the avg rtt line
-        if entry["avg_rtt_ms"] is not None:
-            rtt_line = f"  avg rtt {entry['avg_rtt_ms']:.1f} ms"
-        else:
-            rtt_line = "  avg rtt n/a"
+def render_summary_view(summary_data, width, height, summary_mode):
+    if width <= 0 or height <= 0:
+        return []
 
-        # Add TTL to the rtt line if available
-        if entry.get("latest_ttl") is not None:
-            rtt_line += f" ttl {entry['latest_ttl']}"
-
-        lines.append(rtt_line[:width])
+    mode_labels = {
+        "rates": "Rates",
+        "rtt": "Avg RTT",
+        "ttl": "TTL",
+        "streak": "Streak",
+    }
+    mode_label = mode_labels.get(summary_mode, "Rates")
+    lines = [f"Summary ({mode_label})", "-" * width]
+    for entry in summary_data:
+        lines.append(format_summary_line(entry, width, summary_mode))
 
     return pad_lines(lines, width, height)
 
@@ -668,7 +670,9 @@ def build_display_entries(
     return [(entry["host_id"], entry["label"]) for entry in entries]
 
 
-def build_status_line(sort_mode, filter_mode, paused, status_message=None):
+def build_status_line(
+    sort_mode, filter_mode, summary_mode, paused, status_message=None
+):
     sort_labels = {
         "failures": "Failure Count",
         "streak": "Failure Streak",
@@ -680,9 +684,16 @@ def build_status_line(sort_mode, filter_mode, paused, status_message=None):
         "latency": "High Latency Only",
         "all": "All Items",
     }
+    summary_labels = {
+        "rates": "Rates",
+        "rtt": "Avg RTT",
+        "ttl": "TTL",
+        "streak": "Streak",
+    }
     sort_label = sort_labels.get(sort_mode, sort_mode)
     filter_label = filter_labels.get(filter_mode, filter_mode)
-    status = f"Sort: {sort_label} | Filter: {filter_label}"
+    summary_label = summary_labels.get(summary_mode, summary_mode)
+    status = f"Sort: {sort_label} | Filter: {filter_label} | Summary: {summary_label}"
     if paused:
         status += " | PAUSED"
     if status_message:
@@ -709,6 +720,7 @@ def render_help_view(width, height):
         "  o : cycle sort (failures/streak/latency/host)",
         "  f : cycle filter (failures/latency/all)",
         "  a : toggle ASN display",
+        "  m : cycle summary info (rates/rtt/ttl/streak)",
         "  w : toggle summary panel on/off",
         "  p : pause/resume display",
         "  s : save snapshot to file",
@@ -729,6 +741,7 @@ def build_display_lines(
     panel_position,
     mode_label,
     display_mode,
+    summary_mode,
     sort_mode,
     filter_mode,
     slow_threshold,
@@ -778,7 +791,9 @@ def build_display_lines(
         timestamp,
         header_lines,
     )
-    summary_lines = render_summary_view(summary_data, summary_width, summary_height)
+    summary_lines = render_summary_view(
+        summary_data, summary_width, summary_height, summary_mode
+    )
 
     gap = " "
     combined_lines = []
@@ -797,7 +812,9 @@ def build_display_lines(
     else:
         combined_lines = main_lines
 
-    status_line = build_status_line(sort_mode, filter_mode, paused, status_message)
+    status_line = build_status_line(
+        sort_mode, filter_mode, summary_mode, paused, status_message
+    )
     if combined_lines:
         combined_lines[-1] = status_line[:term_width].ljust(term_width)
 
@@ -812,6 +829,7 @@ def render_display(
     panel_position,
     mode_label,
     display_mode,
+    summary_mode,
     sort_mode,
     filter_mode,
     slow_threshold,
@@ -833,6 +851,7 @@ def render_display(
         panel_position,
         mode_label,
         display_mode,
+        summary_mode,
         sort_mode,
         filter_mode,
         slow_threshold,
@@ -1226,6 +1245,8 @@ def main(args):
     show_help = False
     display_modes = ["timeline", "sparkline"]
     display_mode_index = 0
+    summary_modes = ["rates", "rtt", "ttl", "streak"]
+    summary_mode_index = 0
     sort_modes = ["failures", "streak", "latency", "host"]
     sort_mode_index = 0
     filter_modes = ["failures", "latency", "all"]
@@ -1350,6 +1371,14 @@ def main(args):
                     elif key == "a":
                         show_asn = not show_asn
                         updated = True
+                    elif key == "m":
+                        summary_mode_index = (summary_mode_index + 1) % len(
+                            summary_modes
+                        )
+                        status_message = (
+                            f"Summary: {summary_modes[summary_mode_index].upper()}"
+                        )
+                        updated = True
                     elif key == "w":
                         panel_position, last_panel_position = toggle_panel_visibility(
                             panel_position,
@@ -1387,6 +1416,7 @@ def main(args):
                             panel_position,
                             modes[mode_index],
                             display_modes[display_mode_index],
+                            summary_modes[summary_mode_index],
                             sort_modes[sort_mode_index],
                             filter_modes[filter_mode_index],
                             args.slow_threshold,
@@ -1529,6 +1559,7 @@ def main(args):
                         panel_position,
                         modes[mode_index],
                         display_modes[display_mode_index],
+                        summary_modes[summary_mode_index],
                         sort_modes[sort_mode_index],
                         filter_modes[filter_mode_index],
                         args.slow_threshold,
