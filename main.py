@@ -756,18 +756,13 @@ def build_display_lines(
     term_size = get_terminal_size(fallback=(80, 24))
     term_width = term_size.columns
     term_height = term_size.lines
+    min_main_height = 5
+    gap_size = 1
 
     include_asn = should_show_asn(
         host_infos, mode_label, show_asn, term_width, asn_width=asn_width
     )
     display_names = build_display_names(host_infos, mode_label, include_asn, asn_width)
-
-    main_width, main_height, summary_width, summary_height, resolved_position = (
-        compute_panel_sizes(term_width, term_height, panel_position)
-    )
-    summary_data = compute_summary_data(
-        host_infos, display_names, buffers, stats, symbols
-    )
 
     display_entries = build_display_entries(
         host_infos,
@@ -778,6 +773,22 @@ def build_display_lines(
         sort_mode,
         filter_mode,
         slow_threshold,
+    )
+    main_width, main_height, summary_width, summary_height, resolved_position = (
+        compute_panel_sizes(
+            term_width, term_height, panel_position, min_main_height=min_main_height
+        )
+    )
+    if resolved_position in ("top", "bottom") and summary_height > 0:
+        required_main_height = header_lines + len(display_entries)
+        adjusted_main_height = max(
+            min_main_height, min(main_height, required_main_height)
+        )
+        if adjusted_main_height < main_height:
+            main_height = adjusted_main_height
+            summary_height = term_height - main_height - gap_size
+    summary_data = compute_summary_data(
+        host_infos, display_names, buffers, stats, symbols
     )
     main_lines = render_main_view(
         display_entries,

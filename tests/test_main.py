@@ -44,6 +44,7 @@ from main import (
     build_host_infos,
     build_sparkline,
     build_status_line,
+    build_display_lines,
     get_terminal_size,
     flash_screen,
     ring_bell,
@@ -499,6 +500,75 @@ class TestLayoutComputation(unittest.TestCase):
             10, 5, "right"
         )
         self.assertEqual(pos, "none")
+
+    @patch("main.get_terminal_size")
+    def test_bottom_panel_uses_extra_space(self, mock_term_size):
+        """Bottom panel expands when main view needs fewer rows."""
+        mock_term_size.return_value = os.terminal_size((80, 23))
+
+        host_infos = [
+            {
+                "id": idx,
+                "host": f"host{idx}.com",
+                "alias": f"host{idx}.com",
+                "ip": f"192.0.2.{idx + 1}",
+                "rdns": None,
+                "asn": None,
+            }
+            for idx in range(6)
+        ]
+        buffers = {
+            idx: {
+                "timeline": deque(["."] * 5),
+                "rtt_history": deque([0.01] * 5),
+                "ttl_history": deque([64] * 5),
+                "categories": {
+                    "success": deque([1]),
+                    "slow": deque([]),
+                    "fail": deque([]),
+                },
+            }
+            for idx in range(6)
+        }
+        stats = {
+            idx: {
+                "success": 1,
+                "slow": 0,
+                "fail": 0,
+                "total": 1,
+                "rtt_sum": 0.01,
+                "rtt_count": 1,
+            }
+            for idx in range(6)
+        }
+        symbols = {"success": ".", "fail": "x", "slow": "!"}
+
+        lines = build_display_lines(
+            host_infos=host_infos,
+            buffers=buffers,
+            stats=stats,
+            symbols=symbols,
+            panel_position="bottom",
+            mode_label="ip",
+            display_mode="timeline",
+            summary_mode="rates",
+            sort_mode="host",
+            filter_mode="all",
+            slow_threshold=0.5,
+            show_help=False,
+            show_asn=False,
+            paused=False,
+            status_message=None,
+            timestamp="2026-01-12 08:15:20 (UTC)",
+        )
+
+        summary_line_index = next(
+            index
+            for index, line in enumerate(lines)
+            if line.startswith("Summary (Rates)")
+        )
+        self.assertEqual(summary_line_index, 9)
+        self.assertEqual(len(lines), 23)
 
 
 class TestDisplayNames(unittest.TestCase):

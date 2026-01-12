@@ -128,6 +128,7 @@ python main.py -t 2 -f hosts.txt
 ## 補足
 - helper を使えない環境では ICMP を送信するため、`sudo` など管理者権限で実行してください。
 - ASN 取得は `whois.cymru.com` を使用します。アクセス不可の場合は空欄になります。
+- サマリーパネルを上/下に配置した場合、余白行を利用して表示行数を広げます。
 
 ## ライセンス
 Apache License 2.0。詳細は [LICENSE](LICENSE) を参照してください。

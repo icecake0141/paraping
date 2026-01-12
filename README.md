@@ -134,6 +134,7 @@ python main.py 1.1.1.1 8.8.8.8
 - ICMP requires elevated privileges (run with `sudo` or Administrator on Windows).
 - ASN lookups use `whois.cymru.com`; blocked networks will show blank ASN values.
 - IPv6 is not supported; use IPv4 addresses or hostnames that resolve to IPv4.
+- When the summary panel is positioned at the top/bottom, it expands to use available empty rows.
 
 ## License
 Apache License 2.0. See [LICENSE](LICENSE).
