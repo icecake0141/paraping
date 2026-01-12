@@ -25,6 +25,15 @@ import sys
 import json
 
 
+class PingHelperError(RuntimeError):
+    """Raised when ping_helper returns an error."""
+
+    def __init__(self, message, returncode=None, stderr=None):
+        super().__init__(message)
+        self.returncode = returncode
+        self.stderr = stderr
+
+
 def ping_with_helper(host, timeout_ms=1000, helper_path="./ping_helper"):
     """
     Ping a host using the ping_helper binary.
@@ -83,11 +92,17 @@ def ping_with_helper(host, timeout_ms=1000, helper_path="./ping_helper"):
         if result.returncode == 7:
             return (None, None)
 
-        # Other errors - return None
-        return (None, None)
+        # Other errors - include stderr in exception
+        stderr = result.stderr.strip() if result.stderr else ""
+        details = f"ping_helper failed with return code {result.returncode}"
+        if stderr:
+            details = f"{details}: {stderr}"
+        raise PingHelperError(details, returncode=result.returncode, stderr=stderr)
 
     except subprocess.TimeoutExpired:
         return (None, None)
+    except PingHelperError:
+        raise
     except Exception:
         return (None, None)
 
@@ -127,22 +142,46 @@ def main():
         print(json.dumps(result))
         sys.exit(0 if rtt_ms is not None else 1)
     except FileNotFoundError as e:
-        print(json.dumps({
-            "host": host,
-            "rtt_ms": None,
-            "ttl": None,
-            "success": False,
-            "error": str(e)
-        }))
+        print(
+            json.dumps(
+                {
+                    "host": host,
+                    "rtt_ms": None,
+                    "ttl": None,
+                    "success": False,
+                    "error": str(e),
+                }
+            )
+        )
         sys.exit(2)
+    except PingHelperError as e:
+        error_message = str(e)
+        if e.stderr and e.stderr not in error_message:
+            error_message = f"{error_message} (stderr: {e.stderr})"
+        print(
+            json.dumps(
+                {
+                    "host": host,
+                    "rtt_ms": None,
+                    "ttl": None,
+                    "success": False,
+                    "error": error_message,
+                }
+            )
+        )
+        sys.exit(3)
     except Exception as e:
-        print(json.dumps({
-            "host": host,
-            "rtt_ms": None,
-            "ttl": None,
-            "success": False,
-            "error": str(e)
-        }))
+        print(
+            json.dumps(
+                {
+                    "host": host,
+                    "rtt_ms": None,
+                    "ttl": None,
+                    "success": False,
+                    "error": str(e),
+                }
+            )
+        )
         sys.exit(3)
 
 

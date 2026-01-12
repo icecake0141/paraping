@@ -61,6 +61,8 @@ sudo make setcap
 python3 ping_wrapper.py google.com
 ```
 
+`ping_wrapper.py` が失敗した場合、JSON 出力の `error` フィールドに `ping_helper` の詳細 (stderr を含む場合あり) が入ります。トラブルシュートに利用してください。
+
 **macOS/BSD ユーザーへの注意:** `setcap` コマンドは Linux 専用であり、macOS や BSD システムでは利用できません。これらのプラットフォームでは、代わりに setuid ビットを使用する必要があります（例: `sudo chown root:wheel ping_helper && sudo chmod u+s ping_helper`）が、セキュリティ上の理由から推奨されません。これらのプラットフォームでは、メインの Python スクリプトを `sudo` で実行する方が良いでしょう。
 
 **セキュリティ注意:** `/usr/bin/python3` や他の汎用インタプリタに `cap_net_raw` やその他のケーパビリティを付与しないでください。特定の `ping_helper` バイナリにのみ、必要最小限の特権を付与してください。
