@@ -551,26 +551,63 @@ def compute_summary_data(host_infos, display_names, buffers, stats, symbols):
     return summary
 
 
-def format_summary_line(entry, width, summary_mode):
+def build_streak_label(entry):
+    streak_label = "-"
+    if entry["streak_type"] == "fail":
+        streak_label = f"F{entry['streak_length']}"
+    elif entry["streak_type"] == "success":
+        streak_label = f"S{entry['streak_length']}"
+    return streak_label
+
+
+def build_summary_suffix(entry, summary_mode):
     if summary_mode == "rtt":
         if entry["avg_rtt_ms"] is not None:
-            status_suffix = f": avg rtt {entry['avg_rtt_ms']:.1f} ms"
-        else:
-            status_suffix = ": avg rtt n/a"
-    elif summary_mode == "ttl":
+            return f": avg rtt {entry['avg_rtt_ms']:.1f} ms"
+        return ": avg rtt n/a"
+    if summary_mode == "ttl":
         latest_ttl = entry.get("latest_ttl")
-        status_suffix = f": ttl {latest_ttl}" if latest_ttl is not None else ": ttl n/a"
-    elif summary_mode == "streak":
-        streak_label = "-"
-        if entry["streak_type"] == "fail":
-            streak_label = f"F{entry['streak_length']}"
-        elif entry["streak_type"] == "success":
-            streak_label = f"S{entry['streak_length']}"
-        status_suffix = f": streak {streak_label}"
-    else:
-        status_suffix = (
-            f": ok {entry['success_rate']:.1f}% loss {entry['loss_rate']:.1f}%"
-        )
+        return f": ttl {latest_ttl}" if latest_ttl is not None else ": ttl n/a"
+    if summary_mode == "streak":
+        return f": streak {build_streak_label(entry)}"
+    return f": ok {entry['success_rate']:.1f}% loss {entry['loss_rate']:.1f}%"
+
+
+def build_summary_all_suffix(entry):
+    avg_rtt = (
+        f"{entry['avg_rtt_ms']:.1f} ms"
+        if entry["avg_rtt_ms"] is not None
+        else "n/a"
+    )
+    latest_ttl = entry.get("latest_ttl")
+    ttl_value = f"{latest_ttl}" if latest_ttl is not None else "n/a"
+    streak_label = build_streak_label(entry)
+    parts = [
+        f"ok {entry['success_rate']:.1f}% loss {entry['loss_rate']:.1f}%",
+        f"avg rtt {avg_rtt}",
+        f"ttl {ttl_value}",
+        f"streak {streak_label}",
+    ]
+    return f": {' | '.join(parts)}"
+
+
+def can_render_full_summary(summary_data, width):
+    if not summary_data:
+        return False
+    max_suffix_len = max(
+        len(build_summary_all_suffix(entry)) for entry in summary_data
+    )
+    return width >= max_suffix_len + 1
+
+
+def format_summary_line(entry, width, summary_mode, prefer_all=False):
+    status_suffix = None
+    if prefer_all:
+        all_suffix = build_summary_all_suffix(entry)
+        if width >= len(all_suffix) + 1:
+            status_suffix = all_suffix
+    if status_suffix is None:
+        status_suffix = build_summary_suffix(entry, summary_mode)
 
     available_for_host = width - len(status_suffix)
     if available_for_host > 0:
@@ -582,7 +619,7 @@ def format_summary_line(entry, width, summary_mode):
     return full_line[:width]
 
 
-def render_summary_view(summary_data, width, height, summary_mode):
+def render_summary_view(summary_data, width, height, summary_mode, prefer_all=False):
     if width <= 0 or height <= 0:
         return []
 
@@ -592,10 +629,13 @@ def render_summary_view(summary_data, width, height, summary_mode):
         "ttl": "TTL",
         "streak": "Streak",
     }
-    mode_label = mode_labels.get(summary_mode, "Rates")
+    allow_all = prefer_all and can_render_full_summary(summary_data, width)
+    mode_label = "All" if allow_all else mode_labels.get(summary_mode, "Rates")
     lines = [f"Summary ({mode_label})", "-" * width]
     for entry in summary_data:
-        lines.append(format_summary_line(entry, width, summary_mode))
+        lines.append(
+            format_summary_line(entry, width, summary_mode, prefer_all=allow_all)
+        )
 
     return pad_lines(lines, width, height)
 
@@ -831,7 +871,12 @@ def build_display_entries(
 
 
 def build_status_line(
-    sort_mode, filter_mode, summary_mode, paused, status_message=None
+    sort_mode,
+    filter_mode,
+    summary_mode,
+    paused,
+    status_message=None,
+    summary_all=False,
 ):
     sort_labels = {
         "failures": "Failure Count",
@@ -852,7 +897,7 @@ def build_status_line(
     }
     sort_label = sort_labels.get(sort_mode, sort_mode)
     filter_label = filter_labels.get(filter_mode, filter_mode)
-    summary_label = summary_labels.get(summary_mode, summary_mode)
+    summary_label = "All" if summary_all else summary_labels.get(summary_mode, summary_mode)
     status = f"Sort: {sort_label} | Filter: {filter_label} | Summary: {summary_label}"
     if paused:
         status += " | PAUSED"
@@ -870,6 +915,14 @@ def toggle_panel_visibility(
     return "none", current_position
 
 
+def cycle_panel_position(current_position, default_position="right"):
+    positions = ["left", "right", "top", "bottom"]
+    if current_position not in positions:
+        return default_position if default_position in positions else positions[0]
+    next_index = (positions.index(current_position) + 1) % len(positions)
+    return positions[next_index]
+
+
 def render_help_view(width, height):
     lines = [
         "MultiPing - Help",
@@ -882,6 +935,7 @@ def render_help_view(width, height):
         "  a : toggle ASN display",
         "  m : cycle summary info (rates/rtt/ttl/streak)",
         "  w : toggle summary panel on/off",
+        "  W : cycle summary panel position (left/right/top/bottom)",
         "  p : pause/resume display",
         "  s : save snapshot to file",
         "  <- / -> : navigate backward/forward in time (1 page)",
@@ -1010,8 +1064,15 @@ def build_display_lines(
         use_color,
         header_lines,
     )
+    summary_all = resolved_position in ("top", "bottom") and can_render_full_summary(
+        summary_data, summary_width
+    )
     summary_lines = render_summary_view(
-        summary_data, summary_width, summary_height, summary_mode
+        summary_data,
+        summary_width,
+        summary_height,
+        summary_mode,
+        prefer_all=summary_all,
     )
 
     gap = " "
@@ -1032,7 +1093,12 @@ def build_display_lines(
         combined_lines = main_lines
 
     status_line = build_status_line(
-        sort_mode, filter_mode, summary_mode, paused, status_message
+        sort_mode,
+        filter_mode,
+        summary_mode,
+        paused,
+        status_message,
+        summary_all=summary_all,
     )
     if combined_lines:
         combined_lines[-1] = status_line[:term_width].ljust(term_width)
@@ -1631,6 +1697,21 @@ def main(args):
                             "Summary panel hidden"
                             if panel_position == "none"
                             else "Summary panel shown"
+                        )
+                        force_render = True
+                        updated = True
+                    elif key == "W":
+                        reference_position = (
+                            panel_position
+                            if panel_position != "none"
+                            else last_panel_position or panel_toggle_default
+                        )
+                        panel_position = cycle_panel_position(
+                            reference_position, default_position=panel_toggle_default
+                        )
+                        last_panel_position = panel_position
+                        status_message = (
+                            f"Summary panel position: {panel_position.upper()}"
                         )
                         force_render = True
                         updated = True

@@ -52,6 +52,7 @@ from main import (
     create_state_snapshot,
     latest_ttl_value,
     toggle_panel_visibility,
+    cycle_panel_position,
     compute_history_page_step,
     build_activity_indicator,
     build_colored_sparkline,
@@ -575,7 +576,7 @@ class TestLayoutComputation(unittest.TestCase):
         summary_line_index = next(
             index
             for index, line in enumerate(lines)
-            if line.startswith("Summary (Rates)")
+            if line.startswith(("Summary (Rates)", "Summary (All)"))
         )
         self.assertEqual(summary_line_index, 9)
         self.assertEqual(len(lines), 23)
@@ -806,6 +807,57 @@ class TestSummaryData(unittest.TestCase):
         for line in lines:
             self.assertEqual(len(line), width)
 
+    def test_render_summary_view_prefers_all_fields_when_space_allows(self):
+        """Test summary view shows all fields when space allows"""
+        summary_data = [
+            {
+                "host": "example.com",
+                "success_rate": 100.0,
+                "loss_rate": 0.0,
+                "streak_type": "success",
+                "streak_length": 5,
+                "avg_rtt_ms": 25.0,
+                "latest_ttl": 64,
+            }
+        ]
+
+        width = 120
+        height = 6
+        lines = render_summary_view(
+            summary_data, width, height, "rates", prefer_all=True
+        )
+
+        self.assertIn("Summary (All)", lines[0])
+        combined = "\n".join(lines)
+        self.assertIn("ok 100.0% loss 0.0%", combined)
+        self.assertIn("avg rtt 25.0 ms", combined)
+        self.assertIn("ttl 64", combined)
+        self.assertIn("streak S5", combined)
+
+    def test_render_summary_view_falls_back_when_space_is_tight(self):
+        """Test summary view falls back to selected mode when space is tight"""
+        summary_data = [
+            {
+                "host": "example.com",
+                "success_rate": 100.0,
+                "loss_rate": 0.0,
+                "streak_type": "success",
+                "streak_length": 5,
+                "avg_rtt_ms": 25.0,
+                "latest_ttl": 64,
+            }
+        ]
+
+        width = 30
+        height = 6
+        lines = render_summary_view(summary_data, width, height, "rtt", prefer_all=True)
+
+        self.assertIn("Summary (Avg RTT)", lines[0])
+        combined = "\n".join(lines)
+        self.assertIn("avg rtt 25.0 ms", combined)
+        self.assertNotIn("ttl 64", combined)
+        self.assertNotIn("streak", combined)
+
 
 class TestTimezoneFormatting(unittest.TestCase):
     """Test timezone handling functions"""
@@ -975,6 +1027,13 @@ class TestStatusLine(unittest.TestCase):
         self.assertIn("Latest Latency", result)
         self.assertIn("Failures Only", result)
 
+    def test_build_status_line_all_summary(self):
+        """Test status line when summary displays all fields"""
+        result = build_status_line(
+            "latency", "failures", "rates", False, None, summary_all=True
+        )
+        self.assertIn("Summary: All", result)
+
 
 class TestPanelToggle(unittest.TestCase):
     """Test summary panel toggle behavior"""
@@ -994,6 +1053,14 @@ class TestPanelToggle(unittest.TestCase):
         position, last_visible = toggle_panel_visibility("none", None, "bottom")
         self.assertEqual(position, "bottom")
         self.assertEqual(last_visible, "bottom")
+
+    def test_cycle_panel_position(self):
+        """Cycle moves through the available summary positions."""
+        self.assertEqual(cycle_panel_position("left"), "right")
+        self.assertEqual(cycle_panel_position("right"), "top")
+        self.assertEqual(cycle_panel_position("top"), "bottom")
+        self.assertEqual(cycle_panel_position("bottom"), "left")
+        self.assertEqual(cycle_panel_position("none", default_position="right"), "right")
 
 
 class TestQuitHotkey(unittest.TestCase):

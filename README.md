@@ -122,6 +122,7 @@ python main.py 1.1.1.1 8.8.8.8
 - `a`: Toggle ASN display (auto hides when space is tight).
 - `m`: Cycle summary info (rates/avg RTT/TTL/streak).
 - `w`: Toggle the summary panel on/off.
+- `W`: Cycle summary panel position (left/right/top/bottom).
 - `p`: Pause/resume (display only or ping + display).
 - `s`: Save a snapshot to `multiping_snapshot_YYYYMMDD_HHMMSS.txt`.
 - `←` / `→`: Navigate backward/forward in time (view monitoring history up to 30 minutes).
@@ -139,6 +140,7 @@ python main.py 1.1.1.1 8.8.8.8
 - ASN lookups use `whois.cymru.com`; blocked networks will show blank ASN values.
 - IPv6 is not supported; use IPv4 addresses or hostnames that resolve to IPv4.
 - When the summary panel is positioned at the top/bottom, it expands to use available empty rows.
+- When the summary panel is positioned at the top/bottom, it shows all summary fields if the width allows.
 
 ## License
 Apache License 2.0. See [LICENSE](LICENSE).
