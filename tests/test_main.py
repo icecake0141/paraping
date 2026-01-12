@@ -55,6 +55,7 @@ from main import (
     toggle_panel_visibility,
     cycle_panel_position,
     compute_history_page_step,
+    get_cached_page_step,
     build_activity_indicator,
     build_colored_sparkline,
     build_colored_timeline,
@@ -1755,6 +1756,135 @@ class TestArrowKeyNavigation(unittest.TestCase):
         )
 
         self.assertEqual(page_step, 32)
+
+    @patch("main.get_terminal_size")
+    def test_get_cached_page_step_returns_cached_value(self, mock_terminal_size):
+        """Test that get_cached_page_step returns cached value when terminal size unchanged"""
+        mock_terminal_size.return_value = os.terminal_size((80, 24))
+        
+        host_infos = [
+            {
+                "id": 0,
+                "alias": "host1",
+                "host": "host1",
+                "ip": "192.0.2.1",
+                "rdns": None,
+                "rdns_pending": False,
+                "asn": None,
+                "asn_pending": False,
+            }
+        ]
+        buffers = {
+            0: {
+                "timeline": deque(["."] * 3, maxlen=10),
+                "rtt_history": deque([0.01, 0.02, 0.03], maxlen=10),
+                "ttl_history": deque([64, 64, 64], maxlen=10),
+                "categories": {
+                    "success": deque([1], maxlen=10),
+                    "slow": deque([], maxlen=10),
+                    "fail": deque([], maxlen=10),
+                },
+            }
+        }
+        stats = {
+            0: {
+                "success": 3,
+                "slow": 0,
+                "fail": 0,
+                "total": 3,
+                "rtt_sum": 0.06,
+                "rtt_count": 3,
+            }
+        }
+        symbols = {"success": ".", "slow": "~", "fail": "x"}
+        
+        # First call - should calculate
+        from main import get_cached_page_step
+        page_step1, cached1, term_size1 = get_cached_page_step(
+            None, None,
+            host_infos, buffers, stats, symbols,
+            "none", "alias", "host", "all", 0.5, False
+        )
+        
+        # Record call count after first calculation
+        first_call_count = mock_terminal_size.call_count
+        
+        # Second call with same terminal size - should use cache
+        page_step2, cached2, term_size2 = get_cached_page_step(
+            cached1, term_size1,
+            host_infos, buffers, stats, symbols,
+            "none", "alias", "host", "all", 0.5, False
+        )
+        
+        # Should return same value without recalculating
+        self.assertEqual(page_step1, page_step2)
+        self.assertEqual(page_step1, cached2)
+        # Should have called get_terminal_size only once more (in get_cached_page_step, not in compute_history_page_step)
+        self.assertEqual(mock_terminal_size.call_count, first_call_count + 1)
+
+    @patch("main.get_terminal_size")
+    def test_get_cached_page_step_recalculates_on_resize(self, mock_terminal_size):
+        """Test that get_cached_page_step recalculates when terminal is resized"""
+        # First call with 80x24
+        mock_terminal_size.return_value = os.terminal_size((80, 24))
+        
+        host_infos = [
+            {
+                "id": 0,
+                "alias": "host1",
+                "host": "host1",
+                "ip": "192.0.2.1",
+                "rdns": None,
+                "rdns_pending": False,
+                "asn": None,
+                "asn_pending": False,
+            }
+        ]
+        buffers = {
+            0: {
+                "timeline": deque(["."] * 3, maxlen=10),
+                "rtt_history": deque([0.01, 0.02, 0.03], maxlen=10),
+                "ttl_history": deque([64, 64, 64], maxlen=10),
+                "categories": {
+                    "success": deque([1], maxlen=10),
+                    "slow": deque([], maxlen=10),
+                    "fail": deque([], maxlen=10),
+                },
+            }
+        }
+        stats = {
+            0: {
+                "success": 3,
+                "slow": 0,
+                "fail": 0,
+                "total": 3,
+                "rtt_sum": 0.06,
+                "rtt_count": 3,
+            }
+        }
+        symbols = {"success": ".", "slow": "~", "fail": "x"}
+        
+        from main import get_cached_page_step
+        page_step1, cached1, term_size1 = get_cached_page_step(
+            None, None,
+            host_infos, buffers, stats, symbols,
+            "none", "alias", "host", "all", 0.5, False
+        )
+        
+        # Change terminal size
+        mock_terminal_size.return_value = os.terminal_size((120, 40))
+        
+        # Second call with different size - should recalculate
+        page_step2, cached2, term_size2 = get_cached_page_step(
+            cached1, term_size1,
+            host_infos, buffers, stats, symbols,
+            "none", "alias", "host", "all", 0.5, False
+        )
+        
+        # Should recalculate (values will be different due to different terminal width)
+        self.assertNotEqual(page_step1, page_step2)
+        self.assertEqual(term_size2.columns, 120)
+        self.assertEqual(term_size2.lines, 40)
 
 
 class TestTTLFunctionality(unittest.TestCase):

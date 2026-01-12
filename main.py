@@ -1006,6 +1006,55 @@ def compute_history_page_step(
     return max(1, timeline_width)
 
 
+def get_cached_page_step(
+    cached_page_step,
+    last_term_size,
+    host_infos,
+    buffers,
+    stats,
+    symbols,
+    panel_position,
+    mode_label,
+    sort_mode,
+    filter_mode,
+    slow_threshold,
+    show_asn,
+):
+    """
+    Get the page step for history navigation, using cached value if available.
+    
+    The page step is only recalculated if the terminal size has changed.
+    This prevents expensive recalculation on every arrow key press.
+    
+    Returns:
+        tuple: (page_step, new_cached_page_step, new_last_term_size)
+    """
+    current_term_size = get_terminal_size(fallback=(80, 24))
+    
+    # Check if we need to recalculate
+    if (cached_page_step is None or 
+        last_term_size is None or
+        current_term_size.columns != last_term_size.columns or
+        current_term_size.lines != last_term_size.lines):
+        # Terminal size changed or first time - recalculate
+        page_step = compute_history_page_step(
+            host_infos,
+            buffers,
+            stats,
+            symbols,
+            panel_position,
+            mode_label,
+            sort_mode,
+            filter_mode,
+            slow_threshold,
+            show_asn,
+        )
+        return page_step, page_step, current_term_size
+    
+    # Use cached value
+    return cached_page_step, cached_page_step, last_term_size
+
+
 def build_display_lines(
     host_infos,
     buffers,
@@ -1621,6 +1670,9 @@ def main(args):
     history_buffer = deque(maxlen=max_history_snapshots)
     history_offset = 0  # 0 = live, >0 = viewing history
     last_snapshot_time = 0.0
+    # Cache page step to avoid expensive recalculation on every arrow key press
+    cached_page_step = None
+    last_term_size = None
 
     rdns_request_queue = queue.Queue()
     rdns_result_queue = queue.Queue()
@@ -1703,6 +1755,7 @@ def main(args):
                         updated = True
                     elif key == "n":
                         mode_index = (mode_index + 1) % len(modes)
+                        cached_page_step = None  # Invalidate cache - display mode changed
                         updated = True
                     elif key == "v":
                         display_mode_index = (display_mode_index + 1) % len(
@@ -1711,12 +1764,15 @@ def main(args):
                         updated = True
                     elif key == "o":
                         sort_mode_index = (sort_mode_index + 1) % len(sort_modes)
+                        cached_page_step = None  # Invalidate cache - sort mode changed
                         updated = True
                     elif key == "f":
                         filter_mode_index = (filter_mode_index + 1) % len(filter_modes)
+                        cached_page_step = None  # Invalidate cache - filter mode changed
                         updated = True
                     elif key == "a":
                         show_asn = not show_asn
+                        cached_page_step = None  # Invalidate cache - ASN display toggled
                         updated = True
                     elif key == "m":
                         summary_mode_index = (summary_mode_index + 1) % len(
@@ -1737,6 +1793,7 @@ def main(args):
                             if panel_position == "none"
                             else "Summary panel shown"
                         )
+                        cached_page_step = None  # Invalidate cache - panel visibility changed
                         force_render = True
                         updated = True
                     elif key == "W":
@@ -1752,6 +1809,7 @@ def main(args):
                         status_message = (
                             f"Summary panel position: {panel_position.upper()}"
                         )
+                        cached_page_step = None  # Invalidate cache - panel position changed
                         force_render = True
                         updated = True
                     elif key == "p":
@@ -1799,7 +1857,9 @@ def main(args):
                     elif key == "arrow_left":
                         # Go back in time (increase offset)
                         if history_offset < len(history_buffer) - 1:
-                            page_step = compute_history_page_step(
+                            page_step, cached_page_step, last_term_size = get_cached_page_step(
+                                cached_page_step,
+                                last_term_size,
                                 host_infos,
                                 buffers,
                                 stats,
@@ -1823,7 +1883,9 @@ def main(args):
                     elif key == "arrow_right":
                         # Go forward in time (decrease offset, toward live)
                         if history_offset > 0:
-                            page_step = compute_history_page_step(
+                            page_step, cached_page_step, last_term_size = get_cached_page_step(
+                                cached_page_step,
+                                last_term_size,
                                 host_infos,
                                 buffers,
                                 stats,
