@@ -36,11 +36,44 @@ MultiPing は、複数ホストへの ICMP ping を並列に実行し、タイ�
 - ICMP を送信するための管理者権限。
 - ASN 取得用のネットワーク接続（任意機能）。
 
+### Linux 専用: 特権 ICMP ヘルパー（任意）
+
+Linux では、Python を root で実行する代わりに、capability ベースの特権を持つ `ping_helper` バイナリを使用できます。これにより、生のソケットアクセスを単一の小さなバイナリに限定できるため、より安全です。
+
+**依存関係:**
+- `gcc`（ヘルパーのビルド用）
+- `libcap2-bin`（`setcap` でケーパビリティを設定するため）
+
+Debian/Ubuntu での依存関係のインストール:
+```bash
+sudo apt-get install gcc libcap2-bin
+```
+
+**ヘルパーのビルドと設定:**
+```bash
+# ヘルパーバイナリをビルド
+make build
+
+# ケーパビリティを設定（sudo が必要）
+sudo make setcap
+
+# ヘルパーをテスト
+python3 ping_wrapper.py google.com
+```
+
+**macOS/BSD ユーザーへの注意:** `setcap` コマンドは Linux 専用であり、macOS や BSD システムでは利用できません。これらのプラットフォームでは、代わりに setuid ビットを使用する必要があります（例: `sudo chown root:wheel ping_helper && sudo chmod u+s ping_helper`）が、セキュリティ上の理由から推奨されません。これらのプラットフォームでは、メインの Python スクリプトを `sudo` で実行する方が良いでしょう。
+
+**セキュリティ注意:** `/usr/bin/python3` や他の汎用インタプリタに `cap_net_raw` やその他のケーパビリティを付与しないでください。特定の `ping_helper` バイナリにのみ、必要最小限の特権を付与してください。
+
 ## インストール
 ```bash
 git clone https://github.com/icecake0141/multiping.git
 cd multiping
 python -m pip install -r requirements.txt
+
+# 任意: 特権 ICMP ヘルパーをビルド（Linux のみ）
+make build
+sudo make setcap
 ```
 
 ## 使い方
