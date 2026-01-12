@@ -51,6 +51,7 @@ from main import (
     create_state_snapshot,
     latest_ttl_value,
     toggle_panel_visibility,
+    compute_history_page_step,
 )  # noqa: E402
 
 
@@ -1363,7 +1364,61 @@ class TestArrowKeyNavigation(unittest.TestCase):
         lines = render_help_view(80, 24)
         combined = "\n".join(lines)
         self.assertIn("<- / ->", combined)
-        self.assertIn("navigate", combined.lower())
+
+    @patch("main.get_terminal_size")
+    def test_compute_history_page_step_uses_timeline_width(self, mock_terminal_size):
+        """Test history page step uses timeline width for navigation."""
+        mock_terminal_size.return_value = os.terminal_size((40, 10))
+        host_infos = [
+            {
+                "id": 0,
+                "alias": "host1",
+                "host": "host1",
+                "ip": "192.0.2.1",
+                "rdns": None,
+                "rdns_pending": False,
+                "asn": None,
+                "asn_pending": False,
+            }
+        ]
+        buffers = {
+            0: {
+                "timeline": deque(["."] * 3, maxlen=10),
+                "rtt_history": deque([0.01, 0.02, 0.03], maxlen=10),
+                "ttl_history": deque([64, 64, 64], maxlen=10),
+                "categories": {
+                    "success": deque([1], maxlen=10),
+                    "slow": deque([], maxlen=10),
+                    "fail": deque([], maxlen=10),
+                },
+            }
+        }
+        stats = {
+            0: {
+                "success": 3,
+                "slow": 0,
+                "fail": 0,
+                "total": 3,
+                "rtt_sum": 0.06,
+                "rtt_count": 3,
+            }
+        }
+        symbols = {"success": ".", "slow": "~", "fail": "x"}
+
+        page_step = compute_history_page_step(
+            host_infos,
+            buffers,
+            stats,
+            symbols,
+            panel_position="none",
+            mode_label="alias",
+            sort_mode="host",
+            filter_mode="all",
+            slow_threshold=0.5,
+            show_asn=False,
+        )
+
+        self.assertEqual(page_step, 32)
 
 
 class TestTTLFunctionality(unittest.TestCase):

@@ -733,6 +733,50 @@ def render_help_view(width, height):
     return pad_lines(lines, width, height)
 
 
+def compute_history_page_step(
+    host_infos,
+    buffers,
+    stats,
+    symbols,
+    panel_position,
+    mode_label,
+    sort_mode,
+    filter_mode,
+    slow_threshold,
+    show_asn,
+    asn_width=8,
+    header_lines=2,
+):
+    term_size = get_terminal_size(fallback=(80, 24))
+    term_width = term_size.columns
+    term_height = term_size.lines
+
+    include_asn = should_show_asn(
+        host_infos, mode_label, show_asn, term_width, asn_width=asn_width
+    )
+    display_names = build_display_names(host_infos, mode_label, include_asn, asn_width)
+    main_width, main_height, _, _, _ = compute_panel_sizes(
+        term_width, term_height, panel_position
+    )
+    display_entries = build_display_entries(
+        host_infos,
+        display_names,
+        buffers,
+        stats,
+        symbols,
+        sort_mode,
+        filter_mode,
+        slow_threshold,
+    )
+    host_labels = [entry[1] for entry in display_entries]
+    if not host_labels:
+        host_labels = [info["alias"] for info in host_infos]
+    _, _, timeline_width, _ = compute_main_layout(
+        host_labels, main_width, main_height, header_lines
+    )
+    return max(1, timeline_width)
+
+
 def build_display_lines(
     host_infos,
     buffers,
@@ -1435,7 +1479,22 @@ def main(args):
                     elif key == "arrow_left":
                         # Go back in time (increase offset)
                         if history_offset < len(history_buffer) - 1:
-                            history_offset += 1
+                            page_step = compute_history_page_step(
+                                host_infos,
+                                buffers,
+                                stats,
+                                symbols,
+                                panel_position,
+                                modes[mode_index],
+                                sort_modes[sort_mode_index],
+                                filter_modes[filter_mode_index],
+                                args.slow_threshold,
+                                show_asn,
+                            )
+                            history_offset = min(
+                                history_offset + page_step,
+                                len(history_buffer) - 1,
+                            )
                             force_render = True
                             updated = True
                             snapshot = history_buffer[-(history_offset + 1)]
@@ -1444,7 +1503,19 @@ def main(args):
                     elif key == "arrow_right":
                         # Go forward in time (decrease offset, toward live)
                         if history_offset > 0:
-                            history_offset -= 1
+                            page_step = compute_history_page_step(
+                                host_infos,
+                                buffers,
+                                stats,
+                                symbols,
+                                panel_position,
+                                modes[mode_index],
+                                sort_modes[sort_mode_index],
+                                filter_modes[filter_mode_index],
+                                args.slow_threshold,
+                                show_asn,
+                            )
+                            history_offset = max(0, history_offset - page_step)
                             force_render = True
                             updated = True
                             if history_offset == 0:
