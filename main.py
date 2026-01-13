@@ -1304,7 +1304,11 @@ def render_display(
         return
 
     if LAST_RENDER_LINES is None:
-        sys.stdout.write("\x1b[2J\x1b[H" + "\n".join(combined_lines))
+        sys.stdout.write("\x1b[2J\x1b[H")
+        output_chunks = []
+        for index, line in enumerate(combined_lines):
+            output_chunks.append(f"\x1b[{index + 1};1H\x1b[2K{line}")
+        sys.stdout.write("".join(output_chunks))
         sys.stdout.flush()
         LAST_RENDER_LINES = combined_lines
         return
