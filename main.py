@@ -273,7 +273,7 @@ def handle_options():
     parser.add_argument(
         "--flash-on-fail",
         action="store_true",
-        help="Flash screen (invert colors) when ping fails",
+        help="Flash screen (white background) when ping fails",
     )
     parser.add_argument(
         "--bell-on-fail",
@@ -1570,25 +1570,32 @@ def read_key():
 
 
 def flash_screen():
-    """Flash the screen by inverting colors for ~100ms"""
+    """Flash the screen with a white background for ~100ms"""
     if not sys.stdout.isatty():
         return
     # ANSI escape sequences for visual flash effect
     SAVE_CURSOR = "\x1b7"           # Save cursor position
-    INVERT_COLORS = "\x1b[7m"       # Invert colors (white bg, black fg)
+    SET_WHITE_BG = "\x1b[47m"       # White background
+    SET_BLACK_FG = "\x1b[30m"       # Black foreground
     CLEAR_SCREEN = "\x1b[2J"        # Clear screen
     MOVE_HOME = "\x1b[H"            # Move cursor to home position
-    RESTORE_COLORS = "\x1b[27m"     # Restore normal colors
     RESTORE_CURSOR = "\x1b8"        # Restore cursor position
     FLASH_DURATION_SECONDS = 0.1    # Duration of flash effect
 
-    # Apply inverted colors and clear screen
-    sys.stdout.write(SAVE_CURSOR + INVERT_COLORS + CLEAR_SCREEN + MOVE_HOME)
+    # Apply white flash effect and clear screen
+    sys.stdout.write(
+        SAVE_CURSOR + SET_WHITE_BG + SET_BLACK_FG + CLEAR_SCREEN + MOVE_HOME
+    )
     sys.stdout.flush()
     time.sleep(FLASH_DURATION_SECONDS)
     # Restore normal display
-    sys.stdout.write(RESTORE_COLORS + RESTORE_CURSOR)
+    sys.stdout.write(ANSI_RESET + RESTORE_CURSOR)
     sys.stdout.flush()
+
+
+def should_flash_on_fail(status, flash_on_fail, show_help):
+    """Return True when the failure flash should be displayed."""
+    return status == "fail" and flash_on_fail and not show_help
 
 
 def ring_bell():
@@ -2138,9 +2145,9 @@ def main(args):
                         stats[host_id]["rtt_count"] += 1
 
                     # Trigger flash or bell on ping failure
+                    if should_flash_on_fail(status, args.flash_on_fail, show_help):
+                        flash_screen()
                     if status == "fail":
-                        if args.flash_on_fail:
-                            flash_screen()
                         if args.bell_on_fail:
                             ring_bell()
 
