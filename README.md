@@ -23,6 +23,7 @@ MultiPing is an interactive, terminal-based ICMP monitor that pings many hosts i
 - Live timeline or sparkline visualization with success/slow/fail markers.
 - Animated activity indicator (Knight Rider-style) while pings are running.
 - Summary panel with host statistics, aggregate counts, and TTL display.
+- Boxed panel layout for ping results, summaries, and the status line.
 - Summary host ordering matches the current ping result sort order.
 - Sort and filter results by failures, streaks, latency, or host name.
 - Toggle display name mode: IP, reverse DNS, or alias.

@@ -63,8 +63,8 @@ LAST_RENDER_LINES = None
 ANSI_RESET = "\x1b[0m"
 STATUS_COLORS = {
     "success": "\x1b[37m",  # White
-    "slow": "\x1b[33m",     # Yellow
-    "fail": "\x1b[31m",     # Red
+    "slow": "\x1b[33m",  # Yellow
+    "fail": "\x1b[31m",  # Red
 }
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
 
@@ -574,6 +574,24 @@ def pad_lines(lines, width, height):
     return padded
 
 
+def resolve_boxed_dimensions(width, height, boxed):
+    if not boxed or width < 2 or height < 3:
+        return width, height, False
+    return width - 2, height - 2, True
+
+
+def box_lines(lines, width, height):
+    inner_width, inner_height, can_box = resolve_boxed_dimensions(width, height, True)
+    if not can_box:
+        return pad_lines(lines, width, height)
+    inner_lines = pad_lines(lines, inner_width, inner_height)
+    border = "-" * inner_width
+    boxed = [f"+{border}+"]
+    boxed.extend(f"|{line}|" for line in inner_lines)
+    boxed.append(f"+{border}+")
+    return boxed
+
+
 def compute_summary_data(
     host_infos,
     display_names,
@@ -661,9 +679,7 @@ def build_summary_suffix(entry, summary_mode):
 
 def build_summary_all_suffix(entry):
     avg_rtt = (
-        f"{entry['avg_rtt_ms']:.1f} ms"
-        if entry["avg_rtt_ms"] is not None
-        else "n/a"
+        f"{entry['avg_rtt_ms']:.1f} ms" if entry["avg_rtt_ms"] is not None else "n/a"
     )
     latest_ttl = entry.get("latest_ttl")
     ttl_value = f"{latest_ttl}" if latest_ttl is not None else "n/a"
@@ -680,9 +696,7 @@ def build_summary_all_suffix(entry):
 def can_render_full_summary(summary_data, width):
     if not summary_data:
         return False
-    max_suffix_len = max(
-        len(build_summary_all_suffix(entry)) for entry in summary_data
-    )
+    max_suffix_len = max(len(build_summary_all_suffix(entry)) for entry in summary_data)
     return width >= max_suffix_len + 1
 
 
@@ -705,24 +719,36 @@ def format_summary_line(entry, width, summary_mode, prefer_all=False):
     return full_line[:width]
 
 
-def render_summary_view(summary_data, width, height, summary_mode, prefer_all=False):
+def render_summary_view(
+    summary_data,
+    width,
+    height,
+    summary_mode,
+    prefer_all=False,
+    boxed=False,
+):
     if width <= 0 or height <= 0:
         return []
 
+    render_width, render_height, can_box = resolve_boxed_dimensions(
+        width, height, boxed
+    )
     mode_labels = {
         "rates": "Rates",
         "rtt": "Avg RTT",
         "ttl": "TTL",
         "streak": "Streak",
     }
-    allow_all = prefer_all and can_render_full_summary(summary_data, width)
+    allow_all = prefer_all and can_render_full_summary(summary_data, render_width)
     mode_label = "All" if allow_all else mode_labels.get(summary_mode, "Rates")
-    lines = [f"Summary ({mode_label})", "-" * width]
+    lines = [f"Summary ({mode_label})", "-" * render_width]
     for entry in summary_data:
         lines.append(
-            format_summary_line(entry, width, summary_mode, prefer_all=allow_all)
+            format_summary_line(entry, render_width, summary_mode, prefer_all=allow_all)
         )
 
+    if can_box:
+        return box_lines(lines, width, height)
     return pad_lines(lines, width, height)
 
 
@@ -767,25 +793,27 @@ def render_timeline_view(
     use_color=False,
     scroll_offset=0,
     header_lines=2,
+    boxed=False,
 ):
     if width <= 0 or height <= 0:
         return []
 
+    render_width, render_height, can_box = resolve_boxed_dimensions(
+        width, height, boxed
+    )
     host_labels = [entry[1] for entry in display_entries]
-    width, label_width, timeline_width, visible_hosts = compute_main_layout(
-        host_labels, width, height, header_lines
+    render_width, label_width, timeline_width, visible_hosts = compute_main_layout(
+        host_labels, render_width, render_height, header_lines
     )
     max_offset = max(0, len(display_entries) - visible_hosts)
     scroll_offset = min(max(scroll_offset, 0), max_offset)
-    truncated_entries = display_entries[
-        scroll_offset: scroll_offset + visible_hosts
-    ]
+    truncated_entries = display_entries[scroll_offset : scroll_offset + visible_hosts]
 
     resize_buffers(buffers, timeline_width, symbols)
 
     lines = []
     lines.append(header)
-    lines.append("".join("-" for _ in range(width)))
+    lines.append("".join("-" for _ in range(render_width)))
     for host, label in truncated_entries:
         timeline_symbols = list(buffers[host]["timeline"])
         timeline = build_colored_timeline(timeline_symbols, symbols, use_color)
@@ -798,6 +826,8 @@ def render_timeline_view(
         remaining = len(display_entries) - len(truncated_entries)
         lines.append(f"... ({remaining} host(s) not shown)")
 
+    if can_box:
+        return box_lines(lines, width, height)
     return pad_lines(lines, width, height)
 
 
@@ -811,25 +841,27 @@ def render_sparkline_view(
     use_color=False,
     scroll_offset=0,
     header_lines=2,
+    boxed=False,
 ):
     if width <= 0 or height <= 0:
         return []
 
+    render_width, render_height, can_box = resolve_boxed_dimensions(
+        width, height, boxed
+    )
     host_labels = [entry[1] for entry in display_entries]
-    width, label_width, timeline_width, visible_hosts = compute_main_layout(
-        host_labels, width, height, header_lines
+    render_width, label_width, timeline_width, visible_hosts = compute_main_layout(
+        host_labels, render_width, render_height, header_lines
     )
     max_offset = max(0, len(display_entries) - visible_hosts)
     scroll_offset = min(max(scroll_offset, 0), max_offset)
-    truncated_entries = display_entries[
-        scroll_offset: scroll_offset + visible_hosts
-    ]
+    truncated_entries = display_entries[scroll_offset : scroll_offset + visible_hosts]
 
     resize_buffers(buffers, timeline_width, symbols)
 
     lines = []
     lines.append(header)
-    lines.append("".join("-" for _ in range(width)))
+    lines.append("".join("-" for _ in range(render_width)))
     for host, label in truncated_entries:
         rtt_values = list(buffers[host]["rtt_history"])[-timeline_width:]
         status_symbols = list(buffers[host]["timeline"])[-timeline_width:]
@@ -846,6 +878,8 @@ def render_sparkline_view(
         remaining = len(display_entries) - len(truncated_entries)
         lines.append(f"... ({remaining} host(s) not shown)")
 
+    if can_box:
+        return box_lines(lines, width, height)
     return pad_lines(lines, width, height)
 
 
@@ -863,6 +897,7 @@ def render_main_view(
     use_color=False,
     scroll_offset=0,
     header_lines=2,
+    boxed=False,
 ):
     pause_label = "PAUSED" if paused else "LIVE"
     header = (
@@ -881,6 +916,7 @@ def render_main_view(
             use_color,
             scroll_offset,
             header_lines,
+            boxed,
         )
     return render_timeline_view(
         display_entries,
@@ -892,6 +928,7 @@ def render_main_view(
         use_color,
         scroll_offset,
         header_lines,
+        boxed,
     )
 
 
@@ -997,7 +1034,9 @@ def build_status_line(
     }
     sort_label = sort_labels.get(sort_mode, sort_mode)
     filter_label = filter_labels.get(filter_mode, filter_mode)
-    summary_label = "All" if summary_all else summary_labels.get(summary_mode, summary_mode)
+    summary_label = (
+        "All" if summary_all else summary_labels.get(summary_mode, summary_mode)
+    )
     status = f"Sort: {sort_label} | Filter: {filter_label} | Summary: {summary_label}"
     if summary_fullscreen:
         status += " | Summary View: Fullscreen"
@@ -1006,6 +1045,17 @@ def build_status_line(
     if status_message:
         status += f" | {status_message}"
     return status
+
+
+def render_status_box(status_line, width):
+    if width <= 0:
+        return []
+    if width < 2:
+        return [status_line[:width]]
+    inner_width = width - 2
+    content = pad_visible(status_line[:inner_width], inner_width)
+    border = "-" * inner_width
+    return [f"+{border}+", f"|{content}|", f"+{border}+"]
 
 
 def toggle_panel_visibility(
@@ -1025,10 +1075,13 @@ def cycle_panel_position(current_position, default_position="right"):
     return positions[next_index]
 
 
-def render_help_view(width, height):
+def render_help_view(width, height, boxed=False):
+    render_width, _render_height, can_box = resolve_boxed_dimensions(
+        width, height, boxed
+    )
     lines = [
         "MultiPing - Help",
-        "-" * width,
+        "-" * render_width,
         "Keys:",
         "  n: cycle display mode (ip/rdns/alias)",
         "  v: toggle view (timeline/sparkline)",
@@ -1048,6 +1101,8 @@ def render_help_view(width, height):
         "  H: show help (Press any key to close)",
         "  q: quit",
     ]
+    if can_box:
+        return box_lines(lines, width, height)
     return pad_lines(lines, width, height)
 
 
@@ -1068,13 +1123,15 @@ def compute_history_page_step(
     term_size = get_terminal_size(fallback=(80, 24))
     term_width = term_size.columns
     term_height = term_size.lines
+    status_box_height = 3 if term_height >= 4 and term_width >= 2 else 1
+    panel_height = max(1, term_height - status_box_height)
 
     include_asn = should_show_asn(
         host_infos, mode_label, show_asn, term_width, asn_width=asn_width
     )
     display_names = build_display_names(host_infos, mode_label, include_asn, asn_width)
     main_width, main_height, _, _, _ = compute_panel_sizes(
-        term_width, term_height, panel_position
+        term_width, panel_height, panel_position
     )
     display_entries = build_display_entries(
         host_infos,
@@ -1118,6 +1175,7 @@ def get_cached_page_step(
     Returns:
         tuple: (page_step, new_cached_page_step, new_last_term_size)
     """
+
     def should_recalculate_page_step(cached_value, last_size, current_size):
         """Check if page step needs recalculation due to cache miss or terminal resize"""
         if cached_value is None or last_size is None:
@@ -1131,7 +1189,9 @@ def get_cached_page_step(
     current_term_size = get_terminal_size(fallback=(80, 24))
 
     # Check if we need to recalculate
-    if should_recalculate_page_step(cached_page_step, last_term_size, current_term_size):
+    if should_recalculate_page_step(
+        cached_page_step, last_term_size, current_term_size
+    ):
         # Terminal size changed or first time - recalculate
         page_step = compute_history_page_step(
             host_infos,
@@ -1226,6 +1286,9 @@ def build_display_lines(
     term_height = term_size.lines
     min_main_height = 5
     gap_size = 1
+    use_panel_boxes = True
+    status_box_height = 3 if term_height >= 4 and term_width >= 2 else 1
+    panel_height = max(1, term_height - status_box_height)
 
     include_asn = should_show_asn(
         host_infos, mode_label, show_asn, term_width, asn_width=asn_width
@@ -1244,17 +1307,22 @@ def build_display_lines(
     )
     main_width, main_height, summary_width, summary_height, resolved_position = (
         compute_panel_sizes(
-            term_width, term_height, panel_position, min_main_height=min_main_height
+            term_width,
+            panel_height,
+            panel_position,
+            min_main_height=min_main_height,
         )
     )
     if resolved_position in ("top", "bottom") and summary_height > 0:
         required_main_height = header_lines + len(display_entries)
+        if use_panel_boxes:
+            required_main_height += 2
         adjusted_main_height = max(
             min_main_height, min(main_height, required_main_height)
         )
         if adjusted_main_height < main_height:
             main_height = adjusted_main_height
-            summary_height = term_height - main_height - gap_size
+            summary_height = panel_height - main_height - gap_size
     summary_data = compute_summary_data(
         host_infos,
         display_names,
@@ -1271,9 +1339,10 @@ def build_display_lines(
         summary_lines = render_summary_view(
             summary_data,
             term_width,
-            term_height,
+            panel_height,
             summary_mode,
             prefer_all=summary_all,
+            boxed=use_panel_boxes,
         )
     else:
         main_lines = render_main_view(
@@ -1290,22 +1359,27 @@ def build_display_lines(
             use_color,
             host_scroll_offset,
             header_lines,
+            boxed=use_panel_boxes,
         )
-        summary_all = resolved_position in ("top", "bottom") and can_render_full_summary(
-            summary_data, summary_width
-        )
+        summary_all = resolved_position in (
+            "top",
+            "bottom",
+        ) and can_render_full_summary(summary_data, summary_width)
         summary_lines = render_summary_view(
             summary_data,
             summary_width,
             summary_height,
             summary_mode,
             prefer_all=summary_all,
+            boxed=use_panel_boxes,
         )
 
     gap = " "
     combined_lines = []
     if show_help:
-        combined_lines = render_help_view(term_width, term_height)
+        combined_lines = render_help_view(
+            term_width, panel_height, boxed=use_panel_boxes
+        )
     elif summary_fullscreen:
         combined_lines = summary_lines
     elif resolved_position in ("left", "right"):
@@ -1330,10 +1404,17 @@ def build_display_lines(
         summary_all=summary_all,
         summary_fullscreen=summary_fullscreen,
     )
-    if combined_lines:
-        combined_lines[-1] = status_line[:term_width].ljust(term_width)
+    if panel_height > 0:
+        combined_lines = pad_lines(combined_lines, term_width, panel_height)
 
-    return combined_lines
+    if status_box_height == 1:
+        status_lines = [status_line[:term_width].ljust(term_width)]
+    else:
+        status_lines = render_status_box(status_line, term_width)
+
+    if panel_height <= 0:
+        return status_lines
+    return combined_lines + status_lines
 
 
 def render_display(
@@ -1405,7 +1486,9 @@ def render_display(
     max_lines = max(len(LAST_RENDER_LINES), len(combined_lines))
     output_chunks = []
     for index in range(max_lines):
-        previous_line = LAST_RENDER_LINES[index] if index < len(LAST_RENDER_LINES) else None
+        previous_line = (
+            LAST_RENDER_LINES[index] if index < len(LAST_RENDER_LINES) else None
+        )
         current_line = combined_lines[index] if index < len(combined_lines) else ""
         if previous_line == current_line and index < len(combined_lines):
             continue
@@ -1645,19 +1728,19 @@ def read_key():
     if ready:
         char = sys.stdin.read(1)
         # Check for escape sequence (arrow keys start with ESC)
-        if char == '\x1b':
+        if char == "\x1b":
             # Check if more characters are available
             ready, _, _ = select.select([sys.stdin], [], [], ARROW_KEY_READ_TIMEOUT)
             if ready:
                 seq = sys.stdin.read(2)
-                if seq == '[A':
-                    return 'arrow_up'
-                elif seq == '[B':
-                    return 'arrow_down'
-                elif seq == '[C':
-                    return 'arrow_right'
-                elif seq == '[D':
-                    return 'arrow_left'
+                if seq == "[A":
+                    return "arrow_up"
+                elif seq == "[B":
+                    return "arrow_down"
+                elif seq == "[C":
+                    return "arrow_right"
+                elif seq == "[D":
+                    return "arrow_left"
         return char
     return None
 
@@ -1667,13 +1750,13 @@ def flash_screen():
     if not sys.stdout.isatty():
         return
     # ANSI escape sequences for visual flash effect
-    SAVE_CURSOR = "\x1b7"           # Save cursor position
-    SET_WHITE_BG = "\x1b[47m"       # White background
-    SET_BLACK_FG = "\x1b[30m"       # Black foreground
-    CLEAR_SCREEN = "\x1b[2J"        # Clear screen
-    MOVE_HOME = "\x1b[H"            # Move cursor to home position
-    RESTORE_CURSOR = "\x1b8"        # Restore cursor position
-    FLASH_DURATION_SECONDS = 0.1    # Duration of flash effect
+    SAVE_CURSOR = "\x1b7"  # Save cursor position
+    SET_WHITE_BG = "\x1b[47m"  # White background
+    SET_BLACK_FG = "\x1b[30m"  # Black foreground
+    CLEAR_SCREEN = "\x1b[2J"  # Clear screen
+    MOVE_HOME = "\x1b[H"  # Move cursor to home position
+    RESTORE_CURSOR = "\x1b8"  # Restore cursor position
+    FLASH_DURATION_SECONDS = 0.1  # Duration of flash effect
 
     # Apply white flash effect and clear screen
     sys.stdout.write(
@@ -1716,21 +1799,18 @@ def create_state_snapshot(buffers, stats, timestamp):
     for host_id, host_buffers in buffers.items():
         buffers_copy[host_id] = {
             "timeline": deque(
-                host_buffers["timeline"],
-                maxlen=host_buffers["timeline"].maxlen
+                host_buffers["timeline"], maxlen=host_buffers["timeline"].maxlen
             ),
             "rtt_history": deque(
-                host_buffers["rtt_history"],
-                maxlen=host_buffers["rtt_history"].maxlen
+                host_buffers["rtt_history"], maxlen=host_buffers["rtt_history"].maxlen
             ),
             "ttl_history": deque(
-                host_buffers["ttl_history"],
-                maxlen=host_buffers["ttl_history"].maxlen
+                host_buffers["ttl_history"], maxlen=host_buffers["ttl_history"].maxlen
             ),
             "categories": {
                 status: deque(cat_deque, maxlen=cat_deque.maxlen)
                 for status, cat_deque in host_buffers["categories"].items()
-            }
+            },
         }
 
     # Deep copy stats
@@ -1878,7 +1958,9 @@ def main(args):
     asn_timeout = 3.0
     asn_failure_ttl = 300.0
     panel_position = args.panel_position
-    panel_toggle_default = args.panel_position if args.panel_position != "none" else "right"
+    panel_toggle_default = (
+        args.panel_position if args.panel_position != "none" else "right"
+    )
     last_panel_position = panel_position if panel_position != "none" else None
 
     # History navigation state
@@ -1958,7 +2040,9 @@ def main(args):
         try:
             if stdin_fd is not None:
                 tty.setcbreak(stdin_fd)
-            while running and (not expect_completion or completed_hosts < len(host_infos)):
+            while running and (
+                not expect_completion or completed_hosts < len(host_infos)
+            ):
                 key = read_key()
                 if key:
                     if key in ("q", "Q"):
@@ -1975,7 +2059,9 @@ def main(args):
                         updated = True
                     elif key == "n":
                         mode_index = (mode_index + 1) % len(modes)
-                        cached_page_step = None  # Invalidate cache - display mode changed
+                        cached_page_step = (
+                            None  # Invalidate cache - display mode changed
+                        )
                         updated = True
                     elif key == "v":
                         display_mode_index = (display_mode_index + 1) % len(
@@ -1988,11 +2074,15 @@ def main(args):
                         updated = True
                     elif key == "f":
                         filter_mode_index = (filter_mode_index + 1) % len(filter_modes)
-                        cached_page_step = None  # Invalidate cache - filter mode changed
+                        cached_page_step = (
+                            None  # Invalidate cache - filter mode changed
+                        )
                         updated = True
                     elif key == "a":
                         show_asn = not show_asn
-                        cached_page_step = None  # Invalidate cache - ASN display toggled
+                        cached_page_step = (
+                            None  # Invalidate cache - ASN display toggled
+                        )
                         updated = True
                     elif key == "m":
                         summary_mode_index = (summary_mode_index + 1) % len(
@@ -2043,7 +2133,9 @@ def main(args):
                             if panel_position == "none"
                             else "Summary panel shown"
                         )
-                        cached_page_step = None  # Invalidate cache - panel visibility changed
+                        cached_page_step = (
+                            None  # Invalidate cache - panel visibility changed
+                        )
                         force_render = True
                         updated = True
                     elif key == "W":
@@ -2059,7 +2151,9 @@ def main(args):
                         status_message = (
                             f"Summary panel position: {panel_position.upper()}"
                         )
-                        cached_page_step = None  # Invalidate cache - panel position changed
+                        cached_page_step = (
+                            None  # Invalidate cache - panel position changed
+                        )
                         force_render = True
                         updated = True
                     elif key == "p":
@@ -2109,19 +2203,21 @@ def main(args):
                     elif key == "arrow_left":
                         # Go back in time (increase offset)
                         if history_offset < len(history_buffer) - 1:
-                            page_step, cached_page_step, last_term_size = get_cached_page_step(
-                                cached_page_step,
-                                last_term_size,
-                                host_infos,
-                                buffers,
-                                stats,
-                                symbols,
-                                panel_position,
-                                modes[mode_index],
-                                sort_modes[sort_mode_index],
-                                filter_modes[filter_mode_index],
-                                args.slow_threshold,
-                                show_asn,
+                            page_step, cached_page_step, last_term_size = (
+                                get_cached_page_step(
+                                    cached_page_step,
+                                    last_term_size,
+                                    host_infos,
+                                    buffers,
+                                    stats,
+                                    symbols,
+                                    panel_position,
+                                    modes[mode_index],
+                                    sort_modes[sort_mode_index],
+                                    filter_modes[filter_mode_index],
+                                    args.slow_threshold,
+                                    show_asn,
+                                )
                             )
                             history_offset = min(
                                 history_offset + page_step,
@@ -2135,19 +2231,21 @@ def main(args):
                     elif key == "arrow_right":
                         # Go forward in time (decrease offset, toward live)
                         if history_offset > 0:
-                            page_step, cached_page_step, last_term_size = get_cached_page_step(
-                                cached_page_step,
-                                last_term_size,
-                                host_infos,
-                                buffers,
-                                stats,
-                                symbols,
-                                panel_position,
-                                modes[mode_index],
-                                sort_modes[sort_mode_index],
-                                filter_modes[filter_mode_index],
-                                args.slow_threshold,
-                                show_asn,
+                            page_step, cached_page_step, last_term_size = (
+                                get_cached_page_step(
+                                    cached_page_step,
+                                    last_term_size,
+                                    host_infos,
+                                    buffers,
+                                    stats,
+                                    symbols,
+                                    panel_position,
+                                    modes[mode_index],
+                                    sort_modes[sort_mode_index],
+                                    filter_modes[filter_mode_index],
+                                    args.slow_threshold,
+                                    show_asn,
+                                )
                             )
                             history_offset = max(0, history_offset - page_step)
                             force_render = True
@@ -2156,7 +2254,9 @@ def main(args):
                                 status_message = "Returned to LIVE view"
                             else:
                                 snapshot = history_buffer[-(history_offset + 1)]
-                                elapsed_seconds = int(time.time() - snapshot["timestamp"])
+                                elapsed_seconds = int(
+                                    time.time() - snapshot["timestamp"]
+                                )
                                 status_message = f"Viewing {elapsed_seconds}s ago"
                     elif key == "arrow_up":
                         scroll_buffers = buffers
@@ -2165,17 +2265,19 @@ def main(args):
                             snapshot = history_buffer[-(history_offset + 1)]
                             scroll_buffers = snapshot["buffers"]
                             scroll_stats = snapshot["stats"]
-                        max_offset, visible_hosts, total_hosts = compute_host_scroll_bounds(
-                            host_infos,
-                            scroll_buffers,
-                            scroll_stats,
-                            symbols,
-                            panel_position,
-                            modes[mode_index],
-                            sort_modes[sort_mode_index],
-                            filter_modes[filter_mode_index],
-                            args.slow_threshold,
-                            show_asn,
+                        max_offset, visible_hosts, total_hosts = (
+                            compute_host_scroll_bounds(
+                                host_infos,
+                                scroll_buffers,
+                                scroll_stats,
+                                symbols,
+                                panel_position,
+                                modes[mode_index],
+                                sort_modes[sort_mode_index],
+                                filter_modes[filter_mode_index],
+                                args.slow_threshold,
+                                show_asn,
+                            )
                         )
                         if host_scroll_offset > 0 and total_hosts > 0:
                             host_scroll_offset = max(0, host_scroll_offset - 1)
@@ -2195,17 +2297,19 @@ def main(args):
                             snapshot = history_buffer[-(history_offset + 1)]
                             scroll_buffers = snapshot["buffers"]
                             scroll_stats = snapshot["stats"]
-                        max_offset, visible_hosts, total_hosts = compute_host_scroll_bounds(
-                            host_infos,
-                            scroll_buffers,
-                            scroll_stats,
-                            symbols,
-                            panel_position,
-                            modes[mode_index],
-                            sort_modes[sort_mode_index],
-                            filter_modes[filter_mode_index],
-                            args.slow_threshold,
-                            show_asn,
+                        max_offset, visible_hosts, total_hosts = (
+                            compute_host_scroll_bounds(
+                                host_infos,
+                                scroll_buffers,
+                                scroll_stats,
+                                symbols,
+                                panel_position,
+                                modes[mode_index],
+                                sort_modes[sort_mode_index],
+                                filter_modes[filter_mode_index],
+                                args.slow_threshold,
+                                show_asn,
+                            )
                         )
                         if host_scroll_offset < max_offset and total_hosts > 0:
                             host_scroll_offset = min(max_offset, host_scroll_offset + 1)
@@ -2318,17 +2422,19 @@ def main(args):
                 if force_render or (
                     not paused and (updated or (now - last_render) >= refresh_interval)
                 ):
-                    max_offset, _visible_hosts, _total_hosts = compute_host_scroll_bounds(
-                        host_infos,
-                        render_buffers,
-                        render_stats,
-                        symbols,
-                        panel_position,
-                        modes[mode_index],
-                        sort_modes[sort_mode_index],
-                        filter_modes[filter_mode_index],
-                        args.slow_threshold,
-                        show_asn,
+                    max_offset, _visible_hosts, _total_hosts = (
+                        compute_host_scroll_bounds(
+                            host_infos,
+                            render_buffers,
+                            render_stats,
+                            symbols,
+                            panel_position,
+                            modes[mode_index],
+                            sort_modes[sort_mode_index],
+                            filter_modes[filter_mode_index],
+                            args.slow_threshold,
+                            show_asn,
+                        )
                     )
                     if host_scroll_offset > max_offset:
                         host_scroll_offset = max_offset
