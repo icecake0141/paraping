@@ -87,12 +87,12 @@ sudo make setcap
 ![MultiPing デモ](docs/images/usage-demo.gif)
 
 ```bash
-python main.py [options] <host1> <host2> ...
+./multiping [options] <host1> <host2> ...
 ```
 
 例（ホスト一覧ファイルと 2 秒タイムアウト）:
 ```bash
-python main.py -t 2 -f hosts.txt
+./multiping -t 2 -f hosts.txt
 ```
 
 ### コマンドラインオプション
