@@ -943,6 +943,7 @@ def build_status_line(
     paused,
     status_message=None,
     summary_all=False,
+    summary_fullscreen=False,
 ):
     sort_labels = {
         "failures": "Failure Count",
@@ -965,6 +966,8 @@ def build_status_line(
     filter_label = filter_labels.get(filter_mode, filter_mode)
     summary_label = "All" if summary_all else summary_labels.get(summary_mode, summary_mode)
     status = f"Sort: {sort_label} | Filter: {filter_label} | Summary: {summary_label}"
+    if summary_fullscreen:
+        status += " | Summary View: Fullscreen"
     if paused:
         status += " | PAUSED"
     if status_message:
@@ -1000,6 +1003,7 @@ def render_help_view(width, height):
         "  f : cycle filter (failures/latency/all)",
         "  a : toggle ASN display",
         "  m : cycle summary info (rates/rtt/ttl/streak)",
+        "  F : toggle summary fullscreen view",
         "  w : toggle summary panel on/off",
         "  W : cycle summary panel position (left/right/top/bottom)",
         "  p : pause/resume display",
@@ -1124,6 +1128,7 @@ def build_display_lines(
     activity_indicator="",
     use_color=False,
     host_scroll_offset=0,
+    summary_fullscreen=False,
     asn_width=8,
     header_lines=2,
 ):
@@ -1169,36 +1174,51 @@ def build_display_lines(
         symbols,
         ordered_host_ids=[host_id for host_id, _label in display_entries],
     )
-    main_lines = render_main_view(
-        display_entries,
-        buffers,
-        symbols,
-        main_width,
-        main_height,
-        mode_label,
-        display_mode,
-        paused,
-        timestamp,
-        activity_indicator,
-        use_color,
-        host_scroll_offset,
-        header_lines,
-    )
-    summary_all = resolved_position in ("top", "bottom") and can_render_full_summary(
-        summary_data, summary_width
-    )
-    summary_lines = render_summary_view(
-        summary_data,
-        summary_width,
-        summary_height,
-        summary_mode,
-        prefer_all=summary_all,
-    )
+    summary_all = False
+    main_lines = []
+    summary_lines = []
+    if summary_fullscreen:
+        summary_all = can_render_full_summary(summary_data, term_width)
+        summary_lines = render_summary_view(
+            summary_data,
+            term_width,
+            term_height,
+            summary_mode,
+            prefer_all=summary_all,
+        )
+    else:
+        main_lines = render_main_view(
+            display_entries,
+            buffers,
+            symbols,
+            main_width,
+            main_height,
+            mode_label,
+            display_mode,
+            paused,
+            timestamp,
+            activity_indicator,
+            use_color,
+            host_scroll_offset,
+            header_lines,
+        )
+        summary_all = resolved_position in ("top", "bottom") and can_render_full_summary(
+            summary_data, summary_width
+        )
+        summary_lines = render_summary_view(
+            summary_data,
+            summary_width,
+            summary_height,
+            summary_mode,
+            prefer_all=summary_all,
+        )
 
     gap = " "
     combined_lines = []
     if show_help:
         combined_lines = render_help_view(term_width, term_height)
+    elif summary_fullscreen:
+        combined_lines = summary_lines
     elif resolved_position in ("left", "right"):
         for main_line, summary_line in zip(main_lines, summary_lines):
             if resolved_position == "left":
@@ -1219,6 +1239,7 @@ def build_display_lines(
         paused,
         status_message,
         summary_all=summary_all,
+        summary_fullscreen=summary_fullscreen,
     )
     if combined_lines:
         combined_lines[-1] = status_line[:term_width].ljust(term_width)
@@ -1245,6 +1266,7 @@ def render_display(
     display_tz,
     use_color=False,
     host_scroll_offset=0,
+    summary_fullscreen=False,
     asn_width=8,
     header_lines=2,
 ):
@@ -1274,6 +1296,7 @@ def render_display(
         activity_indicator,
         use_color,
         host_scroll_offset,
+        summary_fullscreen,
         asn_width,
         header_lines,
     )
@@ -1726,6 +1749,7 @@ def main(args):
     display_mode_index = 0
     summary_modes = ["rates", "rtt", "ttl", "streak"]
     summary_mode_index = 0
+    summary_fullscreen = False
     sort_modes = ["failures", "streak", "latency", "host"]
     sort_mode_index = 0
     filter_modes = ["failures", "latency", "all"]
@@ -1860,6 +1884,15 @@ def main(args):
                             f"Summary: {summary_modes[summary_mode_index].upper()}"
                         )
                         updated = True
+                    elif key == "F":
+                        summary_fullscreen = not summary_fullscreen
+                        status_message = (
+                            "Summary fullscreen view enabled"
+                            if summary_fullscreen
+                            else "Summary fullscreen view disabled"
+                        )
+                        force_render = True
+                        updated = True
                     elif key == "w":
                         panel_position, last_panel_position = toggle_panel_visibility(
                             panel_position,
@@ -1924,6 +1957,7 @@ def main(args):
                             "",
                             False,
                             host_scroll_offset,
+                            summary_fullscreen,
                         )
                         with open(
                             snapshot_name, "w", encoding="utf-8"
@@ -2173,6 +2207,7 @@ def main(args):
                         display_tz,
                         use_color,
                         host_scroll_offset,
+                        summary_fullscreen,
                     )
                     last_render = now
                     updated = False
