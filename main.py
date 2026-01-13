@@ -1012,6 +1012,8 @@ def render_help_view(width, height):
         "  f : cycle filter (failures/latency/all)",
         "  a : toggle ASN display",
         "  m : cycle summary info (rates/rtt/ttl/streak)",
+        "  c : toggle color output",
+        "  b : toggle bell on ping failure",
         "  F : toggle summary fullscreen view",
         "  w : toggle summary panel on/off",
         "  W : cycle summary panel position (left/right/top/bottom)",
@@ -1019,10 +1021,8 @@ def render_help_view(width, height):
         "  s : save snapshot to file",
         "  <- / -> : navigate backward/forward in time (1 page)",
         "  up / down : scroll host list",
-        "  H : show help (press any key to close)",
+        "  H : show help (Press any key to close)",
         "  q : quit",
-        "",
-        "Press any key to close this help screen.",
     ]
     return pad_lines(lines, width, height)
 
@@ -1846,7 +1846,10 @@ def main(args):
     status_message = None
     force_render = False
     show_asn = True
-    use_color = args.color and sys.stdout.isatty()
+    color_supported = sys.stdout.isatty()
+    use_color = args.color and color_supported
+    flash_on_fail = getattr(args, "flash_on_fail", False)
+    bell_on_fail = getattr(args, "bell_on_fail", False)
     asn_cache = {}
     asn_timeout = 3.0
     asn_failure_ttl = 300.0
@@ -1974,6 +1977,27 @@ def main(args):
                         status_message = (
                             f"Summary: {summary_modes[summary_mode_index].upper()}"
                         )
+                        updated = True
+                    elif key == "c":
+                        if not color_supported:
+                            status_message = "Color output unavailable (no TTY)"
+                        else:
+                            use_color = not use_color
+                            status_message = (
+                                "Color output enabled"
+                                if use_color
+                                else "Color output disabled"
+                            )
+                        force_render = True
+                        updated = True
+                    elif key == "b":
+                        bell_on_fail = not bell_on_fail
+                        status_message = (
+                            "Bell on fail enabled"
+                            if bell_on_fail
+                            else "Bell on fail disabled"
+                        )
+                        force_render = True
                         updated = True
                     elif key == "F":
                         summary_fullscreen = not summary_fullscreen
@@ -2235,11 +2259,10 @@ def main(args):
                         stats[host_id]["rtt_count"] += 1
 
                     # Trigger flash or bell on ping failure
-                    if should_flash_on_fail(status, args.flash_on_fail, show_help):
+                    if should_flash_on_fail(status, flash_on_fail, show_help):
                         flash_screen()
-                    if status == "fail":
-                        if args.bell_on_fail:
-                            ring_bell()
+                    if status == "fail" and bell_on_fail and not show_help:
+                        ring_bell()
 
                     if not paused:
                         updated = True
