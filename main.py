@@ -2192,7 +2192,7 @@ def main(args):
                     # Trigger flash or bell on ping failure
                     if should_flash_on_fail(status, flash_on_fail, show_help):
                         flash_screen()
-                    if status == "fail" and bell_on_fail:
+                    if status == "fail" and bell_on_fail and not show_help:
                         ring_bell()
 
                     if not paused:
