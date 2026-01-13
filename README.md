@@ -88,16 +88,16 @@ sudo make setcap
 ![MultiPing Demo](docs/images/usage-demo.gif)
 
 ```bash
-python main.py [options] <host1> <host2> ...
+./multiping [options] <host1> <host2> ...
 ```
 
 Example (with a host list file and 2-second timeout):
 ```bash
-python main.py -t 2 -f hosts.txt
+./multiping -t 2 -f hosts.txt
 ```
 Example (explicit IPv4 addresses only):
 ```bash
-python main.py 1.1.1.1 8.8.8.8
+./multiping 1.1.1.1 8.8.8.8
 ```
 
 ### Command-line Options
