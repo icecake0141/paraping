@@ -539,7 +539,7 @@ class TestHelpView(unittest.TestCase):
         """Help view should include close hint text."""
         lines = render_help_view(60, 20)
         combined = "\n".join(lines)
-        self.assertIn("H : show help", combined)
+        self.assertIn("H: show help", combined)
         self.assertIn("Press any key to close", combined)
 
 

@@ -11,6 +11,26 @@
 # This file was created or modified with the assistance of an AI (Large Language Model).
 # Review required for correctness, security, and licensing.
 
+"""
+MultiPing - Interactive terminal-based ICMP ping monitor.
+
+This module provides an interactive, terminal-based ICMP monitor that pings multiple
+hosts concurrently and visualizes results as a live timeline or sparkline. It includes
+useful operator controls like sorting, filtering, pause modes, snapshots, and optional
+ASN/rDNS display for fast network triage.
+
+Features:
+- Concurrent ICMP ping to multiple hosts using a capability-based helper binary
+- Live timeline or sparkline visualization with success/slow/fail markers
+- Real-time statistics and aggregate counts with TTL display
+- Sort and filter results by failures, streaks, latency, or host name
+- Toggle display name mode: IP, reverse DNS, or alias
+- Optional ASN display (fetched from Team Cymru)
+- Configurable timezone for timestamps and snapshot naming
+- History navigation to review past ping results
+- Pause modes and snapshot export functionality
+"""
+
 import argparse
 import copy
 import ipaddress
@@ -355,7 +375,7 @@ def parse_host_file_line(line, line_number, input_file):
 def read_input_file(input_file):
     host_list = []
     try:
-        with open(input_file, "r") as f:
+        with open(input_file, "r", encoding="utf-8") as f:
             for line_number, line in enumerate(f, start=1):
                 entry = parse_host_file_line(line, line_number, input_file)
                 if entry is not None:
@@ -758,7 +778,7 @@ def render_timeline_view(
     max_offset = max(0, len(display_entries) - visible_hosts)
     scroll_offset = min(max(scroll_offset, 0), max_offset)
     truncated_entries = display_entries[
-        scroll_offset : scroll_offset + visible_hosts
+        scroll_offset: scroll_offset + visible_hosts
     ]
 
     resize_buffers(buffers, timeline_width, symbols)
@@ -802,7 +822,7 @@ def render_sparkline_view(
     max_offset = max(0, len(display_entries) - visible_hosts)
     scroll_offset = min(max(scroll_offset, 0), max_offset)
     truncated_entries = display_entries[
-        scroll_offset : scroll_offset + visible_hosts
+        scroll_offset: scroll_offset + visible_hosts
     ]
 
     resize_buffers(buffers, timeline_width, symbols)
@@ -1010,23 +1030,23 @@ def render_help_view(width, height):
         "MultiPing - Help",
         "-" * width,
         "Keys:",
-        "  n : cycle display mode (ip/rdns/alias)",
-        "  v : toggle view (timeline/sparkline)",
-        "  o : cycle sort (failures/streak/latency/host)",
-        "  f : cycle filter (failures/latency/all)",
-        "  a : toggle ASN display",
-        "  m : cycle summary info (rates/rtt/ttl/streak)",
-        "  c : toggle color output",
-        "  b : toggle bell on ping failure",
-        "  F : toggle summary fullscreen view",
-        "  w : toggle summary panel on/off",
-        "  W : cycle summary panel position (left/right/top/bottom)",
-        "  p : pause/resume display",
-        "  s : save snapshot to file",
+        "  n: cycle display mode (ip/rdns/alias)",
+        "  v: toggle view (timeline/sparkline)",
+        "  o: cycle sort (failures/streak/latency/host)",
+        "  f: cycle filter (failures/latency/all)",
+        "  a: toggle ASN display",
+        "  m: cycle summary info (rates/rtt/ttl/streak)",
+        "  c: toggle color output",
+        "  b: toggle bell on ping failure",
+        "  F: toggle summary fullscreen view",
+        "  w: toggle summary panel on/off",
+        "  W: cycle summary panel position (left/right/top/bottom)",
+        "  p: pause/resume display",
+        "  s: save snapshot to file",
         "  <- / -> : navigate backward/forward in time (1 page)",
-        "  up / down : scroll host list",
-        "  H : show help (Press any key to close)",
-        "  q : quit",
+        "  up / down: scroll host list",
+        "  H: show help (Press any key to close)",
+        "  q: quit",
     ]
     return pad_lines(lines, width, height)
 
@@ -1091,10 +1111,10 @@ def get_cached_page_step(
 ):
     """
     Get the page step for history navigation, using cached value if available.
-    
+
     The page step is only recalculated if the terminal size has changed.
     This prevents expensive recalculation on every arrow key press.
-    
+
     Returns:
         tuple: (page_step, new_cached_page_step, new_last_term_size)
     """
@@ -1107,9 +1127,9 @@ def get_cached_page_step(
         if current_size.lines != last_size.lines:
             return True  # Terminal height changed
         return False
-    
+
     current_term_size = get_terminal_size(fallback=(80, 24))
-    
+
     # Check if we need to recalculate
     if should_recalculate_page_step(cached_page_step, last_term_size, current_term_size):
         # Terminal size changed or first time - recalculate
@@ -1126,7 +1146,7 @@ def get_cached_page_step(
             show_asn,
         )
         return page_step, page_step, current_term_size
-    
+
     # Use cached value
     return cached_page_step, cached_page_step, last_term_size
 

@@ -21,7 +21,7 @@
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <netinet/ip_icmp.h>
-#include <linux/icmp.h>
+/* Note: <linux/icmp.h> removed to avoid struct icmphdr redefinition conflict */
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <sys/time.h>
