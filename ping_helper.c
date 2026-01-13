@@ -21,6 +21,7 @@
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <netinet/ip_icmp.h>
+#include <linux/icmp.h>
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <sys/time.h>
@@ -98,6 +99,31 @@ int main(int argc, char *argv[]) {
         return 4;
     }
 
+    struct sockaddr_in *dest_addr = (struct sockaddr_in *)res->ai_addr;
+
+    /* Connect socket to limit received packets to the target host */
+    if (connect(sockfd, (struct sockaddr *)dest_addr, sizeof(*dest_addr)) < 0) {
+        fprintf(stderr, "Error: connect failed: %s\n", strerror(errno));
+        close(sockfd);
+        freeaddrinfo(res);
+        return 4;
+    }
+
+    /* Increase receive buffer to reduce drops under high ICMP volume */
+    int rcvbuf_bytes = 256 * 1024;
+    if (setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &rcvbuf_bytes, sizeof(rcvbuf_bytes)) < 0) {
+        fprintf(stderr, "Warning: setsockopt(SO_RCVBUF) failed: %s\n", strerror(errno));
+    }
+
+    /* Filter ICMP to only accept echo replies to reduce per-process load */
+#ifdef ICMP_FILTER
+    struct icmp_filter filter;
+    filter.data = ~(1U << ICMP_ECHOREPLY);
+    if (setsockopt(sockfd, SOL_RAW, ICMP_FILTER, &filter, sizeof(filter)) < 0) {
+        fprintf(stderr, "Warning: setsockopt(ICMP_FILTER) failed: %s\n", strerror(errno));
+    }
+#endif
+
     /* Prepare ICMP echo request */
     char packet[PACKET_SIZE];
     memset(packet, 0, PACKET_SIZE);
@@ -109,8 +135,6 @@ int main(int argc, char *argv[]) {
     icmp_hdr->icmp_seq = htons(1);
     icmp_hdr->icmp_cksum = 0;
     icmp_hdr->icmp_cksum = checksum(icmp_hdr, PACKET_SIZE);
-
-    struct sockaddr_in *dest_addr = (struct sockaddr_in *)res->ai_addr;
 
     /* Record start time */
     struct timeval start_time, end_time;
