@@ -42,7 +42,7 @@ ACTIVITY_INDICATOR_SPEED_HZ = 4
 LAST_RENDER_LINES = None
 ANSI_RESET = "\x1b[0m"
 STATUS_COLORS = {
-    "success": "\x1b[34m",  # Blue
+    "success": "\x1b[37m",  # White
     "slow": "\x1b[33m",     # Yellow
     "fail": "\x1b[31m",     # Red
 }
@@ -279,7 +279,7 @@ def handle_options():
         "-F",
         "--flash-on-fail",
         action="store_true",
-        help="Flash screen (invert colors) when ping fails",
+        help="Flash screen (white background) when ping fails",
     )
     parser.add_argument(
         "-B",
@@ -952,6 +952,7 @@ def build_status_line(
     paused,
     status_message=None,
     summary_all=False,
+    summary_fullscreen=False,
 ):
     sort_labels = {
         "failures": "Failure Count",
@@ -974,6 +975,8 @@ def build_status_line(
     filter_label = filter_labels.get(filter_mode, filter_mode)
     summary_label = "All" if summary_all else summary_labels.get(summary_mode, summary_mode)
     status = f"Sort: {sort_label} | Filter: {filter_label} | Summary: {summary_label}"
+    if summary_fullscreen:
+        status += " | Summary View: Fullscreen"
     if paused:
         status += " | PAUSED"
     if status_message:
@@ -1009,6 +1012,7 @@ def render_help_view(width, height):
         "  f : cycle filter (failures/latency/all)",
         "  a : toggle ASN display",
         "  m : cycle summary info (rates/rtt/ttl/streak)",
+        "  F : toggle summary fullscreen view",
         "  w : toggle summary panel on/off",
         "  W : cycle summary panel position (left/right/top/bottom)",
         "  p : pause/resume display",
@@ -1133,6 +1137,7 @@ def build_display_lines(
     activity_indicator="",
     use_color=False,
     host_scroll_offset=0,
+    summary_fullscreen=False,
     asn_width=8,
     header_lines=2,
 ):
@@ -1178,36 +1183,51 @@ def build_display_lines(
         symbols,
         ordered_host_ids=[host_id for host_id, _label in display_entries],
     )
-    main_lines = render_main_view(
-        display_entries,
-        buffers,
-        symbols,
-        main_width,
-        main_height,
-        mode_label,
-        display_mode,
-        paused,
-        timestamp,
-        activity_indicator,
-        use_color,
-        host_scroll_offset,
-        header_lines,
-    )
-    summary_all = resolved_position in ("top", "bottom") and can_render_full_summary(
-        summary_data, summary_width
-    )
-    summary_lines = render_summary_view(
-        summary_data,
-        summary_width,
-        summary_height,
-        summary_mode,
-        prefer_all=summary_all,
-    )
+    summary_all = False
+    main_lines = []
+    summary_lines = []
+    if summary_fullscreen:
+        summary_all = can_render_full_summary(summary_data, term_width)
+        summary_lines = render_summary_view(
+            summary_data,
+            term_width,
+            term_height,
+            summary_mode,
+            prefer_all=summary_all,
+        )
+    else:
+        main_lines = render_main_view(
+            display_entries,
+            buffers,
+            symbols,
+            main_width,
+            main_height,
+            mode_label,
+            display_mode,
+            paused,
+            timestamp,
+            activity_indicator,
+            use_color,
+            host_scroll_offset,
+            header_lines,
+        )
+        summary_all = resolved_position in ("top", "bottom") and can_render_full_summary(
+            summary_data, summary_width
+        )
+        summary_lines = render_summary_view(
+            summary_data,
+            summary_width,
+            summary_height,
+            summary_mode,
+            prefer_all=summary_all,
+        )
 
     gap = " "
     combined_lines = []
     if show_help:
         combined_lines = render_help_view(term_width, term_height)
+    elif summary_fullscreen:
+        combined_lines = summary_lines
     elif resolved_position in ("left", "right"):
         for main_line, summary_line in zip(main_lines, summary_lines):
             if resolved_position == "left":
@@ -1228,6 +1248,7 @@ def build_display_lines(
         paused,
         status_message,
         summary_all=summary_all,
+        summary_fullscreen=summary_fullscreen,
     )
     if combined_lines:
         combined_lines[-1] = status_line[:term_width].ljust(term_width)
@@ -1254,6 +1275,7 @@ def render_display(
     display_tz,
     use_color=False,
     host_scroll_offset=0,
+    summary_fullscreen=False,
     asn_width=8,
     header_lines=2,
 ):
@@ -1283,6 +1305,7 @@ def render_display(
         activity_indicator,
         use_color,
         host_scroll_offset,
+        summary_fullscreen,
         asn_width,
         header_lines,
     )
@@ -1290,7 +1313,11 @@ def render_display(
         return
 
     if LAST_RENDER_LINES is None:
-        sys.stdout.write("\x1b[2J\x1b[H" + "\n".join(combined_lines))
+        sys.stdout.write("\x1b[2J\x1b[H")
+        output_chunks = []
+        for index, line in enumerate(combined_lines):
+            output_chunks.append(f"\x1b[{index + 1};1H\x1b[2K{line}")
+        sys.stdout.write("".join(output_chunks))
         sys.stdout.flush()
         LAST_RENDER_LINES = combined_lines
         return
@@ -1556,25 +1583,32 @@ def read_key():
 
 
 def flash_screen():
-    """Flash the screen by inverting colors for ~100ms"""
+    """Flash the screen with a white background for ~100ms"""
     if not sys.stdout.isatty():
         return
     # ANSI escape sequences for visual flash effect
     SAVE_CURSOR = "\x1b7"           # Save cursor position
-    INVERT_COLORS = "\x1b[7m"       # Invert colors (white bg, black fg)
+    SET_WHITE_BG = "\x1b[47m"       # White background
+    SET_BLACK_FG = "\x1b[30m"       # Black foreground
     CLEAR_SCREEN = "\x1b[2J"        # Clear screen
     MOVE_HOME = "\x1b[H"            # Move cursor to home position
-    RESTORE_COLORS = "\x1b[27m"     # Restore normal colors
     RESTORE_CURSOR = "\x1b8"        # Restore cursor position
     FLASH_DURATION_SECONDS = 0.1    # Duration of flash effect
 
-    # Apply inverted colors and clear screen
-    sys.stdout.write(SAVE_CURSOR + INVERT_COLORS + CLEAR_SCREEN + MOVE_HOME)
+    # Apply white flash effect and clear screen
+    sys.stdout.write(
+        SAVE_CURSOR + SET_WHITE_BG + SET_BLACK_FG + CLEAR_SCREEN + MOVE_HOME
+    )
     sys.stdout.flush()
     time.sleep(FLASH_DURATION_SECONDS)
     # Restore normal display
-    sys.stdout.write(RESTORE_COLORS + RESTORE_CURSOR)
+    sys.stdout.write(ANSI_RESET + RESTORE_CURSOR)
     sys.stdout.flush()
+
+
+def should_flash_on_fail(status, flash_on_fail, show_help):
+    """Return True when the failure flash should be displayed."""
+    return status == "fail" and flash_on_fail and not show_help
 
 
 def ring_bell():
@@ -1646,6 +1680,14 @@ def update_history_buffer(
     if history_offset > 0:
         history_offset = min(history_offset + 1, len(history_buffer) - 1)
     return last_snapshot_time, history_offset
+
+
+def prepare_terminal_for_exit():
+    if not sys.stdout.isatty():
+        return
+    term_size = get_terminal_size(fallback=(80, 24))
+    sys.stdout.write("\n" * term_size.lines)
+    sys.stdout.flush()
 
 
 def main(args):
@@ -1735,6 +1777,7 @@ def main(args):
     display_mode_index = 0
     summary_modes = ["rates", "rtt", "ttl", "streak"]
     summary_mode_index = 0
+    summary_fullscreen = False
     sort_modes = ["failures", "streak", "latency", "host"]
     sort_mode_index = 0
     filter_modes = ["failures", "latency", "all"]
@@ -1869,6 +1912,15 @@ def main(args):
                             f"Summary: {summary_modes[summary_mode_index].upper()}"
                         )
                         updated = True
+                    elif key == "F":
+                        summary_fullscreen = not summary_fullscreen
+                        status_message = (
+                            "Summary fullscreen view enabled"
+                            if summary_fullscreen
+                            else "Summary fullscreen view disabled"
+                        )
+                        force_render = True
+                        updated = True
                     elif key == "w":
                         panel_position, last_panel_position = toggle_panel_visibility(
                             panel_position,
@@ -1933,6 +1985,7 @@ def main(args):
                             "",
                             False,
                             host_scroll_offset,
+                            summary_fullscreen,
                         )
                         with open(
                             snapshot_name, "w", encoding="utf-8"
@@ -2113,9 +2166,9 @@ def main(args):
                         stats[host_id]["rtt_count"] += 1
 
                     # Trigger flash or bell on ping failure
+                    if should_flash_on_fail(status, args.flash_on_fail, show_help):
+                        flash_screen()
                     if status == "fail":
-                        if args.flash_on_fail:
-                            flash_screen()
                         if args.bell_on_fail:
                             ring_bell()
 
@@ -2182,6 +2235,7 @@ def main(args):
                         display_tz,
                         use_color,
                         host_scroll_offset,
+                        summary_fullscreen,
                     )
                     last_render = now
                     updated = False
@@ -2201,6 +2255,7 @@ def main(args):
             if stdin_fd is not None and original_term is not None:
                 termios.tcsetattr(stdin_fd, termios.TCSADRAIN, original_term)
 
+    prepare_terminal_for_exit()
     print("\n" + "=" * 60)
     print("SUMMARY")
     print("=" * 60)

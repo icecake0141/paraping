@@ -43,6 +43,7 @@ MultiPing is an interactive, terminal-based ICMP monitor that pings many hosts i
 ### Linux-Specific: Privileged ICMP Helper (Recommended)
 
 On Linux, use the included `ping_helper` binary with capability-based privileges instead of running Python as root. This is more secure as it limits raw socket access to a single small binary.
+The helper also connects its raw socket and applies ICMP filters to reduce per-process packet fan-out, which improves reliability when monitoring many hosts concurrently.
 
 **Dependencies:**
 - `gcc` (for building the helper)
@@ -122,6 +123,7 @@ python main.py 1.1.1.1 8.8.8.8
 - `f`: Cycle filter (failures/latency/all).
 - `a`: Toggle ASN display (auto hides when space is tight).
 - `m`: Cycle summary info (rates/avg RTT/TTL/streak).
+- `F`: Toggle summary fullscreen view.
 - `w`: Toggle the summary panel on/off.
 - `W`: Cycle summary panel position (left/right/top/bottom).
 - `p`: Pause/resume (display only or ping + display).
@@ -135,7 +137,7 @@ python main.py 1.1.1.1 8.8.8.8
 - `.` success
 - `!` slow (RTT >= `--slow-threshold`)
 - `x` failure/timeout
-- When `--color` is enabled: blue=success, yellow=slow, red=failure.
+- When `--color` is enabled: white=success, yellow=slow, red=failure.
 
 ## Notes
 - ICMP requires elevated privileges (run with `sudo` or Administrator on Windows).
