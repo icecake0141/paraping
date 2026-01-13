@@ -11,7 +11,7 @@
 # This file was created or modified with the assistance of an AI (Large Language Model).
 # Review required for correctness, security, and licensing.
 """
-Unit tests for multiping functionality
+Unit tests for paraping functionality
 """
 
 import unittest

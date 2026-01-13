@@ -12,9 +12,9 @@ This file was created or modified with the assistance of an AI (Large Language M
 Review required for correctness, security, and licensing.
 -->
 
-# MultiPing
+# ParaPing
 
-MultiPing は、複数ホストへの ICMP ping を並列に実行し、タイムライン/スパークラインとして表示する対話型ターミナルツールです。ソート・フィルタ・一時停止・スナップショット・ASN/rDNS 表示など、運用向けの操作機能を備えています。
+ParaPing は、複数ホストへの ICMP ping を並列に実行し、タイムライン/スパークラインとして表示する対話型ターミナルツールです。ソート・フィルタ・一時停止・スナップショット・ASN/rDNS 表示など、運用向けの操作機能を備えています。
 
 > English README: [README.md](README.md)
 
@@ -74,8 +74,8 @@ python3 ping_wrapper.py google.com
 
 ## インストール
 ```bash
-git clone https://github.com/icecake0141/multiping.git
-cd multiping
+git clone https://github.com/icecake0141/paraping.git
+cd paraping
 python -m pip install -r requirements.txt
 
 # 任意: 特権 ICMP ヘルパーをビルド（Linux のみ）
@@ -85,15 +85,15 @@ sudo make setcap
 
 ## 使い方
 
-![MultiPing デモ](docs/images/usage-demo.gif)
+![ParaPing デモ](docs/images/usage-demo.gif)
 
 ```bash
-./multiping [options] <host1> <host2> ...
+./paraping [options] <host1> <host2> ...
 ```
 
 例（ホスト一覧ファイルと 2 秒タイムアウト）:
 ```bash
-./multiping -t 2 -f hosts.txt
+./paraping -t 2 -f hosts.txt
 ```
 
 ### コマンドラインオプション
@@ -126,7 +126,7 @@ sudo make setcap
 - `w`: サマリーパネルの表示切替。
 - `W`: サマリーパネルの配置切替（左/右/上/下）。
 - `p`: 一時停止/再開（表示のみ or ping + 表示）。
-- `s`: `multiping_snapshot_YYYYMMDD_HHMMSS.txt` を保存。
+- `s`: `paraping_snapshot_YYYYMMDD_HHMMSS.txt` を保存。
 - `←` / `→`: 1 ページ単位で過去/未来へ移動（閲覧中も履歴は記録され、ライブ表示に戻るまで画面は固定）。
 - `↑` / `↓`: ホスト一覧が画面に収まらない場合にスクロール。
 - `H`: ヘルプ表示（任意キーで閉じる）。
