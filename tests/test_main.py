@@ -38,6 +38,7 @@ from main import (
     build_display_names,
     format_display_name,
     compute_summary_data,
+    should_flash_on_fail,
     render_summary_view,
     format_timestamp,
     format_timezone_label,
@@ -112,33 +113,98 @@ class TestHandleOptions(unittest.TestCase):
             args = handle_options()
             self.assertEqual(args.count, 0)
 
+    def test_short_options_for_long_flags(self):
+        """Test short options that mirror long-only flags"""
+        with patch(
+            "sys.argv",
+            [
+                "main.py",
+                "-s",
+                "0.7",
+                "-P",
+                "left",
+                "-m",
+                "ping",
+                "-z",
+                "Asia/Tokyo",
+                "-Z",
+                "display",
+                "-F",
+                "-B",
+                "-C",
+                "-H",
+                "/tmp/ping_helper",
+                "example.com",
+            ],
+        ):
+            args = handle_options()
+            self.assertEqual(args.slow_threshold, 0.7)
+            self.assertEqual(args.panel_position, "left")
+            self.assertEqual(args.pause_mode, "ping")
+            self.assertEqual(args.timezone, "Asia/Tokyo")
+            self.assertEqual(args.snapshot_timezone, "display")
+            self.assertTrue(args.flash_on_fail)
+            self.assertTrue(args.bell_on_fail)
+            self.assertTrue(args.color)
+            self.assertEqual(args.ping_helper, "/tmp/ping_helper")
+
 
 class TestReadInputFile(unittest.TestCase):
     """Test input file reading functionality"""
 
     def test_read_valid_file(self):
         """Test reading a valid input file"""
-        file_content = "host1.com\nhost2.com\nhost3.com\n"
+        file_content = "192.168.0.1,host1\n192.168.0.2,host2\n192.168.0.3,host3\n"
         with patch("builtins.open", mock_open(read_data=file_content)):
             hosts = read_input_file("test.txt")
             self.assertEqual(len(hosts), 3)
-            self.assertEqual(hosts, ["host1.com", "host2.com", "host3.com"])
+            self.assertEqual(
+                hosts,
+                [
+                    {"host": "192.168.0.1", "alias": "host1", "ip": "192.168.0.1"},
+                    {"host": "192.168.0.2", "alias": "host2", "ip": "192.168.0.2"},
+                    {"host": "192.168.0.3", "alias": "host3", "ip": "192.168.0.3"},
+                ],
+            )
 
     def test_read_file_with_comments(self):
         """Test reading file with comments"""
-        file_content = "host1.com\n# This is a comment\nhost2.com\n"
+        file_content = "192.168.0.1,host1\n# This is a comment\n192.168.0.2,host2\n"
         with patch("builtins.open", mock_open(read_data=file_content)):
             hosts = read_input_file("test.txt")
             self.assertEqual(len(hosts), 2)
-            self.assertEqual(hosts, ["host1.com", "host2.com"])
+            self.assertEqual(
+                hosts,
+                [
+                    {"host": "192.168.0.1", "alias": "host1", "ip": "192.168.0.1"},
+                    {"host": "192.168.0.2", "alias": "host2", "ip": "192.168.0.2"},
+                ],
+            )
 
     def test_read_file_with_empty_lines(self):
         """Test reading file with empty lines"""
-        file_content = "host1.com\n\nhost2.com\n\n"
+        file_content = "192.168.0.1,host1\n\n192.168.0.2,host2\n\n"
         with patch("builtins.open", mock_open(read_data=file_content)):
             hosts = read_input_file("test.txt")
             self.assertEqual(len(hosts), 2)
-            self.assertEqual(hosts, ["host1.com", "host2.com"])
+            self.assertEqual(
+                hosts,
+                [
+                    {"host": "192.168.0.1", "alias": "host1", "ip": "192.168.0.1"},
+                    {"host": "192.168.0.2", "alias": "host2", "ip": "192.168.0.2"},
+                ],
+            )
+
+    def test_read_file_with_invalid_lines(self):
+        """Test reading file with invalid lines"""
+        file_content = "HOST1 192.168.0.1\n192.168.0.2,host2\ninvalid,alias\n"
+        with patch("builtins.open", mock_open(read_data=file_content)):
+            hosts = read_input_file("test.txt")
+            self.assertEqual(len(hosts), 1)
+            self.assertEqual(
+                hosts,
+                [{"host": "192.168.0.2", "alias": "host2", "ip": "192.168.0.2"}],
+            )
 
     def test_file_not_found(self):
         """Test handling of missing file"""
@@ -1045,7 +1111,7 @@ class TestColorOutput(unittest.TestCase):
         symbols = {"success": ".", "fail": "x", "slow": "!"}
         timeline = [".", "!", "x"]
         colored = build_colored_timeline(timeline, symbols, use_color=True)
-        self.assertIn("\x1b[34m", colored)
+        self.assertIn("\x1b[37m", colored)
         self.assertIn("\x1b[33m", colored)
         self.assertIn("\x1b[31m", colored)
         self.assertIn("\x1b[0m", colored)
@@ -1058,7 +1124,7 @@ class TestColorOutput(unittest.TestCase):
         colored = build_colored_sparkline(
             sparkline, status_symbols, symbols, use_color=True
         )
-        self.assertIn("\x1b[34m", colored)
+        self.assertIn("\x1b[37m", colored)
         self.assertIn("\x1b[33m", colored)
         self.assertIn("\x1b[31m", colored)
 
@@ -1467,6 +1533,9 @@ class TestFlashAndBell(unittest.TestCase):
         flash_screen()
         # Should have called write to send escape sequences
         self.assertGreaterEqual(mock_stdout.write.call_count, 2)
+        first_write = mock_stdout.write.call_args_list[0][0][0]
+        self.assertIn("\x1b[47m", first_write)
+        self.assertIn("\x1b[30m", first_write)
         # Should have slept for ~0.1 seconds
         mock_sleep.assert_called_once_with(0.1)
         # Should have called flush
@@ -1480,6 +1549,13 @@ class TestFlashAndBell(unittest.TestCase):
         mock_stdout.write.assert_called_once_with("\a")
         # Should flush the output
         mock_stdout.flush.assert_called_once()
+
+    def test_should_flash_on_fail(self):
+        """Test helper for flash-on-fail decision"""
+        self.assertTrue(should_flash_on_fail("fail", True, False))
+        self.assertFalse(should_flash_on_fail("fail", True, True))
+        self.assertFalse(should_flash_on_fail("success", True, False))
+        self.assertFalse(should_flash_on_fail("fail", False, False))
 
 
 class TestArrowKeyNavigation(unittest.TestCase):

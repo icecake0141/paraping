@@ -13,6 +13,7 @@
 
 import argparse
 import copy
+import ipaddress
 import os
 import queue
 import re
@@ -38,9 +39,10 @@ ARROW_KEY_READ_TIMEOUT = 0.01  # Timeout for reading arrow key escape sequences
 ACTIVITY_INDICATOR_WIDTH = 10
 ACTIVITY_INDICATOR_HEIGHT = 4
 ACTIVITY_INDICATOR_SPEED_HZ = 4
+LAST_RENDER_LINES = None
 ANSI_RESET = "\x1b[0m"
 STATUS_COLORS = {
-    "success": "\x1b[34m",  # Blue
+    "success": "\x1b[37m",  # White
     "slow": "\x1b[33m",     # Yellow
     "fail": "\x1b[31m",     # Red
 }
@@ -216,6 +218,7 @@ def handle_options():
         help="Number of ping attempts per host (default: 0 for infinite)",
     )
     parser.add_argument(
+        "-s",
         "--slow-threshold",
         type=float,
         default=0.5,
@@ -238,10 +241,11 @@ def handle_options():
         "-f",
         "--input",
         type=str,
-        help="Input file containing list of hosts (one per line)",
+        help="Input file containing list of hosts (one per line, format: IP,alias)",
         required=False,
     )
     parser.add_argument(
+        "-P",
         "--panel-position",
         type=str,
         default="right",
@@ -249,6 +253,7 @@ def handle_options():
         help="Summary panel position (right|left|top|bottom|none)",
     )
     parser.add_argument(
+        "-m",
         "--pause-mode",
         type=str,
         default="display",
@@ -256,12 +261,14 @@ def handle_options():
         help="Pause behavior: display (stop updates only) or ping (pause ping + updates)",
     )
     parser.add_argument(
+        "-z",
         "--timezone",
         type=str,
         default=None,
         help="Display timezone (IANA name, e.g. Asia/Tokyo). Defaults to UTC.",
     )
     parser.add_argument(
+        "-Z",
         "--snapshot-timezone",
         type=str,
         default="utc",
@@ -269,21 +276,25 @@ def handle_options():
         help="Timezone used in snapshot filename (utc|display). Defaults to utc.",
     )
     parser.add_argument(
+        "-F",
         "--flash-on-fail",
         action="store_true",
-        help="Flash screen (invert colors) when ping fails",
+        help="Flash screen (white background) when ping fails",
     )
     parser.add_argument(
+        "-B",
         "--bell-on-fail",
         action="store_true",
         help="Ring terminal bell when ping fails",
     )
     parser.add_argument(
+        "-C",
         "--color",
         action="store_true",
         help="Enable colored output (blue=success, yellow=slow, red=fail)",
     )
     parser.add_argument(
+        "-H",
         "--ping-helper",
         type=str,
         default="./ping_helper",
@@ -297,18 +308,54 @@ def handle_options():
     return args
 
 
-# Read input file. The file contains a list of hosts (IP addresses or hostnames)
+# Read input file. The file contains a list of hosts (IP addresses and aliases)
+
+
+def parse_host_file_line(line, line_number, input_file):
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#"):
+        return None
+    parts = [part.strip() for part in stripped.split(",")]
+    if len(parts) != 2:
+        print(
+            f"Warning: Invalid host entry at {input_file}:{line_number}. "
+            "Expected format 'IP,alias'.",
+            file=sys.stderr,
+        )
+        return None
+    ip_text, alias = parts
+    if not ip_text or not alias:
+        print(
+            f"Warning: Invalid host entry at {input_file}:{line_number}. "
+            "IP address and alias are required.",
+            file=sys.stderr,
+        )
+        return None
+    try:
+        ip_obj = ipaddress.ip_address(ip_text)
+    except ValueError:
+        print(
+            f"Warning: Invalid IP address at {input_file}:{line_number}: '{ip_text}'.",
+            file=sys.stderr,
+        )
+        return None
+    if ip_obj.version != 4:
+        print(
+            f"Warning: Unsupported IP version at {input_file}:{line_number}: '{ip_text}'.",
+            file=sys.stderr,
+        )
+        return None
+    return {"host": ip_text, "alias": alias, "ip": ip_text}
 
 
 def read_input_file(input_file):
-
     host_list = []
     try:
         with open(input_file, "r") as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#"):  # Skip empty lines and comments
-                    host_list.append(line)
+            for line_number, line in enumerate(f, start=1):
+                entry = parse_host_file_line(line, line_number, input_file)
+                if entry is not None:
+                    host_list.append(entry)
     except FileNotFoundError:
         print(f"Error: Input file '{input_file}' not found.")
         return []
@@ -694,6 +741,7 @@ def render_timeline_view(
     height,
     header,
     use_color=False,
+    scroll_offset=0,
     header_lines=2,
 ):
     if width <= 0 or height <= 0:
@@ -703,7 +751,11 @@ def render_timeline_view(
     width, label_width, timeline_width, visible_hosts = compute_main_layout(
         host_labels, width, height, header_lines
     )
-    truncated_entries = display_entries[:visible_hosts]
+    max_offset = max(0, len(display_entries) - visible_hosts)
+    scroll_offset = min(max(scroll_offset, 0), max_offset)
+    truncated_entries = display_entries[
+        scroll_offset : scroll_offset + visible_hosts
+    ]
 
     resize_buffers(buffers, timeline_width, symbols)
 
@@ -733,6 +785,7 @@ def render_sparkline_view(
     height,
     header,
     use_color=False,
+    scroll_offset=0,
     header_lines=2,
 ):
     if width <= 0 or height <= 0:
@@ -742,7 +795,11 @@ def render_sparkline_view(
     width, label_width, timeline_width, visible_hosts = compute_main_layout(
         host_labels, width, height, header_lines
     )
-    truncated_entries = display_entries[:visible_hosts]
+    max_offset = max(0, len(display_entries) - visible_hosts)
+    scroll_offset = min(max(scroll_offset, 0), max_offset)
+    truncated_entries = display_entries[
+        scroll_offset : scroll_offset + visible_hosts
+    ]
 
     resize_buffers(buffers, timeline_width, symbols)
 
@@ -780,6 +837,7 @@ def render_main_view(
     timestamp,
     activity_indicator="",
     use_color=False,
+    scroll_offset=0,
     header_lines=2,
 ):
     pause_label = "PAUSED" if paused else "LIVE"
@@ -797,6 +855,7 @@ def render_main_view(
             height,
             header,
             use_color,
+            scroll_offset,
             header_lines,
         )
     return render_timeline_view(
@@ -807,6 +866,7 @@ def render_main_view(
         height,
         header,
         use_color,
+        scroll_offset,
         header_lines,
     )
 
@@ -892,6 +952,7 @@ def build_status_line(
     paused,
     status_message=None,
     summary_all=False,
+    summary_fullscreen=False,
 ):
     sort_labels = {
         "failures": "Failure Count",
@@ -914,6 +975,8 @@ def build_status_line(
     filter_label = filter_labels.get(filter_mode, filter_mode)
     summary_label = "All" if summary_all else summary_labels.get(summary_mode, summary_mode)
     status = f"Sort: {sort_label} | Filter: {filter_label} | Summary: {summary_label}"
+    if summary_fullscreen:
+        status += " | Summary View: Fullscreen"
     if paused:
         status += " | PAUSED"
     if status_message:
@@ -949,11 +1012,13 @@ def render_help_view(width, height):
         "  f : cycle filter (failures/latency/all)",
         "  a : toggle ASN display",
         "  m : cycle summary info (rates/rtt/ttl/streak)",
+        "  F : toggle summary fullscreen view",
         "  w : toggle summary panel on/off",
         "  W : cycle summary panel position (left/right/top/bottom)",
         "  p : pause/resume display",
         "  s : save snapshot to file",
         "  <- / -> : navigate backward/forward in time (1 page)",
+        "  up / down : scroll host list",
         "  H : show help (press any key to close)",
         "  q : quit",
         "",
@@ -1062,6 +1127,52 @@ def get_cached_page_step(
     return cached_page_step, cached_page_step, last_term_size
 
 
+def compute_host_scroll_bounds(
+    host_infos,
+    buffers,
+    stats,
+    symbols,
+    panel_position,
+    mode_label,
+    sort_mode,
+    filter_mode,
+    slow_threshold,
+    show_asn,
+    asn_width=8,
+    header_lines=2,
+):
+    term_size = get_terminal_size(fallback=(80, 24))
+    term_width = term_size.columns
+    term_height = term_size.lines
+
+    include_asn = should_show_asn(
+        host_infos, mode_label, show_asn, term_width, asn_width=asn_width
+    )
+    display_names = build_display_names(host_infos, mode_label, include_asn, asn_width)
+    main_width, main_height, _, _, _ = compute_panel_sizes(
+        term_width, term_height, panel_position
+    )
+    display_entries = build_display_entries(
+        host_infos,
+        display_names,
+        buffers,
+        stats,
+        symbols,
+        sort_mode,
+        filter_mode,
+        slow_threshold,
+    )
+    host_labels = [entry[1] for entry in display_entries]
+    if not host_labels:
+        host_labels = [info["alias"] for info in host_infos]
+    _, _, _, visible_hosts = compute_main_layout(
+        host_labels, main_width, main_height, header_lines
+    )
+    total_hosts = len(display_entries)
+    max_offset = max(0, total_hosts - visible_hosts)
+    return max_offset, visible_hosts, total_hosts
+
+
 def build_display_lines(
     host_infos,
     buffers,
@@ -1081,6 +1192,8 @@ def build_display_lines(
     timestamp,
     activity_indicator="",
     use_color=False,
+    host_scroll_offset=0,
+    summary_fullscreen=False,
     asn_width=8,
     header_lines=2,
 ):
@@ -1126,35 +1239,51 @@ def build_display_lines(
         symbols,
         ordered_host_ids=[host_id for host_id, _label in display_entries],
     )
-    main_lines = render_main_view(
-        display_entries,
-        buffers,
-        symbols,
-        main_width,
-        main_height,
-        mode_label,
-        display_mode,
-        paused,
-        timestamp,
-        activity_indicator,
-        use_color,
-        header_lines,
-    )
-    summary_all = resolved_position in ("top", "bottom") and can_render_full_summary(
-        summary_data, summary_width
-    )
-    summary_lines = render_summary_view(
-        summary_data,
-        summary_width,
-        summary_height,
-        summary_mode,
-        prefer_all=summary_all,
-    )
+    summary_all = False
+    main_lines = []
+    summary_lines = []
+    if summary_fullscreen:
+        summary_all = can_render_full_summary(summary_data, term_width)
+        summary_lines = render_summary_view(
+            summary_data,
+            term_width,
+            term_height,
+            summary_mode,
+            prefer_all=summary_all,
+        )
+    else:
+        main_lines = render_main_view(
+            display_entries,
+            buffers,
+            symbols,
+            main_width,
+            main_height,
+            mode_label,
+            display_mode,
+            paused,
+            timestamp,
+            activity_indicator,
+            use_color,
+            host_scroll_offset,
+            header_lines,
+        )
+        summary_all = resolved_position in ("top", "bottom") and can_render_full_summary(
+            summary_data, summary_width
+        )
+        summary_lines = render_summary_view(
+            summary_data,
+            summary_width,
+            summary_height,
+            summary_mode,
+            prefer_all=summary_all,
+        )
 
     gap = " "
     combined_lines = []
     if show_help:
         combined_lines = render_help_view(term_width, term_height)
+    elif summary_fullscreen:
+        combined_lines = summary_lines
     elif resolved_position in ("left", "right"):
         for main_line, summary_line in zip(main_lines, summary_lines):
             if resolved_position == "left":
@@ -1175,6 +1304,7 @@ def build_display_lines(
         paused,
         status_message,
         summary_all=summary_all,
+        summary_fullscreen=summary_fullscreen,
     )
     if combined_lines:
         combined_lines[-1] = status_line[:term_width].ljust(term_width)
@@ -1200,9 +1330,12 @@ def render_display(
     status_message,
     display_tz,
     use_color=False,
+    host_scroll_offset=0,
+    summary_fullscreen=False,
     asn_width=8,
     header_lines=2,
 ):
+    global LAST_RENDER_LINES
     now_utc = datetime.now(timezone.utc)
     timestamp = format_timestamp(now_utc, display_tz)
     activity_indicator = ""
@@ -1227,11 +1360,38 @@ def render_display(
         timestamp,
         activity_indicator,
         use_color,
+        host_scroll_offset,
+        summary_fullscreen,
         asn_width,
         header_lines,
     )
+    if not combined_lines:
+        return
 
-    print("\x1b[2J\x1b[H" + "\n".join(combined_lines), end="", flush=True)
+    if LAST_RENDER_LINES is None:
+        sys.stdout.write("\x1b[2J\x1b[H")
+        output_chunks = []
+        for index, line in enumerate(combined_lines):
+            output_chunks.append(f"\x1b[{index + 1};1H\x1b[2K{line}")
+        sys.stdout.write("".join(output_chunks))
+        sys.stdout.flush()
+        LAST_RENDER_LINES = combined_lines
+        return
+
+    max_lines = max(len(LAST_RENDER_LINES), len(combined_lines))
+    output_chunks = []
+    for index in range(max_lines):
+        previous_line = LAST_RENDER_LINES[index] if index < len(LAST_RENDER_LINES) else None
+        current_line = combined_lines[index] if index < len(combined_lines) else ""
+        if previous_line == current_line and index < len(combined_lines):
+            continue
+        output_chunks.append(f"\x1b[{index + 1};1H\x1b[2K{current_line}")
+
+    if output_chunks:
+        sys.stdout.write("".join(output_chunks))
+        sys.stdout.flush()
+
+    LAST_RENDER_LINES = combined_lines
 
 
 def format_timezone_label(now_utc, display_tz):
@@ -1325,15 +1485,24 @@ def build_display_names(host_infos, mode, include_asn, asn_width):
 def build_host_infos(hosts):
     host_infos = []
     host_map = {}
-    for index, host in enumerate(hosts):
-        try:
-            ip_address = socket.gethostbyname(host)
-        except (socket.gaierror, OSError):
-            ip_address = host
+    for index, entry in enumerate(hosts):
+        if isinstance(entry, str):
+            host = entry
+            alias = entry
+            ip_address = None
+        else:
+            host = entry.get("host") or entry.get("ip")
+            alias = entry.get("alias") or host
+            ip_address = entry.get("ip")
+        if not ip_address:
+            try:
+                ip_address = socket.gethostbyname(host)
+            except (socket.gaierror, OSError):
+                ip_address = host
         info = {
             "id": index,
             "host": host,
-            "alias": host,
+            "alias": alias,
             "ip": ip_address,
             "rdns": None,
             "rdns_pending": False,
@@ -1470,25 +1639,32 @@ def read_key():
 
 
 def flash_screen():
-    """Flash the screen by inverting colors for ~100ms"""
+    """Flash the screen with a white background for ~100ms"""
     if not sys.stdout.isatty():
         return
     # ANSI escape sequences for visual flash effect
     SAVE_CURSOR = "\x1b7"           # Save cursor position
-    INVERT_COLORS = "\x1b[7m"       # Invert colors (white bg, black fg)
+    SET_WHITE_BG = "\x1b[47m"       # White background
+    SET_BLACK_FG = "\x1b[30m"       # Black foreground
     CLEAR_SCREEN = "\x1b[2J"        # Clear screen
     MOVE_HOME = "\x1b[H"            # Move cursor to home position
-    RESTORE_COLORS = "\x1b[27m"     # Restore normal colors
     RESTORE_CURSOR = "\x1b8"        # Restore cursor position
     FLASH_DURATION_SECONDS = 0.1    # Duration of flash effect
 
-    # Apply inverted colors and clear screen
-    sys.stdout.write(SAVE_CURSOR + INVERT_COLORS + CLEAR_SCREEN + MOVE_HOME)
+    # Apply white flash effect and clear screen
+    sys.stdout.write(
+        SAVE_CURSOR + SET_WHITE_BG + SET_BLACK_FG + CLEAR_SCREEN + MOVE_HOME
+    )
     sys.stdout.flush()
     time.sleep(FLASH_DURATION_SECONDS)
     # Restore normal display
-    sys.stdout.write(RESTORE_COLORS + RESTORE_CURSOR)
+    sys.stdout.write(ANSI_RESET + RESTORE_CURSOR)
     sys.stdout.flush()
+
+
+def should_flash_on_fail(status, flash_on_fail, show_help):
+    """Return True when the failure flash should be displayed."""
+    return status == "fail" and flash_on_fail and not show_help
 
 
 def ring_bell():
@@ -1562,6 +1738,14 @@ def update_history_buffer(
     return last_snapshot_time, history_offset
 
 
+def prepare_terminal_for_exit():
+    if not sys.stdout.isatty():
+        return
+    term_size = get_terminal_size(fallback=(80, 24))
+    sys.stdout.write("\n" * term_size.lines)
+    sys.stdout.flush()
+
+
 def main(args):
 
     # Validate count parameter - allow 0 for infinite
@@ -1582,7 +1766,7 @@ def main(args):
 
     # Add hosts from command line arguments
     if args.hosts:
-        all_hosts.extend(args.hosts)
+        all_hosts.extend({"host": host, "alias": host} for host in args.hosts)
 
     # Add hosts from input file if provided
     if args.input:
@@ -1649,6 +1833,7 @@ def main(args):
     display_mode_index = 0
     summary_modes = ["rates", "rtt", "ttl", "streak"]
     summary_mode_index = 0
+    summary_fullscreen = False
     sort_modes = ["failures", "streak", "latency", "host"]
     sort_mode_index = 0
     filter_modes = ["failures", "latency", "all"]
@@ -1680,6 +1865,7 @@ def main(args):
     # Cache page step to avoid expensive recalculation on every arrow key press
     cached_page_step = None
     last_term_size = None
+    host_scroll_offset = 0
 
     rdns_request_queue = queue.Queue()
     rdns_result_queue = queue.Queue()
@@ -1789,6 +1975,15 @@ def main(args):
                             f"Summary: {summary_modes[summary_mode_index].upper()}"
                         )
                         updated = True
+                    elif key == "F":
+                        summary_fullscreen = not summary_fullscreen
+                        status_message = (
+                            "Summary fullscreen view enabled"
+                            if summary_fullscreen
+                            else "Summary fullscreen view disabled"
+                        )
+                        force_render = True
+                        updated = True
                     elif key == "w":
                         panel_position, last_panel_position = toggle_panel_visibility(
                             panel_position,
@@ -1854,6 +2049,8 @@ def main(args):
                             format_timestamp(now_utc, display_tz),
                             "",
                             False,
+                            host_scroll_offset,
+                            summary_fullscreen,
                         )
                         with open(
                             snapshot_name, "w", encoding="utf-8"
@@ -1913,6 +2110,66 @@ def main(args):
                                 snapshot = history_buffer[-(history_offset + 1)]
                                 elapsed_seconds = int(time.time() - snapshot["timestamp"])
                                 status_message = f"Viewing {elapsed_seconds}s ago"
+                    elif key == "arrow_up":
+                        scroll_buffers = buffers
+                        scroll_stats = stats
+                        if history_offset > 0 and history_offset <= len(history_buffer):
+                            snapshot = history_buffer[-(history_offset + 1)]
+                            scroll_buffers = snapshot["buffers"]
+                            scroll_stats = snapshot["stats"]
+                        max_offset, visible_hosts, total_hosts = compute_host_scroll_bounds(
+                            host_infos,
+                            scroll_buffers,
+                            scroll_stats,
+                            symbols,
+                            panel_position,
+                            modes[mode_index],
+                            sort_modes[sort_mode_index],
+                            filter_modes[filter_mode_index],
+                            args.slow_threshold,
+                            show_asn,
+                        )
+                        if host_scroll_offset > 0 and total_hosts > 0:
+                            host_scroll_offset = max(0, host_scroll_offset - 1)
+                            end_index = min(
+                                host_scroll_offset + visible_hosts, total_hosts
+                            )
+                            status_message = (
+                                f"Hosts {host_scroll_offset + 1}-{end_index} "
+                                f"of {total_hosts}"
+                            )
+                            force_render = True
+                            updated = True
+                    elif key == "arrow_down":
+                        scroll_buffers = buffers
+                        scroll_stats = stats
+                        if history_offset > 0 and history_offset <= len(history_buffer):
+                            snapshot = history_buffer[-(history_offset + 1)]
+                            scroll_buffers = snapshot["buffers"]
+                            scroll_stats = snapshot["stats"]
+                        max_offset, visible_hosts, total_hosts = compute_host_scroll_bounds(
+                            host_infos,
+                            scroll_buffers,
+                            scroll_stats,
+                            symbols,
+                            panel_position,
+                            modes[mode_index],
+                            sort_modes[sort_mode_index],
+                            filter_modes[filter_mode_index],
+                            args.slow_threshold,
+                            show_asn,
+                        )
+                        if host_scroll_offset < max_offset and total_hosts > 0:
+                            host_scroll_offset = min(max_offset, host_scroll_offset + 1)
+                            end_index = min(
+                                host_scroll_offset + visible_hosts, total_hosts
+                            )
+                            status_message = (
+                                f"Hosts {host_scroll_offset + 1}-{end_index} "
+                                f"of {total_hosts}"
+                            )
+                            force_render = True
+                            updated = True
 
                 while True:
                     try:
@@ -1978,9 +2235,9 @@ def main(args):
                         stats[host_id]["rtt_count"] += 1
 
                     # Trigger flash or bell on ping failure
+                    if should_flash_on_fail(status, args.flash_on_fail, show_help):
+                        flash_screen()
                     if status == "fail":
-                        if args.flash_on_fail:
-                            flash_screen()
                         if args.bell_on_fail:
                             ring_bell()
 
@@ -2014,6 +2271,20 @@ def main(args):
                 if force_render or (
                     not paused and (updated or (now - last_render) >= refresh_interval)
                 ):
+                    max_offset, _visible_hosts, _total_hosts = compute_host_scroll_bounds(
+                        host_infos,
+                        render_buffers,
+                        render_stats,
+                        symbols,
+                        panel_position,
+                        modes[mode_index],
+                        sort_modes[sort_mode_index],
+                        filter_modes[filter_mode_index],
+                        args.slow_threshold,
+                        show_asn,
+                    )
+                    if host_scroll_offset > max_offset:
+                        host_scroll_offset = max_offset
                     render_display(
                         host_infos,
                         render_buffers,
@@ -2032,6 +2303,8 @@ def main(args):
                         status_message,
                         display_tz,
                         use_color,
+                        host_scroll_offset,
+                        summary_fullscreen,
                     )
                     last_render = now
                     updated = False
@@ -2051,6 +2324,7 @@ def main(args):
             if stdin_fd is not None and original_term is not None:
                 termios.tcsetattr(stdin_fd, termios.TCSADRAIN, original_term)
 
+    prepare_terminal_for_exit()
     print("\n" + "=" * 60)
     print("SUMMARY")
     print("=" * 60)
