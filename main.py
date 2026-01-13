@@ -63,8 +63,8 @@ LAST_RENDER_LINES = None
 ANSI_RESET = "\x1b[0m"
 STATUS_COLORS = {
     "success": "\x1b[37m",  # White
-    "slow": "\x1b[33m",     # Yellow
-    "fail": "\x1b[31m",     # Red
+    "slow": "\x1b[33m",  # Yellow
+    "fail": "\x1b[31m",  # Red
 }
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
 
@@ -574,6 +574,24 @@ def pad_lines(lines, width, height):
     return padded
 
 
+def resolve_boxed_dimensions(width, height, boxed):
+    if not boxed or width < 2 or height < 3:
+        return width, height, False
+    return width - 2, height - 2, True
+
+
+def box_lines(lines, width, height):
+    inner_width, inner_height, can_box = resolve_boxed_dimensions(width, height, True)
+    if not can_box:
+        return pad_lines(lines, width, height)
+    inner_lines = pad_lines(lines, inner_width, inner_height)
+    border = "-" * inner_width
+    boxed = [f"+{border}+"]
+    boxed.extend(f"|{line}|" for line in inner_lines)
+    boxed.append(f"+{border}+")
+    return boxed
+
+
 def compute_summary_data(
     host_infos,
     display_names,
@@ -705,24 +723,36 @@ def format_summary_line(entry, width, summary_mode, prefer_all=False):
     return full_line[:width]
 
 
-def render_summary_view(summary_data, width, height, summary_mode, prefer_all=False):
+def render_summary_view(
+    summary_data,
+    width,
+    height,
+    summary_mode,
+    prefer_all=False,
+    boxed=False,
+):
     if width <= 0 or height <= 0:
         return []
 
+    render_width, render_height, can_box = resolve_boxed_dimensions(
+        width, height, boxed
+    )
     mode_labels = {
         "rates": "Rates",
         "rtt": "Avg RTT",
         "ttl": "TTL",
         "streak": "Streak",
     }
-    allow_all = prefer_all and can_render_full_summary(summary_data, width)
+    allow_all = prefer_all and can_render_full_summary(summary_data, render_width)
     mode_label = "All" if allow_all else mode_labels.get(summary_mode, "Rates")
-    lines = [f"Summary ({mode_label})", "-" * width]
+    lines = [f"Summary ({mode_label})", "-" * render_width]
     for entry in summary_data:
         lines.append(
-            format_summary_line(entry, width, summary_mode, prefer_all=allow_all)
+            format_summary_line(entry, render_width, summary_mode, prefer_all=allow_all)
         )
 
+    if can_box:
+        return box_lines(lines, width, height)
     return pad_lines(lines, width, height)
 
 
@@ -767,25 +797,27 @@ def render_timeline_view(
     use_color=False,
     scroll_offset=0,
     header_lines=2,
+    boxed=False,
 ):
     if width <= 0 or height <= 0:
         return []
 
+    render_width, render_height, can_box = resolve_boxed_dimensions(
+        width, height, boxed
+    )
     host_labels = [entry[1] for entry in display_entries]
-    width, label_width, timeline_width, visible_hosts = compute_main_layout(
-        host_labels, width, height, header_lines
+    render_width, label_width, timeline_width, visible_hosts = compute_main_layout(
+        host_labels, render_width, render_height, header_lines
     )
     max_offset = max(0, len(display_entries) - visible_hosts)
     scroll_offset = min(max(scroll_offset, 0), max_offset)
-    truncated_entries = display_entries[
-        scroll_offset: scroll_offset + visible_hosts
-    ]
+    truncated_entries = display_entries[scroll_offset : scroll_offset + visible_hosts]
 
     resize_buffers(buffers, timeline_width, symbols)
 
     lines = []
     lines.append(header)
-    lines.append("".join("-" for _ in range(width)))
+    lines.append("".join("-" for _ in range(render_width)))
     for host, label in truncated_entries:
         timeline_symbols = list(buffers[host]["timeline"])
         timeline = build_colored_timeline(timeline_symbols, symbols, use_color)
@@ -798,6 +830,8 @@ def render_timeline_view(
         remaining = len(display_entries) - len(truncated_entries)
         lines.append(f"... ({remaining} host(s) not shown)")
 
+    if can_box:
+        return box_lines(lines, width, height)
     return pad_lines(lines, width, height)
 
 
@@ -811,25 +845,27 @@ def render_sparkline_view(
     use_color=False,
     scroll_offset=0,
     header_lines=2,
+    boxed=False,
 ):
     if width <= 0 or height <= 0:
         return []
 
+    render_width, render_height, can_box = resolve_boxed_dimensions(
+        width, height, boxed
+    )
     host_labels = [entry[1] for entry in display_entries]
-    width, label_width, timeline_width, visible_hosts = compute_main_layout(
-        host_labels, width, height, header_lines
+    render_width, label_width, timeline_width, visible_hosts = compute_main_layout(
+        host_labels, render_width, render_height, header_lines
     )
     max_offset = max(0, len(display_entries) - visible_hosts)
     scroll_offset = min(max(scroll_offset, 0), max_offset)
-    truncated_entries = display_entries[
-        scroll_offset: scroll_offset + visible_hosts
-    ]
+    truncated_entries = display_entries[scroll_offset : scroll_offset + visible_hosts]
 
     resize_buffers(buffers, timeline_width, symbols)
 
     lines = []
     lines.append(header)
-    lines.append("".join("-" for _ in range(width)))
+    lines.append("".join("-" for _ in range(render_width)))
     for host, label in truncated_entries:
         rtt_values = list(buffers[host]["rtt_history"])[-timeline_width:]
         status_symbols = list(buffers[host]["timeline"])[-timeline_width:]
@@ -846,6 +882,8 @@ def render_sparkline_view(
         remaining = len(display_entries) - len(truncated_entries)
         lines.append(f"... ({remaining} host(s) not shown)")
 
+    if can_box:
+        return box_lines(lines, width, height)
     return pad_lines(lines, width, height)
 
 
@@ -863,6 +901,7 @@ def render_main_view(
     use_color=False,
     scroll_offset=0,
     header_lines=2,
+    boxed=False,
 ):
     pause_label = "PAUSED" if paused else "LIVE"
     header = (
@@ -881,6 +920,7 @@ def render_main_view(
             use_color,
             scroll_offset,
             header_lines,
+            boxed,
         )
     return render_timeline_view(
         display_entries,
@@ -892,6 +932,7 @@ def render_main_view(
         use_color,
         scroll_offset,
         header_lines,
+        boxed,
     )
 
 
@@ -1008,6 +1049,17 @@ def build_status_line(
     return status
 
 
+def render_status_box(status_line, width):
+    if width <= 0:
+        return []
+    if width < 2:
+        return [status_line[:width]]
+    inner_width = width - 2
+    content = pad_visible(status_line[:inner_width], inner_width)
+    border = "-" * inner_width
+    return [f"+{border}+", f"|{content}|", f"+{border}+"]
+
+
 def toggle_panel_visibility(
     current_position, last_visible_position, default_position="right"
 ):
@@ -1025,7 +1077,10 @@ def cycle_panel_position(current_position, default_position="right"):
     return positions[next_index]
 
 
-def render_help_view(width, height):
+def render_help_view(width, height, boxed=False):
+    render_width, render_height, can_box = resolve_boxed_dimensions(
+        width, height, boxed
+    )
     lines = [
         "ParaPing - Help",
         "-" * width,
@@ -1048,6 +1103,8 @@ def render_help_view(width, height):
         "  H: show help (Press any key to close)",
         "  q: quit",
     ]
+    if can_box:
+        return box_lines(lines, width, height)
     return pad_lines(lines, width, height)
 
 
@@ -1196,13 +1253,15 @@ def compute_history_page_step(
     term_size = get_terminal_size(fallback=(80, 24))
     term_width = term_size.columns
     term_height = term_size.lines
+    status_box_height = 3 if term_height >= 4 and term_width >= 2 else 1
+    panel_height = max(1, term_height - status_box_height)
 
     include_asn = should_show_asn(
         host_infos, mode_label, show_asn, term_width, asn_width=asn_width
     )
     display_names = build_display_names(host_infos, mode_label, include_asn, asn_width)
     main_width, main_height, _, _, _ = compute_panel_sizes(
-        term_width, term_height, panel_position
+        term_width, panel_height, panel_position
     )
     display_entries = build_display_entries(
         host_infos,
@@ -1354,6 +1413,9 @@ def build_display_lines(
     term_height = term_size.lines
     min_main_height = 5
     gap_size = 1
+    use_panel_boxes = True
+    status_box_height = 3 if term_height >= 4 and term_width >= 2 else 1
+    panel_height = max(1, term_height - status_box_height)
 
     include_asn = should_show_asn(
         host_infos, mode_label, show_asn, term_width, asn_width=asn_width
@@ -1372,17 +1434,22 @@ def build_display_lines(
     )
     main_width, main_height, summary_width, summary_height, resolved_position = (
         compute_panel_sizes(
-            term_width, term_height, panel_position, min_main_height=min_main_height
+            term_width,
+            panel_height,
+            panel_position,
+            min_main_height=min_main_height,
         )
     )
     if resolved_position in ("top", "bottom") and summary_height > 0:
         required_main_height = header_lines + len(display_entries)
+        if use_panel_boxes:
+            required_main_height += 2
         adjusted_main_height = max(
             min_main_height, min(main_height, required_main_height)
         )
         if adjusted_main_height < main_height:
             main_height = adjusted_main_height
-            summary_height = term_height - main_height - gap_size
+            summary_height = panel_height - main_height - gap_size
     summary_data = compute_summary_data(
         host_infos,
         display_names,
@@ -1399,9 +1466,10 @@ def build_display_lines(
         summary_lines = render_summary_view(
             summary_data,
             term_width,
-            term_height,
+            panel_height,
             summary_mode,
             prefer_all=summary_all,
+            boxed=use_panel_boxes,
         )
     else:
         main_lines = render_main_view(
@@ -1418,22 +1486,27 @@ def build_display_lines(
             use_color,
             host_scroll_offset,
             header_lines,
+            boxed=use_panel_boxes,
         )
-        summary_all = resolved_position in ("top", "bottom") and can_render_full_summary(
-            summary_data, summary_width
-        )
+        summary_all = resolved_position in (
+            "top",
+            "bottom",
+        ) and can_render_full_summary(summary_data, summary_width)
         summary_lines = render_summary_view(
             summary_data,
             summary_width,
             summary_height,
             summary_mode,
             prefer_all=summary_all,
+            boxed=use_panel_boxes,
         )
 
     gap = " "
     combined_lines = []
     if show_help:
-        combined_lines = render_help_view(term_width, term_height)
+        combined_lines = render_help_view(
+            term_width, panel_height, boxed=use_panel_boxes
+        )
     elif summary_fullscreen:
         combined_lines = summary_lines
     elif resolved_position in ("left", "right"):
@@ -1458,10 +1531,17 @@ def build_display_lines(
         summary_all=summary_all,
         summary_fullscreen=summary_fullscreen,
     )
-    if combined_lines:
-        combined_lines[-1] = status_line[:term_width].ljust(term_width)
+    if panel_height > 0:
+        combined_lines = pad_lines(combined_lines, term_width, panel_height)
 
-    return combined_lines
+    if status_box_height == 1:
+        status_lines = [status_line[:term_width].ljust(term_width)]
+    else:
+        status_lines = render_status_box(status_line, term_width)
+
+    if panel_height <= 0:
+        return status_lines
+    return combined_lines + status_lines
 
 
 def render_display(
