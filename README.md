@@ -30,6 +30,7 @@ MultiPing is an interactive, terminal-based ICMP monitor that pings many hosts i
 - Optional colored output for success/slow/fail states.
 - Pause modes: freeze display only or pause ping + display.
 - Snapshot export to a timestamped text file.
+- Fullscreen ASCII RTT graph per host (selectable via TUI).
 - Configurable timezone for timestamps and snapshot naming.
 - Input file support for host lists (one per line in `IP,alias` format; comments allowed).
 
@@ -119,6 +120,7 @@ Example (explicit IPv4 addresses only):
 ### Interactive Controls
 - `n`: Cycle display name mode (ip/rdns/alias).
 - `v`: Toggle view (timeline/sparkline).
+- `g`: Open host selection for fullscreen RTT graph.
 - `o`: Cycle sort (failures/streak/latency/host).
 - `f`: Cycle filter (failures/latency/all).
 - `a`: Toggle ASN display (auto hides when space is tight).
@@ -133,6 +135,7 @@ Example (explicit IPv4 addresses only):
 - `←` / `→`: Navigate backward/forward in time by one page. History keeps recording while browsing; the view is frozen until you return to live.
 - `↑` / `↓`: Scroll the host list when it exceeds the terminal height.
 - `H`: Show help (press any key to close).
+- `ESC`: Exit fullscreen graph/selection.
 - `q`: Quit.
 
 ### Timeline/Sparkline Legend
