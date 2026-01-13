@@ -38,6 +38,7 @@ ARROW_KEY_READ_TIMEOUT = 0.01  # Timeout for reading arrow key escape sequences
 ACTIVITY_INDICATOR_WIDTH = 10
 ACTIVITY_INDICATOR_HEIGHT = 4
 ACTIVITY_INDICATOR_SPEED_HZ = 4
+LAST_RENDER_LINES = None
 ANSI_RESET = "\x1b[0m"
 STATUS_COLORS = {
     "success": "\x1b[34m",  # Blue
@@ -1147,6 +1148,7 @@ def render_display(
     asn_width=8,
     header_lines=2,
 ):
+    global LAST_RENDER_LINES
     now_utc = datetime.now(timezone.utc)
     timestamp = format_timestamp(now_utc, display_tz)
     activity_indicator = ""
@@ -1174,8 +1176,29 @@ def render_display(
         asn_width,
         header_lines,
     )
+    if not combined_lines:
+        return
 
-    print("\x1b[2J\x1b[H" + "\n".join(combined_lines), end="", flush=True)
+    if LAST_RENDER_LINES is None:
+        sys.stdout.write("\x1b[2J\x1b[H" + "\n".join(combined_lines))
+        sys.stdout.flush()
+        LAST_RENDER_LINES = combined_lines
+        return
+
+    max_lines = max(len(LAST_RENDER_LINES), len(combined_lines))
+    output_chunks = []
+    for index in range(max_lines):
+        previous_line = LAST_RENDER_LINES[index] if index < len(LAST_RENDER_LINES) else None
+        current_line = combined_lines[index] if index < len(combined_lines) else ""
+        if previous_line == current_line and index < len(combined_lines):
+            continue
+        output_chunks.append(f"\x1b[{index + 1};1H\x1b[2K{current_line}")
+
+    if output_chunks:
+        sys.stdout.write("".join(output_chunks))
+        sys.stdout.flush()
+
+    LAST_RENDER_LINES = combined_lines
 
 
 def format_timezone_label(now_utc, display_tz):
