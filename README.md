@@ -12,9 +12,9 @@ This file was created or modified with the assistance of an AI (Large Language M
 Review required for correctness, security, and licensing.
 -->
 
-# MultiPing
+# ParaPing
 
-MultiPing is an interactive, terminal-based ICMP monitor that pings many hosts in parallel and visualizes results as a live timeline or sparkline. It adds useful operator controls like sorting, filtering, pause modes, snapshots, and optional ASN/rDNS display for fast network triage.
+ParaPing is an interactive, terminal-based ICMP monitor that pings many hosts in parallel and visualizes results as a live timeline or sparkline. It adds useful operator controls like sorting, filtering, pause modes, snapshots, and optional ASN/rDNS display for fast network triage.
 
 > 日本語版 README: [README.ja.md](README.ja.md)
 
@@ -23,6 +23,7 @@ MultiPing is an interactive, terminal-based ICMP monitor that pings many hosts i
 - Live timeline or sparkline visualization with success/slow/fail markers.
 - Animated activity indicator (Knight Rider-style) while pings are running.
 - Summary panel with host statistics, aggregate counts, and TTL display.
+- Boxed panel layout for ping results, summaries, and the status line.
 - Summary host ordering matches the current ping result sort order.
 - Sort and filter results by failures, streaks, latency, or host name.
 - Toggle display name mode: IP, reverse DNS, or alias.
@@ -75,8 +76,8 @@ If `ping_wrapper.py` fails, its JSON output includes an `error` field with detai
 
 ## Installation
 ```bash
-git clone https://github.com/icecake0141/multiping.git
-cd multiping
+git clone https://github.com/icecake0141/paraping.git
+cd paraping
 python -m pip install -r requirements.txt
 
 # Build the privileged ICMP helper (Linux only)
@@ -86,19 +87,19 @@ sudo make setcap
 
 ## Usage
 
-![MultiPing Demo](docs/images/usage-demo.gif)
+![ParaPing Demo](docs/images/usage-demo.gif)
 
 ```bash
-./multiping [options] <host1> <host2> ...
+./paraping [options] <host1> <host2> ...
 ```
 
 Example (with a host list file and 2-second timeout):
 ```bash
-./multiping -t 2 -f hosts.txt
+./paraping -t 2 -f hosts.txt
 ```
 Example (explicit IPv4 addresses only):
 ```bash
-./multiping 1.1.1.1 8.8.8.8
+./paraping 1.1.1.1 8.8.8.8
 ```
 
 ### Command-line Options
@@ -131,7 +132,7 @@ Example (explicit IPv4 addresses only):
 - `w`: Toggle the summary panel on/off.
 - `W`: Cycle summary panel position (left/right/top/bottom).
 - `p`: Pause/resume (display only or ping + display).
-- `s`: Save a snapshot to `multiping_snapshot_YYYYMMDD_HHMMSS.txt`.
+- `s`: Save a snapshot to `paraping_snapshot_YYYYMMDD_HHMMSS.txt`.
 - `←` / `→`: Navigate backward/forward in time by one page. History keeps recording while browsing; the view is frozen until you return to live.
 - `↑` / `↓`: Scroll the host list when it exceeds the terminal height.
 - `H`: Show help (press any key to close).

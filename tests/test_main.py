@@ -11,7 +11,7 @@
 # This file was created or modified with the assistance of an AI (Large Language Model).
 # Review required for correctness, security, and licensing.
 """
-Unit tests for multiping functionality
+Unit tests for paraping functionality
 """
 
 import unittest
@@ -47,6 +47,7 @@ from main import (
     build_status_line,
     build_display_lines,
     get_terminal_size,
+    box_lines,
     flash_screen,
     ring_bell,
     read_key,
@@ -60,6 +61,7 @@ from main import (
     build_activity_indicator,
     build_colored_sparkline,
     build_colored_timeline,
+    render_status_box,
     build_ascii_graph,
     render_host_selection_view,
     render_fullscreen_rtt_graph,
@@ -296,7 +298,9 @@ class TestPingHost(unittest.TestCase):
 
     @patch("main.os.path.exists", return_value=True)
     @patch("main.ping_with_helper")
-    def test_ping_host_with_network_error(self, mock_ping_with_helper, mock_path_exists):
+    def test_ping_host_with_network_error(
+        self, mock_ping_with_helper, mock_path_exists
+    ):
         """Test ping with network error"""
         mock_ping_with_helper.side_effect = OSError("Network unreachable")
 
@@ -546,6 +550,27 @@ class TestHelpView(unittest.TestCase):
         self.assertIn("Press any key to close", combined)
 
 
+class TestBoxedRendering(unittest.TestCase):
+    """Test boxed panel rendering helpers."""
+
+    def test_box_lines_wraps_content(self):
+        """Ensure box_lines adds borders and pads content."""
+        boxed = box_lines(["Hello"], width=7, height=3)
+        self.assertEqual(
+            boxed,
+            [
+                "+-----+",
+                "|Hello|",
+                "+-----+",
+            ],
+        )
+
+    def test_render_status_box_wraps_status_line(self):
+        """Ensure status lines are boxed to the requested width."""
+        boxed = render_status_box("Status", width=10)
+        self.assertEqual(boxed[0], "+--------+")
+        self.assertEqual(boxed[1], "|Status  |")
+        self.assertEqual(boxed[2], "+--------+")
 class TestAsciiGraph(unittest.TestCase):
     """Test ASCII graph rendering helpers."""
 
@@ -610,9 +635,7 @@ class TestLayoutComputation(unittest.TestCase):
 
     def test_compute_panel_sizes_right(self):
         """Test panel size computation with right panel"""
-        main_w, main_h, summ_w, summ_h, pos = compute_panel_sizes(
-            80, 24, "right"
-        )
+        main_w, main_h, summ_w, summ_h, pos = compute_panel_sizes(80, 24, "right")
         self.assertGreater(main_w, 0)
         self.assertGreater(summ_w, 0)
         self.assertEqual(main_h, 24)
@@ -621,9 +644,7 @@ class TestLayoutComputation(unittest.TestCase):
 
     def test_compute_panel_sizes_none(self):
         """Test panel size computation with no panel"""
-        main_w, main_h, summ_w, summ_h, pos = compute_panel_sizes(
-            80, 24, "none"
-        )
+        main_w, main_h, summ_w, summ_h, pos = compute_panel_sizes(80, 24, "none")
         self.assertEqual(main_w, 80)
         self.assertEqual(main_h, 24)
         self.assertEqual(summ_w, 0)
@@ -632,9 +653,7 @@ class TestLayoutComputation(unittest.TestCase):
 
     def test_compute_panel_sizes_too_small(self):
         """Test panel computation falls back to none when terminal too small"""
-        main_w, main_h, summ_w, summ_h, pos = compute_panel_sizes(
-            10, 5, "right"
-        )
+        main_w, main_h, summ_w, summ_h, pos = compute_panel_sizes(10, 5, "right")
         self.assertEqual(pos, "none")
 
     @patch("main.get_terminal_size")
@@ -700,11 +719,9 @@ class TestLayoutComputation(unittest.TestCase):
         )
 
         summary_line_index = next(
-            index
-            for index, line in enumerate(lines)
-            if line.startswith(("Summary (Rates)", "Summary (All)"))
+            index for index, line in enumerate(lines) if "Summary (" in line
         )
-        self.assertEqual(summary_line_index, 9)
+        self.assertEqual(summary_line_index, 12)
         self.assertEqual(len(lines), 23)
 
 
@@ -769,8 +786,22 @@ class TestDisplayNames(unittest.TestCase):
     def test_build_display_names(self):
         """Test building display names for multiple hosts"""
         host_infos = [
-            {"id": 0, "host": "h1.com", "alias": "h1", "ip": "1.1.1.1", "rdns": None, "asn": None},
-            {"id": 1, "host": "h2.com", "alias": "h2", "ip": "2.2.2.2", "rdns": None, "asn": None},
+            {
+                "id": 0,
+                "host": "h1.com",
+                "alias": "h1",
+                "ip": "1.1.1.1",
+                "rdns": None,
+                "asn": None,
+            },
+            {
+                "id": 1,
+                "host": "h2.com",
+                "alias": "h2",
+                "ip": "2.2.2.2",
+                "rdns": None,
+                "asn": None,
+            },
         ]
         names = build_display_names(host_infos, "alias", False, 8)
         self.assertEqual(names[0], "h1")
