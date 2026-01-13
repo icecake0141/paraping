@@ -57,6 +57,7 @@ HISTORY_DURATION_MINUTES = 30  # Store up to 30 minutes of history
 SNAPSHOT_INTERVAL_SECONDS = 1.0  # Take snapshot every second
 ARROW_KEY_READ_TIMEOUT = 0.01  # Timeout for reading arrow key escape sequences
 ACTIVITY_INDICATOR_WIDTH = 10
+ACTIVITY_INDICATOR_EXPANDED_WIDTH = 20
 ACTIVITY_INDICATOR_HEIGHT = 4
 ACTIVITY_INDICATOR_SPEED_HZ = 4
 LAST_RENDER_LINES = None
@@ -213,6 +214,24 @@ def build_activity_indicator(
         height = max(0, peak - abs(index - position))
         levels.append(spark_chars[height] if height > 0 else spark_chars[0])
     return "".join(levels)
+
+
+def compute_activity_indicator_width(
+    panel_width,
+    header_text,
+    default_width=ACTIVITY_INDICATOR_WIDTH,
+    expanded_width=ACTIVITY_INDICATOR_EXPANDED_WIDTH,
+):
+    if panel_width <= 0:
+        return 0
+    remaining = panel_width - visible_len(header_text) - 1
+    if remaining <= 0:
+        return 0
+    if remaining >= expanded_width:
+        return expanded_width
+    if remaining >= default_width:
+        return default_width
+    return remaining
 
 
 # A handler for command line options
@@ -859,17 +878,26 @@ def render_main_view(
     display_mode,
     paused,
     timestamp,
-    activity_indicator="",
+    now_utc,
     use_color=False,
     scroll_offset=0,
     header_lines=2,
 ):
     pause_label = "PAUSED" if paused else "LIVE"
-    header = (
+    header_base = (
         f"MultiPing - {pause_label} results [{mode_label} | {display_mode}] {timestamp}"
     )
+    activity_indicator = ""
+    if not paused:
+        indicator_width = compute_activity_indicator_width(width, header_base)
+        if indicator_width > 0:
+            activity_indicator = build_activity_indicator(
+                now_utc, width=indicator_width
+            )
     if activity_indicator:
-        header = f"{header} {activity_indicator}"
+        header = f"{header_base} {activity_indicator}"
+    else:
+        header = header_base
     if display_mode == "sparkline":
         return render_sparkline_view(
             display_entries,
@@ -1214,7 +1242,7 @@ def build_display_lines(
     paused,
     status_message,
     timestamp,
-    activity_indicator="",
+    now_utc,
     use_color=False,
     host_scroll_offset=0,
     summary_fullscreen=False,
@@ -1286,7 +1314,7 @@ def build_display_lines(
             display_mode,
             paused,
             timestamp,
-            activity_indicator,
+            now_utc,
             use_color,
             host_scroll_offset,
             header_lines,
@@ -1362,9 +1390,6 @@ def render_display(
     global LAST_RENDER_LINES
     now_utc = datetime.now(timezone.utc)
     timestamp = format_timestamp(now_utc, display_tz)
-    activity_indicator = ""
-    if not paused:
-        activity_indicator = build_activity_indicator(now_utc)
     combined_lines = build_display_lines(
         host_infos,
         buffers,
@@ -1382,7 +1407,7 @@ def render_display(
         paused,
         status_message,
         timestamp,
-        activity_indicator,
+        now_utc,
         use_color,
         host_scroll_offset,
         summary_fullscreen,
@@ -2095,7 +2120,7 @@ def main(args):
                             paused,
                             status_message,
                             format_timestamp(now_utc, display_tz),
-                            "",
+                            now_utc,
                             False,
                             host_scroll_offset,
                             summary_fullscreen,

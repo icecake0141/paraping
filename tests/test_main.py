@@ -654,6 +654,7 @@ class TestLayoutComputation(unittest.TestCase):
             paused=False,
             status_message=None,
             timestamp="2026-01-12 08:15:20 (UTC)",
+            now_utc=datetime(2026, 1, 12, 8, 15, 20, tzinfo=timezone.utc),
         )
 
         summary_line_index = next(
