@@ -836,6 +836,7 @@ class TestSummaryData(unittest.TestCase):
                 "fail": 1,
                 "total": 4,
                 "rtt_sum": 0.045,
+                "rtt_sum_sq": 0.000725,
                 "rtt_count": 3,
             }
         }
@@ -848,6 +849,8 @@ class TestSummaryData(unittest.TestCase):
         self.assertEqual(summary[0]["success_rate"], 75.0)
         self.assertEqual(summary[0]["loss_rate"], 25.0)
         self.assertIsNotNone(summary[0]["avg_rtt_ms"])
+        self.assertAlmostEqual(summary[0]["jitter_ms"], 7.5, places=1)
+        self.assertAlmostEqual(summary[0]["stddev_ms"], 4.1, places=1)
         self.assertEqual(summary[0]["latest_ttl"], 64)
 
     def test_compute_summary_data_all_success(self):
@@ -873,6 +876,7 @@ class TestSummaryData(unittest.TestCase):
                 "fail": 0,
                 "total": 4,
                 "rtt_sum": 0.063,
+                "rtt_sum_sq": 0.001049,
                 "rtt_count": 4,
             }
         }
@@ -920,6 +924,7 @@ class TestSummaryData(unittest.TestCase):
                 "fail": 0,
                 "total": 1,
                 "rtt_sum": 0.01,
+                "rtt_sum_sq": 0.0001,
                 "rtt_count": 1,
             },
             1: {
@@ -928,6 +933,7 @@ class TestSummaryData(unittest.TestCase):
                 "fail": 1,
                 "total": 1,
                 "rtt_sum": 0.0,
+                "rtt_sum_sq": 0.0,
                 "rtt_count": 0,
             },
         }
@@ -954,6 +960,8 @@ class TestSummaryData(unittest.TestCase):
                 "streak_type": "success",
                 "streak_length": 10,
                 "avg_rtt_ms": 42.3,
+                "jitter_ms": 3.2,
+                "stddev_ms": 4.1,
             }
         ]
 
@@ -978,6 +986,8 @@ class TestSummaryData(unittest.TestCase):
                 "streak_type": "success",
                 "streak_length": 5,
                 "avg_rtt_ms": 25.0,
+                "jitter_ms": 2.5,
+                "stddev_ms": 3.2,
             }
         ]
 
@@ -1005,6 +1015,8 @@ class TestSummaryData(unittest.TestCase):
                 "streak_type": "success",
                 "streak_length": 3,
                 "avg_rtt_ms": 10.5,
+                "jitter_ms": 1.1,
+                "stddev_ms": 2.2,
             },
             {
                 "host": "very-long-host2.example.com AS22222",
@@ -1013,6 +1025,8 @@ class TestSummaryData(unittest.TestCase):
                 "streak_type": "fail",
                 "streak_length": 2,
                 "avg_rtt_ms": 45.2,
+                "jitter_ms": 3.3,
+                "stddev_ms": 4.4,
             },
         ]
 
@@ -1034,6 +1048,8 @@ class TestSummaryData(unittest.TestCase):
                 "streak_type": "success",
                 "streak_length": 5,
                 "avg_rtt_ms": 25.0,
+                "jitter_ms": 2.5,
+                "stddev_ms": 3.2,
                 "latest_ttl": 64,
             }
         ]
@@ -1048,6 +1064,8 @@ class TestSummaryData(unittest.TestCase):
         combined = "\n".join(lines)
         self.assertIn("ok 100.0% loss 0.0%", combined)
         self.assertIn("avg rtt 25.0 ms", combined)
+        self.assertIn("jitter 2.5 ms", combined)
+        self.assertIn("stddev 3.2 ms", combined)
         self.assertIn("ttl 64", combined)
         self.assertIn("streak S5", combined)
 
@@ -1061,17 +1079,21 @@ class TestSummaryData(unittest.TestCase):
                 "streak_type": "success",
                 "streak_length": 5,
                 "avg_rtt_ms": 25.0,
+                "jitter_ms": 2.5,
+                "stddev_ms": 3.2,
                 "latest_ttl": 64,
             }
         ]
 
-        width = 30
+        width = 60
         height = 6
         lines = render_summary_view(summary_data, width, height, "rtt", prefer_all=True)
 
         self.assertIn("Summary (Avg RTT)", lines[0])
         combined = "\n".join(lines)
         self.assertIn("avg rtt 25.0 ms", combined)
+        self.assertIn("jitter 2.5 ms", combined)
+        self.assertIn("stddev 3.2 ms", combined)
         self.assertNotIn("ttl 64", combined)
         self.assertNotIn("streak", combined)
 

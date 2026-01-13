@@ -34,6 +34,7 @@ Features:
 import argparse
 import copy
 import ipaddress
+import math
 import os
 import queue
 import re
@@ -659,6 +660,24 @@ def compute_summary_data(
         avg_rtt_ms = None
         if stats[host_id]["rtt_count"] > 0:
             avg_rtt_ms = stats[host_id]["rtt_sum"] / stats[host_id]["rtt_count"] * 1000
+        stddev_ms = None
+        if stats[host_id]["rtt_count"] > 1:
+            mean_rtt = stats[host_id]["rtt_sum"] / stats[host_id]["rtt_count"]
+            mean_square = (
+                stats[host_id].get("rtt_sum_sq", 0.0) / stats[host_id]["rtt_count"]
+            )
+            variance = max(0.0, mean_square - mean_rtt * mean_rtt)
+            stddev_ms = math.sqrt(variance) * 1000
+        rtt_values = [
+            value for value in buffers[host_id]["rtt_history"] if value is not None
+        ]
+        jitter_ms = None
+        if len(rtt_values) >= 2:
+            diffs = [
+                abs(current - previous)
+                for previous, current in zip(rtt_values, rtt_values[1:])
+            ]
+            jitter_ms = sum(diffs) / len(diffs) * 1000
         latest_ttl = latest_ttl_value(buffers[host_id]["ttl_history"])
         summary.append(
             {
@@ -668,6 +687,8 @@ def compute_summary_data(
                 "streak_type": streak_type,
                 "streak_length": streak_length,
                 "avg_rtt_ms": avg_rtt_ms,
+                "jitter_ms": jitter_ms,
+                "stddev_ms": stddev_ms,
                 "latest_ttl": latest_ttl,
             }
         )
@@ -685,9 +706,22 @@ def build_streak_label(entry):
 
 def build_summary_suffix(entry, summary_mode):
     if summary_mode == "rtt":
-        if entry["avg_rtt_ms"] is not None:
-            return f": avg rtt {entry['avg_rtt_ms']:.1f} ms"
-        return ": avg rtt n/a"
+        avg_rtt = (
+            f"{entry['avg_rtt_ms']:.1f} ms"
+            if entry.get("avg_rtt_ms") is not None
+            else "n/a"
+        )
+        jitter = (
+            f"{entry['jitter_ms']:.1f} ms"
+            if entry.get("jitter_ms") is not None
+            else "n/a"
+        )
+        stddev = (
+            f"{entry['stddev_ms']:.1f} ms"
+            if entry.get("stddev_ms") is not None
+            else "n/a"
+        )
+        return f": avg rtt {avg_rtt} jitter {jitter} stddev {stddev}"
     if summary_mode == "ttl":
         latest_ttl = entry.get("latest_ttl")
         return f": ttl {latest_ttl}" if latest_ttl is not None else ": ttl n/a"
@@ -699,7 +733,17 @@ def build_summary_suffix(entry, summary_mode):
 def build_summary_all_suffix(entry):
     avg_rtt = (
         f"{entry['avg_rtt_ms']:.1f} ms"
-        if entry["avg_rtt_ms"] is not None
+        if entry.get("avg_rtt_ms") is not None
+        else "n/a"
+    )
+    jitter = (
+        f"{entry['jitter_ms']:.1f} ms"
+        if entry.get("jitter_ms") is not None
+        else "n/a"
+    )
+    stddev = (
+        f"{entry['stddev_ms']:.1f} ms"
+        if entry.get("stddev_ms") is not None
         else "n/a"
     )
     latest_ttl = entry.get("latest_ttl")
@@ -708,6 +752,8 @@ def build_summary_all_suffix(entry):
     parts = [
         f"ok {entry['success_rate']:.1f}% loss {entry['loss_rate']:.1f}%",
         f"avg rtt {avg_rtt}",
+        f"jitter {jitter}",
+        f"stddev {stddev}",
         f"ttl {ttl_value}",
         f"streak {streak_label}",
     ]
@@ -2081,6 +2127,7 @@ def main(args):
             "slow": 0,
             "total": 0,
             "rtt_sum": 0.0,
+            "rtt_sum_sq": 0.0,
             "rtt_count": 0,
         }
         for info in host_infos
@@ -2598,6 +2645,7 @@ def main(args):
                     stats[host_id]["total"] += 1
                     if result.get("rtt") is not None:
                         stats[host_id]["rtt_sum"] += result["rtt"]
+                        stats[host_id]["rtt_sum_sq"] += result["rtt"] ** 2
                         stats[host_id]["rtt_count"] += 1
 
                     # Trigger flash or bell on ping failure
