@@ -43,6 +43,7 @@ MultiPing is an interactive, terminal-based ICMP monitor that pings many hosts i
 ### Linux-Specific: Privileged ICMP Helper (Recommended)
 
 On Linux, use the included `ping_helper` binary with capability-based privileges instead of running Python as root. This is more secure as it limits raw socket access to a single small binary.
+The helper also connects its raw socket and applies ICMP filters to reduce per-process packet fan-out, which improves reliability when monitoring many hosts concurrently.
 
 **Dependencies:**
 - `gcc` (for building the helper)
