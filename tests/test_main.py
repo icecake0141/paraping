@@ -60,6 +60,9 @@ from main import (
     build_activity_indicator,
     build_colored_sparkline,
     build_colored_timeline,
+    build_ascii_graph,
+    render_host_selection_view,
+    render_fullscreen_rtt_graph,
 )  # noqa: E402
 
 
@@ -541,6 +544,45 @@ class TestHelpView(unittest.TestCase):
         combined = "\n".join(lines)
         self.assertIn("H: show help", combined)
         self.assertIn("Press any key to close", combined)
+
+
+class TestAsciiGraph(unittest.TestCase):
+    """Test ASCII graph rendering helpers."""
+
+    def test_build_ascii_graph_marks_missing(self):
+        """Missing values should mark the baseline with x."""
+        lines = build_ascii_graph([1.0, None, 2.0], width=3, height=2, style="line")
+        self.assertEqual(len(lines), 2)
+        self.assertEqual(len(lines[0]), 3)
+        self.assertEqual(lines[-1][1], "x")
+
+    def test_build_ascii_graph_bar_fills(self):
+        """Bar style should fill from the point to the baseline."""
+        lines = build_ascii_graph([1.0, 2.0], width=2, height=3, style="bar")
+        self.assertEqual(lines[-1][1], "#")
+
+    def test_render_host_selection_view_highlight(self):
+        """Selection view should highlight the selected host."""
+        entries = [(0, "host1"), (1, "host2")]
+        lines = render_host_selection_view(entries, 1, 20, 6, "ip")
+        combined = "\n".join(lines)
+        self.assertIn("> host2", combined)
+
+    def test_render_fullscreen_rtt_graph_contains_header(self):
+        """Fullscreen RTT graph should include host label and RTT range."""
+        lines = render_fullscreen_rtt_graph(
+            "host1",
+            [0.01, 0.02],
+            40,
+            10,
+            "timeline",
+            False,
+            "2025-01-01 00:00:00 (UTC)",
+        )
+        combined = "\n".join(lines)
+        self.assertIn("host1", combined)
+        self.assertIn("RTT range", combined)
+        self.assertIn("ESC: back", combined)
 
 
 class TestLayoutComputation(unittest.TestCase):
