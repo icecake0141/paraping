@@ -148,6 +148,21 @@ class TestHandleOptions(unittest.TestCase):
             self.assertTrue(args.color)
             self.assertEqual(args.ping_helper, "/tmp/ping_helper")
 
+    def test_interval_out_of_range(self):
+        """Test interval range enforcement."""
+        with patch("sys.argv", ["main.py", "-i", "0.01", "example.com"]):
+            with self.assertRaises(SystemExit):
+                handle_options()
+        with patch("sys.argv", ["main.py", "-i", "61", "example.com"]):
+            with self.assertRaises(SystemExit):
+                handle_options()
+
+    def test_timeout_must_be_positive(self):
+        """Test timeout validation."""
+        with patch("sys.argv", ["main.py", "-t", "0", "example.com"]):
+            with self.assertRaises(SystemExit):
+                handle_options()
+
 
 class TestReadInputFile(unittest.TestCase):
     """Test input file reading functionality"""

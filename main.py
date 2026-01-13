@@ -305,6 +305,10 @@ def handle_options():
     )
 
     args = parser.parse_args()
+    if args.timeout <= 0:
+        parser.error("--timeout must be a positive integer.")
+    if not 0.1 <= args.interval <= 60.0:
+        parser.error("--interval must be between 0.1 and 60.0 seconds.")
     return args
 
 
