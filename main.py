@@ -13,6 +13,7 @@
 
 import argparse
 import copy
+import ipaddress
 import os
 import queue
 import re
@@ -239,7 +240,7 @@ def handle_options():
         "-f",
         "--input",
         type=str,
-        help="Input file containing list of hosts (one per line)",
+        help="Input file containing list of hosts (one per line, format: IP,alias)",
         required=False,
     )
     parser.add_argument(
@@ -298,18 +299,54 @@ def handle_options():
     return args
 
 
-# Read input file. The file contains a list of hosts (IP addresses or hostnames)
+# Read input file. The file contains a list of hosts (IP addresses and aliases)
+
+
+def parse_host_file_line(line, line_number, input_file):
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#"):
+        return None
+    parts = [part.strip() for part in stripped.split(",")]
+    if len(parts) != 2:
+        print(
+            f"Warning: Invalid host entry at {input_file}:{line_number}. "
+            "Expected format 'IP,alias'.",
+            file=sys.stderr,
+        )
+        return None
+    ip_text, alias = parts
+    if not ip_text or not alias:
+        print(
+            f"Warning: Invalid host entry at {input_file}:{line_number}. "
+            "IP address and alias are required.",
+            file=sys.stderr,
+        )
+        return None
+    try:
+        ip_obj = ipaddress.ip_address(ip_text)
+    except ValueError:
+        print(
+            f"Warning: Invalid IP address at {input_file}:{line_number}: '{ip_text}'.",
+            file=sys.stderr,
+        )
+        return None
+    if ip_obj.version != 4:
+        print(
+            f"Warning: Unsupported IP version at {input_file}:{line_number}: '{ip_text}'.",
+            file=sys.stderr,
+        )
+        return None
+    return {"host": ip_text, "alias": alias, "ip": ip_text}
 
 
 def read_input_file(input_file):
-
     host_list = []
     try:
         with open(input_file, "r") as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#"):  # Skip empty lines and comments
-                    host_list.append(line)
+            for line_number, line in enumerate(f, start=1):
+                entry = parse_host_file_line(line, line_number, input_file)
+                if entry is not None:
+                    host_list.append(entry)
     except FileNotFoundError:
         print(f"Error: Input file '{input_file}' not found.")
         return []
@@ -1292,15 +1329,24 @@ def build_display_names(host_infos, mode, include_asn, asn_width):
 def build_host_infos(hosts):
     host_infos = []
     host_map = {}
-    for index, host in enumerate(hosts):
-        try:
-            ip_address = socket.gethostbyname(host)
-        except (socket.gaierror, OSError):
-            ip_address = host
+    for index, entry in enumerate(hosts):
+        if isinstance(entry, str):
+            host = entry
+            alias = entry
+            ip_address = None
+        else:
+            host = entry.get("host") or entry.get("ip")
+            alias = entry.get("alias") or host
+            ip_address = entry.get("ip")
+        if not ip_address:
+            try:
+                ip_address = socket.gethostbyname(host)
+            except (socket.gaierror, OSError):
+                ip_address = host
         info = {
             "id": index,
             "host": host,
-            "alias": host,
+            "alias": alias,
             "ip": ip_address,
             "rdns": None,
             "rdns_pending": False,
@@ -1549,7 +1595,7 @@ def main(args):
 
     # Add hosts from command line arguments
     if args.hosts:
-        all_hosts.extend(args.hosts)
+        all_hosts.extend({"host": host, "alias": host} for host in args.hosts)
 
     # Add hosts from input file if provided
     if args.input:

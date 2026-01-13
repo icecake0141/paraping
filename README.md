@@ -31,7 +31,7 @@ MultiPing is an interactive, terminal-based ICMP monitor that pings many hosts i
 - Pause modes: freeze display only or pause ping + display.
 - Snapshot export to a timestamped text file.
 - Configurable timezone for timestamps and snapshot naming.
-- Input file support for host lists (one per line, comments allowed).
+- Input file support for host lists (one per line in `IP,alias` format; comments allowed).
 
 ## Requirements
 - Python 3.9 or newer.
@@ -105,7 +105,7 @@ python main.py 1.1.1.1 8.8.8.8
 - `-i`, `--interval`: Interval in seconds between pings per host (default: 1.0, range: 0.1-60.0).
 - `--slow-threshold`: RTT threshold (seconds) to mark a ping as slow (default: 0.5).
 - `-v`, `--verbose`: Print raw per-packet output (non-UI).
-- `-f`, `--input`: Read hosts from a file (one per line; `#` comments supported).
+- `-f`, `--input`: Read hosts from a file (one per line; format: `IP,alias`; `#` comments supported).
 - `--panel-position`: Summary panel position (`right|left|top|bottom|none`).
 - `--pause-mode`: Pause behavior (`display|ping`).
 - `--timezone`: IANA timezone name for on-screen timestamps.

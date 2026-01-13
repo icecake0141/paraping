@@ -117,27 +117,57 @@ class TestReadInputFile(unittest.TestCase):
 
     def test_read_valid_file(self):
         """Test reading a valid input file"""
-        file_content = "host1.com\nhost2.com\nhost3.com\n"
+        file_content = "192.168.0.1,host1\n192.168.0.2,host2\n192.168.0.3,host3\n"
         with patch("builtins.open", mock_open(read_data=file_content)):
             hosts = read_input_file("test.txt")
             self.assertEqual(len(hosts), 3)
-            self.assertEqual(hosts, ["host1.com", "host2.com", "host3.com"])
+            self.assertEqual(
+                hosts,
+                [
+                    {"host": "192.168.0.1", "alias": "host1", "ip": "192.168.0.1"},
+                    {"host": "192.168.0.2", "alias": "host2", "ip": "192.168.0.2"},
+                    {"host": "192.168.0.3", "alias": "host3", "ip": "192.168.0.3"},
+                ],
+            )
 
     def test_read_file_with_comments(self):
         """Test reading file with comments"""
-        file_content = "host1.com\n# This is a comment\nhost2.com\n"
+        file_content = "192.168.0.1,host1\n# This is a comment\n192.168.0.2,host2\n"
         with patch("builtins.open", mock_open(read_data=file_content)):
             hosts = read_input_file("test.txt")
             self.assertEqual(len(hosts), 2)
-            self.assertEqual(hosts, ["host1.com", "host2.com"])
+            self.assertEqual(
+                hosts,
+                [
+                    {"host": "192.168.0.1", "alias": "host1", "ip": "192.168.0.1"},
+                    {"host": "192.168.0.2", "alias": "host2", "ip": "192.168.0.2"},
+                ],
+            )
 
     def test_read_file_with_empty_lines(self):
         """Test reading file with empty lines"""
-        file_content = "host1.com\n\nhost2.com\n\n"
+        file_content = "192.168.0.1,host1\n\n192.168.0.2,host2\n\n"
         with patch("builtins.open", mock_open(read_data=file_content)):
             hosts = read_input_file("test.txt")
             self.assertEqual(len(hosts), 2)
-            self.assertEqual(hosts, ["host1.com", "host2.com"])
+            self.assertEqual(
+                hosts,
+                [
+                    {"host": "192.168.0.1", "alias": "host1", "ip": "192.168.0.1"},
+                    {"host": "192.168.0.2", "alias": "host2", "ip": "192.168.0.2"},
+                ],
+            )
+
+    def test_read_file_with_invalid_lines(self):
+        """Test reading file with invalid lines"""
+        file_content = "HOST1 192.168.0.1\n192.168.0.2,host2\ninvalid,alias\n"
+        with patch("builtins.open", mock_open(read_data=file_content)):
+            hosts = read_input_file("test.txt")
+            self.assertEqual(len(hosts), 1)
+            self.assertEqual(
+                hosts,
+                [{"host": "192.168.0.2", "alias": "host2", "ip": "192.168.0.2"}],
+            )
 
     def test_file_not_found(self):
         """Test handling of missing file"""
