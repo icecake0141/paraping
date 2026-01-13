@@ -105,7 +105,7 @@ python main.py -t 2 -f hosts.txt
 - `--pause-mode`: 一時停止の挙動（`display|ping`）。
 - `--timezone`: 表示時刻のタイムゾーン（IANA 名）。
 - `--snapshot-timezone`: スナップショット時刻のタイムゾーン（`utc|display`）。
-- `--flash-on-fail`: ping に失敗したときに画面をフラッシュ（色反転）して注意を惹く。
+- `--flash-on-fail`: ping に失敗したときに画面をフラッシュ（背景を白く）して注意を惹く。
 - `--bell-on-fail`: ping に失敗したときにターミナルベルを鳴らして注意を惹く。
 - `--color`: カラー表示を有効化（成功=青、遅延=黄、失敗=赤）。
 - `--ping-helper`: `ping_helper` バイナリのパス（デフォルト: `./ping_helper`）。

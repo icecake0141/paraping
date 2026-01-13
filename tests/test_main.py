@@ -38,6 +38,7 @@ from main import (
     build_display_names,
     format_display_name,
     compute_summary_data,
+    should_flash_on_fail,
     render_summary_view,
     format_timestamp,
     format_timezone_label,
@@ -1496,6 +1497,9 @@ class TestFlashAndBell(unittest.TestCase):
         flash_screen()
         # Should have called write to send escape sequences
         self.assertGreaterEqual(mock_stdout.write.call_count, 2)
+        first_write = mock_stdout.write.call_args_list[0][0][0]
+        self.assertIn("\x1b[47m", first_write)
+        self.assertIn("\x1b[30m", first_write)
         # Should have slept for ~0.1 seconds
         mock_sleep.assert_called_once_with(0.1)
         # Should have called flush
@@ -1509,6 +1513,13 @@ class TestFlashAndBell(unittest.TestCase):
         mock_stdout.write.assert_called_once_with("\a")
         # Should flush the output
         mock_stdout.flush.assert_called_once()
+
+    def test_should_flash_on_fail(self):
+        """Test helper for flash-on-fail decision"""
+        self.assertTrue(should_flash_on_fail("fail", True, False))
+        self.assertFalse(should_flash_on_fail("fail", True, True))
+        self.assertFalse(should_flash_on_fail("success", True, False))
+        self.assertFalse(should_flash_on_fail("fail", False, False))
 
 
 class TestArrowKeyNavigation(unittest.TestCase):

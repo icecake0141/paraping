@@ -110,7 +110,7 @@ python main.py 1.1.1.1 8.8.8.8
 - `--pause-mode`: Pause behavior (`display|ping`).
 - `--timezone`: IANA timezone name for on-screen timestamps.
 - `--snapshot-timezone`: Timezone for snapshot filenames (`utc|display`).
-- `--flash-on-fail`: Flash screen (invert colors) when a ping fails to draw attention.
+- `--flash-on-fail`: Flash screen (white background) when a ping fails to draw attention.
 - `--bell-on-fail`: Ring terminal bell when a ping fails to draw attention.
 - `--color`: Enable colored output (blue=success, yellow=slow, red=fail).
 - `--ping-helper`: Path to the `ping_helper` binary (default: `./ping_helper`).
