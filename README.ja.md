@@ -42,6 +42,7 @@ MultiPing は、複数ホストへの ICMP ping を並列に実行し、タイ�
 ### Linux 専用: 特権 ICMP ヘルパー（任意）
 
 Linux では、Python を root で実行する代わりに、ケーパビリティベースの特権を持つ `ping_helper` バイナリを使用できます。これにより、生のソケットアクセスを単一の小さなバイナリに限定できるため、より安全です。
+また、ヘルパーは raw ソケットを対象ホストに接続し ICMP フィルタを適用することで、監視対象が多い場合のパケット処理負荷を抑え、成功率の向上に寄与します。
 
 **依存関係:**
 - `gcc`（ヘルパーのビルド用）
@@ -98,17 +99,17 @@ python main.py -t 2 -f hosts.txt
 - `-t`, `--timeout`: 1 回の ping のタイムアウト（秒、デフォルト: 1）。
 - `-c`, `--count`: 各ホストの試行回数（デフォルト: 0 で無限）。
 - `-i`, `--interval`: ホストごとの ping 間隔（秒、デフォルト: 1.0、範囲: 0.1-60.0）。
-- `--slow-threshold`: 遅延判定の閾値（秒、デフォルト: 0.5）。
+- `-s`, `--slow-threshold`: 遅延判定の閾値（秒、デフォルト: 0.5）。
 - `-v`, `--verbose`: 詳細ログ出力（UI なし）。
 - `-f`, `--input`: ホスト一覧ファイル（1 行 1 ホスト、`IP,alias` 形式、`#` はコメント）。
-- `--panel-position`: サマリーパネルの位置（`right|left|top|bottom|none`）。
-- `--pause-mode`: 一時停止の挙動（`display|ping`）。
-- `--timezone`: 表示時刻のタイムゾーン（IANA 名）。
-- `--snapshot-timezone`: スナップショット時刻のタイムゾーン（`utc|display`）。
-- `--flash-on-fail`: ping に失敗したときに画面をフラッシュ（色反転）して注意を惹く。
-- `--bell-on-fail`: ping に失敗したときにターミナルベルを鳴らして注意を惹く。
-- `--color`: カラー表示を有効化（成功=青、遅延=黄、失敗=赤）。
-- `--ping-helper`: `ping_helper` バイナリのパス（デフォルト: `./ping_helper`）。
+- `-P`, `--panel-position`: サマリーパネルの位置（`right|left|top|bottom|none`）。
+- `-m`, `--pause-mode`: 一時停止の挙動（`display|ping`）。
+- `-z`, `--timezone`: 表示時刻のタイムゾーン（IANA 名）。
+- `-Z`, `--snapshot-timezone`: スナップショット時刻のタイムゾーン（`utc|display`）。
+- `-F`, `--flash-on-fail`: ping に失敗したときに画面をフラッシュ（色反転）して注意を惹く。
+- `-B`, `--bell-on-fail`: ping に失敗したときにターミナルベルを鳴らして注意を惹く。
+- `-C`, `--color`: カラー表示を有効化（成功=青、遅延=黄、失敗=赤）。
+- `-H`, `--ping-helper`: `ping_helper` バイナリのパス（デフォルト: `./ping_helper`）。
 
 ### 対話操作
 - `n`: 表示名モード切替（ip/rdns/alias）。
@@ -119,6 +120,7 @@ python main.py -t 2 -f hosts.txt
 - `m`: サマリー表示内容の切替（成功率/平均 RTT/TTL/連続回数）。
 - `c`: カラー表示の切替。
 - `b`: ping 失敗時のターミナルベル切替。
+- `F`: サマリーの全画面表示切替。
 - `w`: サマリーパネルの表示切替。
 - `W`: サマリーパネルの配置切替（左/右/上/下）。
 - `p`: 一時停止/再開（表示のみ or ping + 表示）。
@@ -132,7 +134,7 @@ python main.py -t 2 -f hosts.txt
 - `.` 成功
 - `!` 遅延（RTT >= `--slow-threshold`）
 - `x` 失敗/タイムアウト
-- `--color` 有効時: 成功=青、遅延=黄、失敗=赤
+- `--color` 有効時: 成功=白、遅延=黄、失敗=赤
 
 ## 補足
 - helper を使えない環境では ICMP を送信するため、`sudo` など管理者権限で実行してください。
