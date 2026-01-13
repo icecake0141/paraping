@@ -1000,6 +1000,8 @@ def render_help_view(width, height):
         "  f : cycle filter (failures/latency/all)",
         "  a : toggle ASN display",
         "  m : cycle summary info (rates/rtt/ttl/streak)",
+        "  c : toggle color output",
+        "  b : toggle bell on ping failure",
         "  w : toggle summary panel on/off",
         "  W : cycle summary panel position (left/right/top/bottom)",
         "  p : pause/resume display",
@@ -1008,7 +1010,6 @@ def render_help_view(width, height):
         "  up / down : scroll host list",
         "  H : show help (press any key to close)",
         "  q : quit",
-        "",
         "Press any key to close this help screen.",
     ]
     return pad_lines(lines, width, height)
@@ -1738,7 +1739,10 @@ def main(args):
     status_message = None
     force_render = False
     show_asn = True
-    use_color = args.color and sys.stdout.isatty()
+    color_supported = sys.stdout.isatty()
+    use_color = args.color and color_supported
+    flash_on_fail = getattr(args, "flash_on_fail", False)
+    bell_on_fail = getattr(args, "bell_on_fail", False)
     asn_cache = {}
     asn_timeout = 3.0
     asn_failure_ttl = 300.0
@@ -1858,6 +1862,26 @@ def main(args):
                         )
                         status_message = (
                             f"Summary: {summary_modes[summary_mode_index].upper()}"
+                        )
+                        updated = True
+                    elif key == "c":
+                        if not color_supported:
+                            status_message = "Color output unavailable (no TTY)"
+                        else:
+                            use_color = not use_color
+                            status_message = (
+                                "Color output enabled"
+                                if use_color
+                                else "Color output disabled"
+                            )
+                        force_render = True
+                        updated = True
+                    elif key == "b":
+                        bell_on_fail = not bell_on_fail
+                        status_message = (
+                            "Bell on fail enabled"
+                            if bell_on_fail
+                            else "Bell on fail disabled"
                         )
                         updated = True
                     elif key == "w":
@@ -2105,9 +2129,9 @@ def main(args):
 
                     # Trigger flash or bell on ping failure
                     if status == "fail":
-                        if args.flash_on_fail:
+                        if flash_on_fail:
                             flash_screen()
-                        if args.bell_on_fail:
+                        if bell_on_fail:
                             ring_bell()
 
                     if not paused:

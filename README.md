@@ -122,6 +122,8 @@ python main.py 1.1.1.1 8.8.8.8
 - `f`: Cycle filter (failures/latency/all).
 - `a`: Toggle ASN display (auto hides when space is tight).
 - `m`: Cycle summary info (rates/avg RTT/TTL/streak).
+- `c`: Toggle colored output.
+- `b`: Toggle terminal bell on ping failure.
 - `w`: Toggle the summary panel on/off.
 - `W`: Cycle summary panel position (left/right/top/bottom).
 - `p`: Pause/resume (display only or ping + display).
