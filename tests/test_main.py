@@ -547,6 +547,29 @@ class TestHelpView(unittest.TestCase):
         self.assertIn("Press any key to close", combined)
 
 
+class TestBoxedRendering(unittest.TestCase):
+    """Test boxed panel rendering helpers."""
+
+    def test_box_lines_wraps_content(self):
+        """Ensure box_lines adds borders and pads content."""
+        boxed = box_lines(["Hello"], width=7, height=3)
+        self.assertEqual(
+            boxed,
+            [
+                "+-----+",
+                "|Hello|",
+                "+-----+",
+            ],
+        )
+
+    def test_render_status_box_wraps_status_line(self):
+        """Ensure status lines are boxed to the requested width."""
+        boxed = render_status_box("Status", width=10)
+        self.assertEqual(boxed[0], "+--------+")
+        self.assertEqual(boxed[1], "|Status  |")
+        self.assertEqual(boxed[2], "+--------+")
+
+
 class TestLayoutComputation(unittest.TestCase):
     """Test layout computation functions"""
 
@@ -777,9 +800,7 @@ class TestSummaryData(unittest.TestCase):
         }
         symbols = {"success": ".", "fail": "x", "slow": "!"}
 
-        summary = compute_summary_data(
-            host_infos, display_names, buffers, stats, symbols
-        )
+        summary = compute_summary_data(host_infos, display_names, buffers, stats, symbols)
 
         self.assertEqual(len(summary), 1)
         self.assertEqual(summary[0]["host"], "host1.com")
@@ -816,9 +837,7 @@ class TestSummaryData(unittest.TestCase):
         }
         symbols = {"success": ".", "fail": "x", "slow": "!"}
 
-        summary = compute_summary_data(
-            host_infos, display_names, buffers, stats, symbols
-        )
+        summary = compute_summary_data(host_infos, display_names, buffers, stats, symbols)
 
         self.assertEqual(summary[0]["success_rate"], 100.0)
         self.assertEqual(summary[0]["loss_rate"], 0.0)
@@ -904,9 +923,8 @@ class TestSummaryData(unittest.TestCase):
         # All lines should be exactly 'width' characters
         for line in lines:
             self.assertEqual(
-                len(line),
-                width,
-                f"Line '{line}' has length {len(line)}, expected {width}",
+                len(line), width,
+                f"Line '{line}' has length {len(line)}, expected {width}"
             )
 
     def test_render_summary_view_truncates_long_hostnames(self):
@@ -1125,7 +1143,9 @@ class TestActivityIndicator(unittest.TestCase):
     def test_activity_indicator_moves(self):
         """Indicator should move between ticks"""
         first = build_activity_indicator(datetime.fromtimestamp(0, tz=timezone.utc))
-        second = build_activity_indicator(datetime.fromtimestamp(0.25, tz=timezone.utc))
+        second = build_activity_indicator(
+            datetime.fromtimestamp(0.25, tz=timezone.utc)
+        )
         self.assertEqual(len(first), 10)
         self.assertEqual(len(second), 10)
         self.assertNotEqual(first, second)
@@ -1216,9 +1236,7 @@ class TestPanelToggle(unittest.TestCase):
         self.assertEqual(cycle_panel_position("right"), "top")
         self.assertEqual(cycle_panel_position("top"), "bottom")
         self.assertEqual(cycle_panel_position("bottom"), "left")
-        self.assertEqual(
-            cycle_panel_position("none", default_position="right"), "right"
-        )
+        self.assertEqual(cycle_panel_position("none", default_position="right"), "right")
 
 
 class TestQuitHotkey(unittest.TestCase):
@@ -1231,13 +1249,7 @@ class TestQuitHotkey(unittest.TestCase):
     @patch("main.threading.Thread")
     @patch("main.read_key")
     def test_quit_key_exits_immediately(
-        self,
-        mock_read_key,
-        mock_thread,
-        mock_executor,
-        mock_term_size,
-        mock_stdin,
-        mock_queue,
+        self, mock_read_key, mock_thread, mock_executor, mock_term_size, mock_stdin, mock_queue
     ):
         """Test that pressing 'q' key exits the program immediately"""
         # Mock terminal properties
@@ -1256,10 +1268,10 @@ class TestQuitHotkey(unittest.TestCase):
         # Queue instances: result_queue, rdns_request_queue, rdns_result_queue, asn_request_queue, asn_result_queue
         mock_queue.side_effect = [
             result_queue,  # result_queue
-            MagicMock(),  # rdns_request_queue
-            empty_queue,  # rdns_result_queue
-            MagicMock(),  # asn_request_queue
-            empty_queue,  # asn_result_queue
+            MagicMock(),   # rdns_request_queue
+            empty_queue,   # rdns_result_queue
+            MagicMock(),   # asn_request_queue
+            empty_queue,   # asn_result_queue
         ]
 
         # Mock read_key to return 'q' after a few iterations
@@ -1305,13 +1317,7 @@ class TestQuitHotkey(unittest.TestCase):
     @patch("main.threading.Thread")
     @patch("main.read_key")
     def test_quit_key_uppercase_exits_immediately(
-        self,
-        mock_read_key,
-        mock_thread,
-        mock_executor,
-        mock_term_size,
-        mock_stdin,
-        mock_queue,
+        self, mock_read_key, mock_thread, mock_executor, mock_term_size, mock_stdin, mock_queue
     ):
         """Test that pressing 'Q' key (uppercase) exits the program immediately"""
         # Mock terminal properties
@@ -1330,10 +1336,10 @@ class TestQuitHotkey(unittest.TestCase):
         # Queue instances: result_queue, rdns_request_queue, rdns_result_queue, asn_request_queue, asn_result_queue
         mock_queue.side_effect = [
             result_queue,  # result_queue
-            MagicMock(),  # rdns_request_queue
-            empty_queue,  # rdns_result_queue
-            MagicMock(),  # asn_request_queue
-            empty_queue,  # asn_result_queue
+            MagicMock(),   # rdns_request_queue
+            empty_queue,   # rdns_result_queue
+            MagicMock(),   # asn_request_queue
+            empty_queue,   # asn_result_queue
         ]
 
         # Mock read_key to return 'Q' (uppercase) after a few iterations
@@ -1379,13 +1385,7 @@ class TestQuitHotkey(unittest.TestCase):
     @patch("main.threading.Thread")
     @patch("main.read_key")
     def test_quit_key_exits_from_help_screen(
-        self,
-        mock_read_key,
-        mock_thread,
-        mock_executor,
-        mock_term_size,
-        mock_stdin,
-        mock_queue,
+        self, mock_read_key, mock_thread, mock_executor, mock_term_size, mock_stdin, mock_queue
     ):
         """Test that pressing 'q' key exits even when help screen is showing"""
         # Mock terminal properties
@@ -1404,10 +1404,10 @@ class TestQuitHotkey(unittest.TestCase):
         # Queue instances: result_queue, rdns_request_queue, rdns_result_queue, asn_request_queue, asn_result_queue
         mock_queue.side_effect = [
             result_queue,  # result_queue
-            MagicMock(),  # rdns_request_queue
-            empty_queue,  # rdns_result_queue
-            MagicMock(),  # asn_request_queue
-            empty_queue,  # asn_result_queue
+            MagicMock(),   # rdns_request_queue
+            empty_queue,   # rdns_result_queue
+            MagicMock(),   # asn_request_queue
+            empty_queue,   # asn_result_queue
         ]
 
         # Mock read_key to open help screen with 'H', then press 'q' to quit
@@ -1452,7 +1452,9 @@ class TestTerminalSize(unittest.TestCase):
 
     @patch("main.os.get_terminal_size")
     @patch("main.sys.stdout")
-    def test_get_terminal_size_from_stdout(self, mock_stdout, mock_os_get_size):
+    def test_get_terminal_size_from_stdout(
+        self, mock_stdout, mock_os_get_size
+    ):
         """Test getting terminal size from stdout"""
         mock_stdout.isatty.return_value = True
         mock_stdout.fileno.return_value = 1
@@ -1500,7 +1502,9 @@ class TestTerminalSize(unittest.TestCase):
 
     @patch("main.os.get_terminal_size")
     @patch("main.sys.stdout")
-    def test_get_terminal_size_handles_os_error(self, mock_stdout, mock_os_get_size):
+    def test_get_terminal_size_handles_os_error(
+        self, mock_stdout, mock_os_get_size
+    ):
         """Test handling of OSError when querying terminal size"""
         mock_stdout.isatty.return_value = True
         mock_stdout.fileno.return_value = 1
@@ -1558,9 +1562,7 @@ class TestFlashAndBell(unittest.TestCase):
 
     def test_handle_options_both_flags(self):
         """Test both flash and bell options together"""
-        with patch(
-            "sys.argv", ["main.py", "--flash-on-fail", "--bell-on-fail", "example.com"]
-        ):
+        with patch("sys.argv", ["main.py", "--flash-on-fail", "--bell-on-fail", "example.com"]):
             args = handle_options()
             self.assertTrue(args.flash_on_fail)
             self.assertTrue(args.bell_on_fail)
@@ -1618,10 +1620,10 @@ class TestArrowKeyNavigation(unittest.TestCase):
             ([mock_stdin], [], []),
         ]
         # Simulate ESC [ D sequence
-        mock_stdin.read.side_effect = ["\x1b", "[D"]
+        mock_stdin.read.side_effect = ['\x1b', '[D']
 
         result = read_key()
-        self.assertEqual(result, "arrow_left")
+        self.assertEqual(result, 'arrow_left')
 
     @patch("main.select.select")
     @patch("main.sys.stdin")
@@ -1632,10 +1634,10 @@ class TestArrowKeyNavigation(unittest.TestCase):
             ([mock_stdin], [], []),
             ([mock_stdin], [], []),
         ]
-        mock_stdin.read.side_effect = ["\x1b", "[C"]
+        mock_stdin.read.side_effect = ['\x1b', '[C']
 
         result = read_key()
-        self.assertEqual(result, "arrow_right")
+        self.assertEqual(result, 'arrow_right')
 
     @patch("main.select.select")
     @patch("main.sys.stdin")
@@ -1646,10 +1648,10 @@ class TestArrowKeyNavigation(unittest.TestCase):
             ([mock_stdin], [], []),
             ([mock_stdin], [], []),
         ]
-        mock_stdin.read.side_effect = ["\x1b", "[A"]
+        mock_stdin.read.side_effect = ['\x1b', '[A']
 
         result = read_key()
-        self.assertEqual(result, "arrow_up")
+        self.assertEqual(result, 'arrow_up')
 
     @patch("main.select.select")
     @patch("main.sys.stdin")
@@ -1660,10 +1662,10 @@ class TestArrowKeyNavigation(unittest.TestCase):
             ([mock_stdin], [], []),
             ([mock_stdin], [], []),
         ]
-        mock_stdin.read.side_effect = ["\x1b", "[B"]
+        mock_stdin.read.side_effect = ['\x1b', '[B']
 
         result = read_key()
-        self.assertEqual(result, "arrow_down")
+        self.assertEqual(result, 'arrow_down')
 
     @patch("main.select.select")
     @patch("main.sys.stdin")
@@ -1671,10 +1673,10 @@ class TestArrowKeyNavigation(unittest.TestCase):
         """Test reading a normal character (not arrow key)"""
         mock_stdin.isatty.return_value = True
         mock_select.return_value = ([mock_stdin], [], [])
-        mock_stdin.read.return_value = "q"
+        mock_stdin.read.return_value = 'q'
 
         result = read_key()
-        self.assertEqual(result, "q")
+        self.assertEqual(result, 'q')
 
     def test_create_state_snapshot(self):
         """Test creating a state snapshot"""
@@ -1688,7 +1690,7 @@ class TestArrowKeyNavigation(unittest.TestCase):
                     "success": deque([1, 2], maxlen=10),
                     "slow": deque([], maxlen=10),
                     "fail": deque([3], maxlen=10),
-                },
+                }
             }
         }
 
@@ -1716,9 +1718,7 @@ class TestArrowKeyNavigation(unittest.TestCase):
 
         # Verify buffers were deep copied
         self.assertEqual(list(snapshot["buffers"][0]["timeline"]), [".", ".", "x"])
-        self.assertEqual(
-            list(snapshot["buffers"][0]["rtt_history"]), [0.01, 0.02, None]
-        )
+        self.assertEqual(list(snapshot["buffers"][0]["rtt_history"]), [0.01, 0.02, None])
         self.assertEqual(list(snapshot["buffers"][0]["ttl_history"]), [64, 64, None])
 
         # Verify stats were deep copied
@@ -1885,7 +1885,7 @@ class TestArrowKeyNavigation(unittest.TestCase):
     def test_get_cached_page_step_returns_cached_value(self, mock_terminal_size):
         """Test that get_cached_page_step returns cached value when terminal size unchanged"""
         mock_terminal_size.return_value = os.terminal_size((80, 24))
-
+        
         host_infos = [
             {
                 "id": 0,
@@ -1921,44 +1921,25 @@ class TestArrowKeyNavigation(unittest.TestCase):
             }
         }
         symbols = {"success": ".", "slow": "~", "fail": "x"}
-
+        
         # First call - should calculate
         from main import get_cached_page_step
-
         page_step1, cached1, term_size1 = get_cached_page_step(
-            None,
-            None,
-            host_infos,
-            buffers,
-            stats,
-            symbols,
-            "none",
-            "alias",
-            "host",
-            "all",
-            0.5,
-            False,
+            None, None,
+            host_infos, buffers, stats, symbols,
+            "none", "alias", "host", "all", 0.5, False
         )
-
+        
         # Record call count after first calculation
         first_call_count = mock_terminal_size.call_count
-
+        
         # Second call with same terminal size - should use cache
         page_step2, cached2, term_size2 = get_cached_page_step(
-            cached1,
-            term_size1,
-            host_infos,
-            buffers,
-            stats,
-            symbols,
-            "none",
-            "alias",
-            "host",
-            "all",
-            0.5,
-            False,
+            cached1, term_size1,
+            host_infos, buffers, stats, symbols,
+            "none", "alias", "host", "all", 0.5, False
         )
-
+        
         # Should return same value without recalculating
         self.assertEqual(page_step1, page_step2)
         self.assertEqual(page_step1, cached2)
@@ -1971,7 +1952,7 @@ class TestArrowKeyNavigation(unittest.TestCase):
         """Test that get_cached_page_step recalculates when terminal is resized"""
         # First call with 80x24
         mock_terminal_size.return_value = os.terminal_size((80, 24))
-
+        
         host_infos = [
             {
                 "id": 0,
@@ -2007,43 +1988,24 @@ class TestArrowKeyNavigation(unittest.TestCase):
             }
         }
         symbols = {"success": ".", "slow": "~", "fail": "x"}
-
+        
         from main import get_cached_page_step
-
         page_step1, cached1, term_size1 = get_cached_page_step(
-            None,
-            None,
-            host_infos,
-            buffers,
-            stats,
-            symbols,
-            "none",
-            "alias",
-            "host",
-            "all",
-            0.5,
-            False,
+            None, None,
+            host_infos, buffers, stats, symbols,
+            "none", "alias", "host", "all", 0.5, False
         )
-
+        
         # Change terminal size
         mock_terminal_size.return_value = os.terminal_size((120, 40))
-
+        
         # Second call with different size - should recalculate
         page_step2, cached2, term_size2 = get_cached_page_step(
-            cached1,
-            term_size1,
-            host_infos,
-            buffers,
-            stats,
-            symbols,
-            "none",
-            "alias",
-            "host",
-            "all",
-            0.5,
-            False,
+            cached1, term_size1,
+            host_infos, buffers, stats, symbols,
+            "none", "alias", "host", "all", 0.5, False
         )
-
+        
         # Should recalculate (values will be different due to different terminal width)
         self.assertNotEqual(page_step1, page_step2)
         self.assertEqual(term_size2.columns, 120)
@@ -2055,7 +2017,7 @@ class TestArrowKeyNavigation(unittest.TestCase):
         """Test that rapid arrow key presses use cached value, not recalculate each time"""
         mock_term_size.return_value = os.terminal_size((80, 24))
         mock_compute.return_value = 50  # Mock page step
-
+        
         host_infos = [
             {
                 "id": 0,
@@ -2091,30 +2053,21 @@ class TestArrowKeyNavigation(unittest.TestCase):
             }
         }
         symbols = {"success": ".", "slow": "~", "fail": "x"}
-
+        
         from main import get_cached_page_step
-
+        
         # Simulate 10 rapid arrow key presses
         cached_page_step = None
         last_term_size = None
-
+        
         for _ in range(10):
             page_step, cached_page_step, last_term_size = get_cached_page_step(
-                cached_page_step,
-                last_term_size,
-                host_infos,
-                buffers,
-                stats,
-                symbols,
-                "none",
-                "alias",
-                "host",
-                "all",
-                0.5,
-                False,
+                cached_page_step, last_term_size,
+                host_infos, buffers, stats, symbols,
+                "none", "alias", "host", "all", 0.5, False
             )
             self.assertEqual(page_step, 50)
-
+        
         # compute_history_page_step should only be called once (on first key press)
         # All subsequent calls should use the cache
         self.assertEqual(mock_compute.call_count, 1)
@@ -2168,29 +2121,6 @@ class TestTTLFunctionality(unittest.TestCase):
         # Ensure TTL is shown in TTL mode
         combined = "\n".join(lines)
         self.assertIn("ttl 64", combined)
-
-
-class TestBoxedRendering(unittest.TestCase):
-    """Test boxed panel rendering helpers."""
-
-    def test_box_lines_wraps_content(self):
-        """Ensure box_lines adds borders and pads content."""
-        boxed = box_lines(["Hello"], width=7, height=3)
-        self.assertEqual(
-            boxed,
-            [
-                "+-----+",
-                "|Hello|",
-                "+-----+",
-            ],
-        )
-
-    def test_render_status_box_wraps_status_line(self):
-        """Ensure status lines are boxed to the requested width."""
-        boxed = render_status_box("Status", width=10)
-        self.assertEqual(boxed[0], "+--------+")
-        self.assertEqual(boxed[1], "|Status  |")
-        self.assertEqual(boxed[2], "+--------+")
 
 
 if __name__ == "__main__":

@@ -679,7 +679,9 @@ def build_summary_suffix(entry, summary_mode):
 
 def build_summary_all_suffix(entry):
     avg_rtt = (
-        f"{entry['avg_rtt_ms']:.1f} ms" if entry["avg_rtt_ms"] is not None else "n/a"
+        f"{entry['avg_rtt_ms']:.1f} ms"
+        if entry["avg_rtt_ms"] is not None
+        else "n/a"
     )
     latest_ttl = entry.get("latest_ttl")
     ttl_value = f"{latest_ttl}" if latest_ttl is not None else "n/a"
@@ -696,7 +698,9 @@ def build_summary_all_suffix(entry):
 def can_render_full_summary(summary_data, width):
     if not summary_data:
         return False
-    max_suffix_len = max(len(build_summary_all_suffix(entry)) for entry in summary_data)
+    max_suffix_len = max(
+        len(build_summary_all_suffix(entry)) for entry in summary_data
+    )
     return width >= max_suffix_len + 1
 
 
@@ -1034,9 +1038,7 @@ def build_status_line(
     }
     sort_label = sort_labels.get(sort_mode, sort_mode)
     filter_label = filter_labels.get(filter_mode, filter_mode)
-    summary_label = (
-        "All" if summary_all else summary_labels.get(summary_mode, summary_mode)
-    )
+    summary_label = "All" if summary_all else summary_labels.get(summary_mode, summary_mode)
     status = f"Sort: {sort_label} | Filter: {filter_label} | Summary: {summary_label}"
     if summary_fullscreen:
         status += " | Summary View: Fullscreen"
@@ -1076,15 +1078,15 @@ def cycle_panel_position(current_position, default_position="right"):
 
 
 def render_help_view(width, height, boxed=False):
-    render_width, _render_height, can_box = resolve_boxed_dimensions(
+    render_width, render_height, can_box = resolve_boxed_dimensions(
         width, height, boxed
     )
     lines = [
         "MultiPing - Help",
         "-" * render_width,
-        "Keys:",
         "  n: cycle display mode (ip/rdns/alias)",
         "  v: toggle view (timeline/sparkline)",
+        "  g: select host for fullscreen RTT graph",
         "  o: cycle sort (failures/streak/latency/host)",
         "  f: cycle filter (failures/latency/all)",
         "  a: toggle ASN display",
@@ -1092,18 +1094,146 @@ def render_help_view(width, height, boxed=False):
         "  c: toggle color output",
         "  b: toggle bell on ping failure",
         "  F: toggle summary fullscreen view",
-        "  w: toggle summary panel on/off",
-        "  W: cycle summary panel position (left/right/top/bottom)",
+        "  w/W: toggle/cycle summary panel (on/off, position)",
         "  p: pause/resume display",
         "  s: save snapshot to file",
         "  <- / -> : navigate backward/forward in time (1 page)",
         "  up / down: scroll host list",
+        "  ESC: exit fullscreen graph/selection",
         "  H: show help (Press any key to close)",
         "  q: quit",
     ]
     if can_box:
         return box_lines(lines, width, height)
     return pad_lines(lines, width, height)
+
+
+def build_ascii_graph(values, width, height, style="line"):
+    if width <= 0 or height <= 0:
+        return []
+
+    trimmed_values = list(values[-width:]) if values else []
+    if len(trimmed_values) < width:
+        trimmed_values = [None] * (width - len(trimmed_values)) + trimmed_values
+
+    numeric_values = [value for value in trimmed_values if value is not None]
+    if not numeric_values:
+        return [" " * width for _ in range(height)]
+
+    min_val = min(numeric_values)
+    max_val = max(numeric_values)
+    span = max_val - min_val
+    if span == 0:
+        span = 1.0
+
+    grid = [[" " for _ in range(width)] for _ in range(height)]
+    for x, value in enumerate(trimmed_values):
+        if value is None:
+            grid[height - 1][x] = "x"
+            continue
+        scaled = int(round((value - min_val) / span * (height - 1)))
+        y = height - 1 - scaled
+        if style == "bar":
+            for y_fill in range(y, height):
+                grid[y_fill][x] = "#"
+        else:
+            grid[y][x] = "*"
+
+    return ["".join(row) for row in grid]
+
+
+def render_host_selection_view(
+    display_entries,
+    selected_index,
+    width,
+    height,
+    mode_label,
+):
+    if width <= 0 or height <= 0:
+        return []
+
+    title = f"Select Host for RTT Graph [{mode_label}]"
+    lines = [title[:width], "-" * width]
+    status_line = "↑/↓ move | Enter: view graph | ESC: cancel"
+    list_height = max(0, height - 3)
+
+    if not display_entries:
+        lines.append("No hosts match current filter."[:width])
+        lines = pad_lines(lines, width, height)
+        lines[-1] = status_line[:width].ljust(width)
+        return lines
+
+    max_index = len(display_entries) - 1
+    selected_index = min(max(selected_index, 0), max_index)
+
+    start_index = max(
+        0,
+        min(selected_index - list_height + 1, max_index - list_height + 1),
+    )
+    end_index = min(len(display_entries), start_index + list_height)
+
+    for idx in range(start_index, end_index):
+        _host_id, label = display_entries[idx]
+        prefix = "> " if idx == selected_index else "  "
+        entry_label = f"{prefix}{label}"
+        lines.append(entry_label[:width].ljust(width))
+
+    if len(display_entries) > end_index:
+        remaining = len(display_entries) - end_index
+        lines.append(f"... ({remaining} more)".ljust(width)[:width])
+
+    lines = pad_lines(lines, width, height)
+    lines[-1] = status_line[:width].ljust(width)
+    return lines
+
+
+def render_fullscreen_rtt_graph(
+    host_label,
+    rtt_values,
+    width,
+    height,
+    display_mode,
+    paused,
+    timestamp,
+):
+    if width <= 0 or height <= 0:
+        return []
+
+    graph_style = "bar" if display_mode == "sparkline" else "line"
+    pause_label = "PAUSED" if paused else "LIVE"
+    graph_label = "Bar" if graph_style == "bar" else "Line"
+    header = (
+        f"MultiPing - {pause_label} RTT Graph "
+        f"[{host_label} | {graph_label}] {timestamp}"
+    )
+
+    rtt_ms = [value * 1000 if value is not None else None for value in rtt_values]
+    numeric_values = [value for value in rtt_ms if value is not None]
+    if numeric_values:
+        min_val = min(numeric_values)
+        max_val = max(numeric_values)
+        latest_val = numeric_values[-1]
+        range_line = (
+            f"RTT range: {min_val:.1f}-{max_val:.1f} ms | latest: {latest_val:.1f} ms"
+        )
+    else:
+        range_line = "RTT range: n/a"
+
+    status_line = "ESC: back | v: toggle graph | g: select host"
+
+    graph_height = max(0, height - 4)
+    graph_lines = build_ascii_graph(rtt_ms, width, graph_height, style=graph_style)
+    if not numeric_values and graph_height > 0:
+        message = "No RTT samples yet"
+        message_line = message[:width].center(width)
+        mid = graph_height // 2
+        graph_lines[mid] = message_line
+
+    lines = [header[:width], range_line[:width], "-" * width]
+    lines.extend(graph_lines)
+    lines = pad_lines(lines, width, height)
+    lines[-1] = status_line[:width].ljust(width)
+    return lines
 
 
 def compute_history_page_step(
@@ -1175,7 +1305,6 @@ def get_cached_page_step(
     Returns:
         tuple: (page_step, new_cached_page_step, new_last_term_size)
     """
-
     def should_recalculate_page_step(cached_value, last_size, current_size):
         """Check if page step needs recalculation due to cache miss or terminal resize"""
         if cached_value is None or last_size is None:
@@ -1189,9 +1318,7 @@ def get_cached_page_step(
     current_term_size = get_terminal_size(fallback=(80, 24))
 
     # Check if we need to recalculate
-    if should_recalculate_page_step(
-        cached_page_step, last_term_size, current_term_size
-    ):
+    if should_recalculate_page_step(cached_page_step, last_term_size, current_term_size):
         # Terminal size changed or first time - recalculate
         page_step = compute_history_page_step(
             host_infos,
@@ -1486,9 +1613,7 @@ def render_display(
     max_lines = max(len(LAST_RENDER_LINES), len(combined_lines))
     output_chunks = []
     for index in range(max_lines):
-        previous_line = (
-            LAST_RENDER_LINES[index] if index < len(LAST_RENDER_LINES) else None
-        )
+        previous_line = LAST_RENDER_LINES[index] if index < len(LAST_RENDER_LINES) else None
         current_line = combined_lines[index] if index < len(combined_lines) else ""
         if previous_line == current_line and index < len(combined_lines):
             continue
@@ -1728,19 +1853,19 @@ def read_key():
     if ready:
         char = sys.stdin.read(1)
         # Check for escape sequence (arrow keys start with ESC)
-        if char == "\x1b":
+        if char == '\x1b':
             # Check if more characters are available
             ready, _, _ = select.select([sys.stdin], [], [], ARROW_KEY_READ_TIMEOUT)
             if ready:
                 seq = sys.stdin.read(2)
-                if seq == "[A":
-                    return "arrow_up"
-                elif seq == "[B":
-                    return "arrow_down"
-                elif seq == "[C":
-                    return "arrow_right"
-                elif seq == "[D":
-                    return "arrow_left"
+                if seq == '[A':
+                    return 'arrow_up'
+                elif seq == '[B':
+                    return 'arrow_down'
+                elif seq == '[C':
+                    return 'arrow_right'
+                elif seq == '[D':
+                    return 'arrow_left'
         return char
     return None
 
@@ -1750,13 +1875,13 @@ def flash_screen():
     if not sys.stdout.isatty():
         return
     # ANSI escape sequences for visual flash effect
-    SAVE_CURSOR = "\x1b7"  # Save cursor position
-    SET_WHITE_BG = "\x1b[47m"  # White background
-    SET_BLACK_FG = "\x1b[30m"  # Black foreground
-    CLEAR_SCREEN = "\x1b[2J"  # Clear screen
-    MOVE_HOME = "\x1b[H"  # Move cursor to home position
-    RESTORE_CURSOR = "\x1b8"  # Restore cursor position
-    FLASH_DURATION_SECONDS = 0.1  # Duration of flash effect
+    SAVE_CURSOR = "\x1b7"           # Save cursor position
+    SET_WHITE_BG = "\x1b[47m"       # White background
+    SET_BLACK_FG = "\x1b[30m"       # Black foreground
+    CLEAR_SCREEN = "\x1b[2J"        # Clear screen
+    MOVE_HOME = "\x1b[H"            # Move cursor to home position
+    RESTORE_CURSOR = "\x1b8"        # Restore cursor position
+    FLASH_DURATION_SECONDS = 0.1    # Duration of flash effect
 
     # Apply white flash effect and clear screen
     sys.stdout.write(
@@ -1799,18 +1924,21 @@ def create_state_snapshot(buffers, stats, timestamp):
     for host_id, host_buffers in buffers.items():
         buffers_copy[host_id] = {
             "timeline": deque(
-                host_buffers["timeline"], maxlen=host_buffers["timeline"].maxlen
+                host_buffers["timeline"],
+                maxlen=host_buffers["timeline"].maxlen
             ),
             "rtt_history": deque(
-                host_buffers["rtt_history"], maxlen=host_buffers["rtt_history"].maxlen
+                host_buffers["rtt_history"],
+                maxlen=host_buffers["rtt_history"].maxlen
             ),
             "ttl_history": deque(
-                host_buffers["ttl_history"], maxlen=host_buffers["ttl_history"].maxlen
+                host_buffers["ttl_history"],
+                maxlen=host_buffers["ttl_history"].maxlen
             ),
             "categories": {
                 status: deque(cat_deque, maxlen=cat_deque.maxlen)
                 for status, cat_deque in host_buffers["categories"].items()
-            },
+            }
         }
 
     # Deep copy stats
@@ -1840,6 +1968,13 @@ def update_history_buffer(
     if history_offset > 0:
         history_offset = min(history_offset + 1, len(history_buffer) - 1)
     return last_snapshot_time, history_offset
+
+
+def resolve_render_state(history_offset, history_buffer, buffers, stats, paused):
+    if history_offset > 0 and history_offset <= len(history_buffer):
+        snapshot = history_buffer[-(history_offset + 1)]
+        return snapshot["buffers"], snapshot["stats"], True
+    return buffers, stats, paused
 
 
 def prepare_terminal_for_exit():
@@ -1958,10 +2093,11 @@ def main(args):
     asn_timeout = 3.0
     asn_failure_ttl = 300.0
     panel_position = args.panel_position
-    panel_toggle_default = (
-        args.panel_position if args.panel_position != "none" else "right"
-    )
+    panel_toggle_default = args.panel_position if args.panel_position != "none" else "right"
     last_panel_position = panel_position if panel_position != "none" else None
+    host_select_active = False
+    host_select_index = 0
+    graph_host_id = None
 
     # History navigation state
     # Store snapshots at regular intervals for time navigation
@@ -2040,9 +2176,7 @@ def main(args):
         try:
             if stdin_fd is not None:
                 tty.setcbreak(stdin_fd)
-            while running and (
-                not expect_completion or completed_hosts < len(host_infos)
-            ):
+            while running and (not expect_completion or completed_hosts < len(host_infos)):
                 key = read_key()
                 if key:
                     if key in ("q", "Q"):
@@ -2053,15 +2187,80 @@ def main(args):
                         force_render = True
                         updated = True
                         continue
+                    elif host_select_active:
+                        render_buffers, render_stats, _ = resolve_render_state(
+                            history_offset,
+                            history_buffer,
+                            buffers,
+                            stats,
+                            paused,
+                        )
+                        term_size = get_terminal_size(fallback=(80, 24))
+                        include_asn = should_show_asn(
+                            host_infos,
+                            modes[mode_index],
+                            show_asn,
+                            term_size.columns,
+                        )
+                        display_names = build_display_names(
+                            host_infos, modes[mode_index], include_asn, asn_width=8
+                        )
+                        display_entries = build_display_entries(
+                            host_infos,
+                            display_names,
+                            render_buffers,
+                            render_stats,
+                            symbols,
+                            sort_modes[sort_mode_index],
+                            filter_modes[filter_mode_index],
+                            args.slow_threshold,
+                        )
+                        if not display_entries:
+                            host_select_index = 0
+                        else:
+                            host_select_index = min(
+                                max(host_select_index, 0), len(display_entries) - 1
+                            )
+                        if key == "arrow_up" and display_entries:
+                            host_select_index = max(0, host_select_index - 1)
+                            force_render = True
+                            updated = True
+                        elif key == "arrow_down" and display_entries:
+                            host_select_index = min(
+                                len(display_entries) - 1, host_select_index + 1
+                            )
+                            force_render = True
+                            updated = True
+                        elif key in ("\r", "\n"):
+                            if display_entries:
+                                graph_host_id = display_entries[host_select_index][0]
+                                host_select_active = False
+                                force_render = True
+                                updated = True
+                        elif key == "\x1b":
+                            host_select_active = False
+                            force_render = True
+                            updated = True
+                        continue
+                    elif graph_host_id is not None:
+                        if key == "\x1b":
+                            graph_host_id = None
+                            force_render = True
+                            updated = True
+                            continue
+                        if key in ("g", "G"):
+                            host_select_active = True
+                            graph_host_id = None
+                            force_render = True
+                            updated = True
+                            continue
                     elif key in ("H", "h"):
                         show_help = True
                         force_render = True
                         updated = True
                     elif key == "n":
                         mode_index = (mode_index + 1) % len(modes)
-                        cached_page_step = (
-                            None  # Invalidate cache - display mode changed
-                        )
+                        cached_page_step = None  # Invalidate cache - display mode changed
                         updated = True
                     elif key == "v":
                         display_mode_index = (display_mode_index + 1) % len(
@@ -2074,15 +2273,11 @@ def main(args):
                         updated = True
                     elif key == "f":
                         filter_mode_index = (filter_mode_index + 1) % len(filter_modes)
-                        cached_page_step = (
-                            None  # Invalidate cache - filter mode changed
-                        )
+                        cached_page_step = None  # Invalidate cache - filter mode changed
                         updated = True
                     elif key == "a":
                         show_asn = not show_asn
-                        cached_page_step = (
-                            None  # Invalidate cache - ASN display toggled
-                        )
+                        cached_page_step = None  # Invalidate cache - ASN display toggled
                         updated = True
                     elif key == "m":
                         summary_mode_index = (summary_mode_index + 1) % len(
@@ -2133,9 +2328,7 @@ def main(args):
                             if panel_position == "none"
                             else "Summary panel shown"
                         )
-                        cached_page_step = (
-                            None  # Invalidate cache - panel visibility changed
-                        )
+                        cached_page_step = None  # Invalidate cache - panel visibility changed
                         force_render = True
                         updated = True
                     elif key == "W":
@@ -2151,9 +2344,7 @@ def main(args):
                         status_message = (
                             f"Summary panel position: {panel_position.upper()}"
                         )
-                        cached_page_step = (
-                            None  # Invalidate cache - panel position changed
-                        )
+                        cached_page_step = None  # Invalidate cache - panel position changed
                         force_render = True
                         updated = True
                     elif key == "p":
@@ -2203,21 +2394,19 @@ def main(args):
                     elif key == "arrow_left":
                         # Go back in time (increase offset)
                         if history_offset < len(history_buffer) - 1:
-                            page_step, cached_page_step, last_term_size = (
-                                get_cached_page_step(
-                                    cached_page_step,
-                                    last_term_size,
-                                    host_infos,
-                                    buffers,
-                                    stats,
-                                    symbols,
-                                    panel_position,
-                                    modes[mode_index],
-                                    sort_modes[sort_mode_index],
-                                    filter_modes[filter_mode_index],
-                                    args.slow_threshold,
-                                    show_asn,
-                                )
+                            page_step, cached_page_step, last_term_size = get_cached_page_step(
+                                cached_page_step,
+                                last_term_size,
+                                host_infos,
+                                buffers,
+                                stats,
+                                symbols,
+                                panel_position,
+                                modes[mode_index],
+                                sort_modes[sort_mode_index],
+                                filter_modes[filter_mode_index],
+                                args.slow_threshold,
+                                show_asn,
                             )
                             history_offset = min(
                                 history_offset + page_step,
@@ -2231,45 +2420,12 @@ def main(args):
                     elif key == "arrow_right":
                         # Go forward in time (decrease offset, toward live)
                         if history_offset > 0:
-                            page_step, cached_page_step, last_term_size = (
-                                get_cached_page_step(
-                                    cached_page_step,
-                                    last_term_size,
-                                    host_infos,
-                                    buffers,
-                                    stats,
-                                    symbols,
-                                    panel_position,
-                                    modes[mode_index],
-                                    sort_modes[sort_mode_index],
-                                    filter_modes[filter_mode_index],
-                                    args.slow_threshold,
-                                    show_asn,
-                                )
-                            )
-                            history_offset = max(0, history_offset - page_step)
-                            force_render = True
-                            updated = True
-                            if history_offset == 0:
-                                status_message = "Returned to LIVE view"
-                            else:
-                                snapshot = history_buffer[-(history_offset + 1)]
-                                elapsed_seconds = int(
-                                    time.time() - snapshot["timestamp"]
-                                )
-                                status_message = f"Viewing {elapsed_seconds}s ago"
-                    elif key == "arrow_up":
-                        scroll_buffers = buffers
-                        scroll_stats = stats
-                        if history_offset > 0 and history_offset <= len(history_buffer):
-                            snapshot = history_buffer[-(history_offset + 1)]
-                            scroll_buffers = snapshot["buffers"]
-                            scroll_stats = snapshot["stats"]
-                        max_offset, visible_hosts, total_hosts = (
-                            compute_host_scroll_bounds(
+                            page_step, cached_page_step, last_term_size = get_cached_page_step(
+                                cached_page_step,
+                                last_term_size,
                                 host_infos,
-                                scroll_buffers,
-                                scroll_stats,
+                                buffers,
+                                stats,
                                 symbols,
                                 panel_position,
                                 modes[mode_index],
@@ -2278,6 +2434,33 @@ def main(args):
                                 args.slow_threshold,
                                 show_asn,
                             )
+                            history_offset = max(0, history_offset - page_step)
+                            force_render = True
+                            updated = True
+                            if history_offset == 0:
+                                status_message = "Returned to LIVE view"
+                            else:
+                                snapshot = history_buffer[-(history_offset + 1)]
+                                elapsed_seconds = int(time.time() - snapshot["timestamp"])
+                                status_message = f"Viewing {elapsed_seconds}s ago"
+                    elif key == "arrow_up":
+                        scroll_buffers = buffers
+                        scroll_stats = stats
+                        if history_offset > 0 and history_offset <= len(history_buffer):
+                            snapshot = history_buffer[-(history_offset + 1)]
+                            scroll_buffers = snapshot["buffers"]
+                            scroll_stats = snapshot["stats"]
+                        max_offset, visible_hosts, total_hosts = compute_host_scroll_bounds(
+                            host_infos,
+                            scroll_buffers,
+                            scroll_stats,
+                            symbols,
+                            panel_position,
+                            modes[mode_index],
+                            sort_modes[sort_mode_index],
+                            filter_modes[filter_mode_index],
+                            args.slow_threshold,
+                            show_asn,
                         )
                         if host_scroll_offset > 0 and total_hosts > 0:
                             host_scroll_offset = max(0, host_scroll_offset - 1)
@@ -2297,19 +2480,17 @@ def main(args):
                             snapshot = history_buffer[-(history_offset + 1)]
                             scroll_buffers = snapshot["buffers"]
                             scroll_stats = snapshot["stats"]
-                        max_offset, visible_hosts, total_hosts = (
-                            compute_host_scroll_bounds(
-                                host_infos,
-                                scroll_buffers,
-                                scroll_stats,
-                                symbols,
-                                panel_position,
-                                modes[mode_index],
-                                sort_modes[sort_mode_index],
-                                filter_modes[filter_mode_index],
-                                args.slow_threshold,
-                                show_asn,
-                            )
+                        max_offset, visible_hosts, total_hosts = compute_host_scroll_bounds(
+                            host_infos,
+                            scroll_buffers,
+                            scroll_stats,
+                            symbols,
+                            panel_position,
+                            modes[mode_index],
+                            sort_modes[sort_mode_index],
+                            filter_modes[filter_mode_index],
+                            args.slow_threshold,
+                            show_asn,
                         )
                         if host_scroll_offset < max_offset and total_hosts > 0:
                             host_scroll_offset = min(max_offset, host_scroll_offset + 1)
@@ -2322,6 +2503,11 @@ def main(args):
                             )
                             force_render = True
                             updated = True
+                    elif key in ("g", "G"):
+                        host_select_active = True
+                        host_select_index = 0
+                        force_render = True
+                        updated = True
 
                 while True:
                     try:
@@ -2408,36 +2594,96 @@ def main(args):
                 )
 
                 # Determine which buffers/stats to use for rendering
-                render_buffers = buffers
-                render_stats = stats
-                render_paused = paused
-                if history_offset > 0:
-                    # Use historical data
-                    if history_offset <= len(history_buffer):
-                        snapshot = history_buffer[-(history_offset + 1)]
-                        render_buffers = snapshot["buffers"]
-                        render_stats = snapshot["stats"]
-                        render_paused = True  # Show as paused when viewing history
+                render_buffers, render_stats, render_paused = resolve_render_state(
+                    history_offset,
+                    history_buffer,
+                    buffers,
+                    stats,
+                    paused,
+                )
 
                 if force_render or (
                     not paused and (updated or (now - last_render) >= refresh_interval)
                 ):
-                    max_offset, _visible_hosts, _total_hosts = (
-                        compute_host_scroll_bounds(
-                            host_infos,
-                            render_buffers,
-                            render_stats,
-                            symbols,
-                            panel_position,
-                            modes[mode_index],
-                            sort_modes[sort_mode_index],
-                            filter_modes[filter_mode_index],
-                            args.slow_threshold,
-                            show_asn,
+                    display_timestamp = format_timestamp(
+                        datetime.now(timezone.utc), display_tz
+                    )
+                    if history_offset > 0 and history_offset <= len(history_buffer):
+                        snapshot = history_buffer[-(history_offset + 1)]
+                        snapshot_dt = datetime.fromtimestamp(
+                            snapshot["timestamp"], timezone.utc
                         )
+                        display_timestamp = format_timestamp(snapshot_dt, display_tz)
+                    max_offset, _visible_hosts, _total_hosts = compute_host_scroll_bounds(
+                        host_infos,
+                        render_buffers,
+                        render_stats,
+                        symbols,
+                        panel_position,
+                        modes[mode_index],
+                        sort_modes[sort_mode_index],
+                        filter_modes[filter_mode_index],
+                        args.slow_threshold,
+                        show_asn,
                     )
                     if host_scroll_offset > max_offset:
                         host_scroll_offset = max_offset
+                    override_lines = None
+                    term_size = get_terminal_size(fallback=(80, 24))
+                    if show_help:
+                        override_lines = render_help_view(
+                            term_size.columns, term_size.lines
+                        )
+                    elif host_select_active:
+                        include_asn = should_show_asn(
+                            host_infos,
+                            modes[mode_index],
+                            show_asn,
+                            term_size.columns,
+                        )
+                        display_names = build_display_names(
+                            host_infos, modes[mode_index], include_asn, asn_width=8
+                        )
+                        display_entries = build_display_entries(
+                            host_infos,
+                            display_names,
+                            render_buffers,
+                            render_stats,
+                            symbols,
+                            sort_modes[sort_mode_index],
+                            filter_modes[filter_mode_index],
+                            args.slow_threshold,
+                        )
+                        override_lines = render_host_selection_view(
+                            display_entries,
+                            host_select_index,
+                            term_size.columns,
+                            term_size.lines,
+                            modes[mode_index],
+                        )
+                    elif graph_host_id is not None:
+                        include_asn = should_show_asn(
+                            host_infos,
+                            modes[mode_index],
+                            show_asn,
+                            term_size.columns,
+                        )
+                        display_names = build_display_names(
+                            host_infos, modes[mode_index], include_asn, asn_width=8
+                        )
+                        host_label = display_names.get(
+                            graph_host_id, host_infos[graph_host_id]["alias"]
+                        )
+                        rtt_values = render_buffers[graph_host_id]["rtt_history"]
+                        override_lines = render_fullscreen_rtt_graph(
+                            host_label,
+                            rtt_values,
+                            term_size.columns,
+                            term_size.lines,
+                            display_modes[display_mode_index],
+                            render_paused,
+                            display_timestamp,
+                        )
                     render_display(
                         host_infos,
                         render_buffers,
@@ -2458,6 +2704,7 @@ def main(args):
                         use_color,
                         host_scroll_offset,
                         summary_fullscreen,
+                        override_lines=override_lines,
                     )
                     last_render = now
                     updated = False
