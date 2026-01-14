@@ -576,6 +576,10 @@ def resize_buffers(buffers, timeline_width, symbols):
             host_buffers["rtt_history"] = deque(
                 host_buffers["rtt_history"], maxlen=timeline_width
             )
+        if host_buffers["time_history"].maxlen != timeline_width:
+            host_buffers["time_history"] = deque(
+                host_buffers["time_history"], maxlen=timeline_width
+            )
         if host_buffers["ttl_history"].maxlen != timeline_width:
             host_buffers["ttl_history"] = deque(
                 host_buffers["ttl_history"], maxlen=timeline_width
@@ -1283,6 +1287,7 @@ def render_host_selection_view(
 def render_fullscreen_rtt_graph(
     host_label,
     rtt_values,
+    time_history,
     width,
     height,
     display_mode,
@@ -1326,6 +1331,7 @@ def render_fullscreen_rtt_graph(
 
     graph_height = max(0, height - 5)
     resampled_values = resample_values(rtt_ms, graph_width)
+    resampled_times = resample_values(time_history, graph_width)
     graph_lines = build_ascii_graph(
         resampled_values, graph_width, graph_height, style=graph_style
     )
@@ -1347,10 +1353,19 @@ def render_fullscreen_rtt_graph(
         label_text = label.rjust(y_axis_width)
         lines.append(f"{label_text} | {line}".ljust(width)[:width])
 
-    sample_max = max(len(rtt_ms) - 1, 0)
-    x_axis_line = (
-        f"X-axis (samples, oldest→newest): 0 → {sample_max}"
-    )
+    time_values = [value for value in resampled_times if value is not None]
+    if time_values:
+        oldest_time = next(value for value in resampled_times if value is not None)
+        latest_time = next(
+            value for value in reversed(resampled_times) if value is not None
+        )
+        oldest_age = max(0, int(round(latest_time - oldest_time)))
+        x_axis_line = (
+            "X-axis (seconds ago, oldest→newest): "
+            f"{oldest_age}s → 0s"
+        )
+    else:
+        x_axis_line = "X-axis (seconds ago): n/a"
     lines.append(x_axis_line[:width].ljust(width))
     lines = pad_lines(lines, width, height)
     lines[-1] = status_line[:width].ljust(width)
@@ -2052,6 +2067,10 @@ def create_state_snapshot(buffers, stats, timestamp):
                 host_buffers["rtt_history"],
                 maxlen=host_buffers["rtt_history"].maxlen
             ),
+            "time_history": deque(
+                host_buffers["time_history"],
+                maxlen=host_buffers["time_history"].maxlen
+            ),
             "ttl_history": deque(
                 host_buffers["ttl_history"],
                 maxlen=host_buffers["ttl_history"].maxlen
@@ -2162,6 +2181,7 @@ def main(args):
         info["id"]: {
             "timeline": deque(maxlen=timeline_width),
             "rtt_history": deque(maxlen=timeline_width),
+            "time_history": deque(maxlen=timeline_width),
             "ttl_history": deque(maxlen=timeline_width),
             "categories": {status: deque(maxlen=timeline_width) for status in symbols},
         }
@@ -2686,6 +2706,7 @@ def main(args):
                     status = result["status"]
                     buffers[host_id]["timeline"].append(symbols[status])
                     buffers[host_id]["rtt_history"].append(result.get("rtt"))
+                    buffers[host_id]["time_history"].append(time.time())
                     buffers[host_id]["ttl_history"].append(result.get("ttl"))
                     buffers[host_id]["categories"][status].append(result["sequence"])
                     stats[host_id][status] += 1
@@ -2798,9 +2819,11 @@ def main(args):
                             graph_host_id, host_infos[graph_host_id]["alias"]
                         )
                         rtt_values = render_buffers[graph_host_id]["rtt_history"]
+                        time_history = render_buffers[graph_host_id]["time_history"]
                         override_lines = render_fullscreen_rtt_graph(
                             host_label,
                             rtt_values,
+                            time_history,
                             term_size.columns,
                             term_size.lines,
                             display_modes[display_mode_index],

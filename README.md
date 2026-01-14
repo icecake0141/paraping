@@ -31,7 +31,7 @@ ParaPing is an interactive, terminal-based ICMP monitor that pings many hosts in
 - Optional colored output for success/slow/fail states.
 - Pause modes: freeze display only or pause ping + display.
 - Snapshot export to a timestamped text file.
-- Fullscreen ASCII RTT graph per host with axis labels and scale (selectable via TUI).
+- Fullscreen ASCII RTT graph per host with axis labels and scale, including X-axis seconds-ago labels (selectable via TUI).
 - Configurable timezone for timestamps and snapshot naming.
 - Input file support for host lists (one per line in `IP,alias` format; comments allowed).
 

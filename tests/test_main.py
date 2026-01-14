@@ -598,6 +598,7 @@ class TestAsciiGraph(unittest.TestCase):
         lines = render_fullscreen_rtt_graph(
             "host1",
             [0.01, 0.02],
+            [1000.0, 1002.0],
             40,
             10,
             "timeline",
@@ -607,6 +608,7 @@ class TestAsciiGraph(unittest.TestCase):
         combined = "\n".join(lines)
         self.assertIn("host1", combined)
         self.assertIn("RTT range", combined)
+        self.assertIn("seconds ago", combined)
         self.assertIn("ESC: back", combined)
 
 
@@ -676,6 +678,7 @@ class TestLayoutComputation(unittest.TestCase):
             idx: {
                 "timeline": deque(["."] * 5),
                 "rtt_history": deque([0.01] * 5),
+                "time_history": deque([1000.0] * 5),
                 "ttl_history": deque([64] * 5),
                 "categories": {
                     "success": deque([1]),
@@ -1748,6 +1751,7 @@ class TestArrowKeyNavigation(unittest.TestCase):
             0: {
                 "timeline": deque([".", ".", "x"], maxlen=10),
                 "rtt_history": deque([0.01, 0.02, None], maxlen=10),
+                "time_history": deque([1000.0, 1001.0, None], maxlen=10),
                 "ttl_history": deque([64, 64, None], maxlen=10),
                 "categories": {
                     "success": deque([1, 2], maxlen=10),
@@ -1782,6 +1786,9 @@ class TestArrowKeyNavigation(unittest.TestCase):
         # Verify buffers were deep copied
         self.assertEqual(list(snapshot["buffers"][0]["timeline"]), [".", ".", "x"])
         self.assertEqual(list(snapshot["buffers"][0]["rtt_history"]), [0.01, 0.02, None])
+        self.assertEqual(
+            list(snapshot["buffers"][0]["time_history"]), [1000.0, 1001.0, None]
+        )
         self.assertEqual(list(snapshot["buffers"][0]["ttl_history"]), [64, 64, None])
 
         # Verify stats were deep copied
@@ -1803,6 +1810,7 @@ class TestArrowKeyNavigation(unittest.TestCase):
             0: {
                 "timeline": deque(["."] * 2, maxlen=10),
                 "rtt_history": deque([0.01, 0.02], maxlen=10),
+                "time_history": deque([1000.0, 1001.0], maxlen=10),
                 "ttl_history": deque([64, 64], maxlen=10),
                 "categories": {
                     "success": deque([1, 2], maxlen=10),
@@ -1849,6 +1857,7 @@ class TestArrowKeyNavigation(unittest.TestCase):
             0: {
                 "timeline": deque(["."] * 2, maxlen=10),
                 "rtt_history": deque([0.01, 0.02], maxlen=10),
+                "time_history": deque([1000.0, 1001.0], maxlen=10),
                 "ttl_history": deque([64, 64], maxlen=10),
                 "categories": {
                     "success": deque([1, 2], maxlen=10),
