@@ -51,6 +51,7 @@ from main import (
     flash_screen,
     ring_bell,
     read_key,
+    parse_escape_sequence,
     create_state_snapshot,
     update_history_buffer,
     latest_ttl_value,
@@ -592,6 +593,31 @@ class TestAsciiGraph(unittest.TestCase):
         lines = render_host_selection_view(entries, 1, 20, 6, "ip")
         combined = "\n".join(lines)
         self.assertIn("> host2", combined)
+
+
+class TestEscapeSequenceParsing(unittest.TestCase):
+    """Test escape sequence parsing for arrow keys."""
+
+    def test_parse_escape_sequence_basic_arrows(self):
+        self.assertEqual(parse_escape_sequence("[A"), "arrow_up")
+        self.assertEqual(parse_escape_sequence("[B"), "arrow_down")
+        self.assertEqual(parse_escape_sequence("[C"), "arrow_right")
+        self.assertEqual(parse_escape_sequence("[D"), "arrow_left")
+
+    def test_parse_escape_sequence_application_cursor(self):
+        self.assertEqual(parse_escape_sequence("OA"), "arrow_up")
+        self.assertEqual(parse_escape_sequence("OB"), "arrow_down")
+        self.assertEqual(parse_escape_sequence("OC"), "arrow_right")
+        self.assertEqual(parse_escape_sequence("OD"), "arrow_left")
+
+    def test_parse_escape_sequence_extended_arrows(self):
+        self.assertEqual(parse_escape_sequence("[1;5A"), "arrow_up")
+        self.assertEqual(parse_escape_sequence("[1;5B"), "arrow_down")
+        self.assertEqual(parse_escape_sequence("[1;5C"), "arrow_right")
+        self.assertEqual(parse_escape_sequence("[1;5D"), "arrow_left")
+
+    def test_parse_escape_sequence_unknown(self):
+        self.assertIsNone(parse_escape_sequence("[Z"))
 
     def test_render_fullscreen_rtt_graph_contains_header(self):
         """Fullscreen RTT graph should include host label and RTT range."""

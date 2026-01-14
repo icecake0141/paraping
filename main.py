@@ -1963,6 +1963,28 @@ def should_show_asn(
     return timeline_width >= min_timeline_width
 
 
+def parse_escape_sequence(seq):
+    arrow_map = {
+        "A": "arrow_up",
+        "B": "arrow_down",
+        "C": "arrow_right",
+        "D": "arrow_left",
+    }
+    if not seq:
+        return None
+    if seq in ("[A", "OA"):
+        return "arrow_up"
+    if seq in ("[B", "OB"):
+        return "arrow_down"
+    if seq in ("[C", "OC"):
+        return "arrow_right"
+    if seq in ("[D", "OD"):
+        return "arrow_left"
+    if seq[0] in ("[", "O") and seq[-1] in arrow_map:
+        return arrow_map[seq[-1]]
+    return None
+
+
 def read_key():
     """
     Read a key from stdin, handling multi-byte sequences like arrow keys.
@@ -1971,24 +1993,23 @@ def read_key():
     if not sys.stdin.isatty():
         return None
     ready, _, _ = select.select([sys.stdin], [], [], 0)
-    if ready:
-        char = sys.stdin.read(1)
-        # Check for escape sequence (arrow keys start with ESC)
-        if char == '\x1b':
-            # Check if more characters are available
-            ready, _, _ = select.select([sys.stdin], [], [], ARROW_KEY_READ_TIMEOUT)
-            if ready:
-                seq = sys.stdin.read(2)
-                if seq in ('[A', 'OA'):
-                    return 'arrow_up'
-                elif seq in ('[B', 'OB'):
-                    return 'arrow_down'
-                elif seq in ('[C', 'OC'):
-                    return 'arrow_right'
-                elif seq in ('[D', 'OD'):
-                    return 'arrow_left'
-        return char
-    return None
+    if not ready:
+        return None
+    char = sys.stdin.read(1)
+    # Check for escape sequence (arrow keys start with ESC)
+    if char == "\x1b":
+        seq = ""
+        deadline = time.monotonic() + ARROW_KEY_READ_TIMEOUT
+        while time.monotonic() < deadline:
+            ready, _, _ = select.select([sys.stdin], [], [], 0)
+            if not ready:
+                break
+            seq += sys.stdin.read(1)
+            if seq and seq[-1] in ("A", "B", "C", "D"):
+                break
+        parsed = parse_escape_sequence(seq)
+        return parsed if parsed is not None else char
+    return char
 
 
 def flash_screen():
