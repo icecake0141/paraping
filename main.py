@@ -56,7 +56,7 @@ from ping_wrapper import ping_with_helper
 # Constants for time navigation feature
 HISTORY_DURATION_MINUTES = 30  # Store up to 30 minutes of history
 SNAPSHOT_INTERVAL_SECONDS = 1.0  # Take snapshot every second
-ARROW_KEY_READ_TIMEOUT = 0.01  # Timeout for reading arrow key escape sequences
+ARROW_KEY_READ_TIMEOUT = 0.05  # Timeout for reading arrow key escape sequences
 ACTIVITY_INDICATOR_WIDTH = 10
 ACTIVITY_INDICATOR_EXPANDED_WIDTH = 20
 ACTIVITY_INDICATOR_HEIGHT = 4
@@ -1216,6 +1216,25 @@ def build_ascii_graph(values, width, height, style="line"):
     return ["".join(row) for row in grid]
 
 
+def resample_values(values, target_width):
+    if target_width <= 0:
+        return []
+    if not values:
+        return [None] * target_width
+    if target_width == 1:
+        return [values[-1]]
+    if len(values) == 1:
+        return [values[0]] * target_width
+    if len(values) == target_width:
+        return list(values)
+
+    last_index = len(values) - 1
+    return [
+        values[round(i * last_index / (target_width - 1))]
+        for i in range(target_width)
+    ]
+
+
 def render_host_selection_view(
     display_entries,
     selected_index,
@@ -1288,23 +1307,51 @@ def render_fullscreen_rtt_graph(
         max_val = max(numeric_values)
         latest_val = numeric_values[-1]
         range_line = (
-            f"RTT range: {min_val:.1f}-{max_val:.1f} ms | latest: {latest_val:.1f} ms"
+            "RTT range (Y-axis, ms): "
+            f"{min_val:.1f}-{max_val:.1f} | latest: {latest_val:.1f}"
         )
     else:
-        range_line = "RTT range: n/a"
+        min_val = max_val = 0.0
+        range_line = "RTT range (Y-axis, ms): n/a"
 
     status_line = "ESC: back | v: toggle graph | g: select host"
 
-    graph_height = max(0, height - 4)
-    graph_lines = build_ascii_graph(rtt_ms, width, graph_height, style=graph_style)
+    y_tick_labels = [
+        f"{max_val:.1f}",
+        f"{(min_val + max_val) / 2:.1f}",
+        f"{min_val:.1f}",
+    ]
+    y_axis_width = max(len(label) for label in y_tick_labels) if numeric_values else 1
+    graph_width = max(1, width - y_axis_width - 3)
+
+    graph_height = max(0, height - 5)
+    resampled_values = resample_values(rtt_ms, graph_width)
+    graph_lines = build_ascii_graph(
+        resampled_values, graph_width, graph_height, style=graph_style
+    )
     if not numeric_values and graph_height > 0:
         message = "No RTT samples yet"
-        message_line = message[:width].center(width)
+        message_line = message[:graph_width].center(graph_width)
         mid = graph_height // 2
         graph_lines[mid] = message_line
 
+    y_tick_positions = {
+        0: y_tick_labels[0],
+        max(0, graph_height // 2): y_tick_labels[1],
+        max(0, graph_height - 1): y_tick_labels[2],
+    }
+
     lines = [header[:width], range_line[:width], "-" * width]
-    lines.extend(graph_lines)
+    for idx, line in enumerate(graph_lines):
+        label = y_tick_positions.get(idx, "")
+        label_text = label.rjust(y_axis_width)
+        lines.append(f"{label_text} | {line}".ljust(width)[:width])
+
+    sample_max = max(len(rtt_ms) - 1, 0)
+    x_axis_line = (
+        f"X-axis (samples, oldest→newest): 0 → {sample_max}"
+    )
+    lines.append(x_axis_line[:width].ljust(width))
     lines = pad_lines(lines, width, height)
     lines[-1] = status_line[:width].ljust(width)
     return lines
@@ -1932,13 +1979,13 @@ def read_key():
             ready, _, _ = select.select([sys.stdin], [], [], ARROW_KEY_READ_TIMEOUT)
             if ready:
                 seq = sys.stdin.read(2)
-                if seq == '[A':
+                if seq in ('[A', 'OA'):
                     return 'arrow_up'
-                elif seq == '[B':
+                elif seq in ('[B', 'OB'):
                     return 'arrow_down'
-                elif seq == '[C':
+                elif seq in ('[C', 'OC'):
                     return 'arrow_right'
-                elif seq == '[D':
+                elif seq in ('[D', 'OD'):
                     return 'arrow_left'
         return char
     return None

@@ -31,7 +31,7 @@ ParaPing is an interactive, terminal-based ICMP monitor that pings many hosts in
 - Optional colored output for success/slow/fail states.
 - Pause modes: freeze display only or pause ping + display.
 - Snapshot export to a timestamped text file.
-- Fullscreen ASCII RTT graph per host (selectable via TUI).
+- Fullscreen ASCII RTT graph per host with axis labels and scale (selectable via TUI).
 - Configurable timezone for timestamps and snapshot naming.
 - Input file support for host lists (one per line in `IP,alias` format; comments allowed).
 
@@ -134,7 +134,7 @@ Example (explicit IPv4 addresses only):
 - `p`: Pause/resume (display only or ping + display).
 - `s`: Save a snapshot to `paraping_snapshot_YYYYMMDD_HHMMSS.txt`.
 - `←` / `→`: Navigate backward/forward in time by one page. History keeps recording while browsing; the view is frozen until you return to live.
-- `↑` / `↓`: Scroll the host list when it exceeds the terminal height.
+- `↑` / `↓`: Move selection in the host picker and scroll the host list when it exceeds the terminal height.
 - `H`: Show help (press any key to close).
 - `ESC`: Exit fullscreen graph/selection.
 - `q`: Quit.
