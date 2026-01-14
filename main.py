@@ -63,6 +63,7 @@ ACTIVITY_INDICATOR_HEIGHT = 4
 ACTIVITY_INDICATOR_SPEED_HZ = 8
 LAST_RENDER_LINES = None
 ANSI_RESET = "\x1b[0m"
+MAX_HOST_THREADS = 128  # Hard cap to avoid unbounded thread growth.
 STATUS_COLORS = {
     "success": "\x1b[37m",  # White
     "slow": "\x1b[33m",  # Yellow
@@ -2179,6 +2180,12 @@ def main(args):
             "Error: No hosts specified. Provide hosts as arguments or use -f/--input option."
         )
         return
+    if len(all_hosts) > MAX_HOST_THREADS:
+        print(
+            "Error: Host count exceeds maximum supported threads "
+            f"({len(all_hosts)} > {MAX_HOST_THREADS}). Reduce the host list."
+        )
+        return
 
     display_tz = timezone.utc
     if args.timezone:
@@ -2299,7 +2306,7 @@ def main(args):
         stdin_fd = sys.stdin.fileno()
         original_term = termios.tcgetattr(stdin_fd)
 
-    with ThreadPoolExecutor(max_workers=min(len(all_hosts), 10)) as executor:
+    with ThreadPoolExecutor(max_workers=len(all_hosts)) as executor:
         for host, infos in host_info_map.items():
             info = infos[0]
             for entry in infos:

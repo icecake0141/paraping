@@ -32,6 +32,7 @@ from main import (
     read_input_file,
     ping_host,
     main,
+    MAX_HOST_THREADS,
     render_help_view,
     compute_main_layout,
     compute_panel_sizes,
@@ -441,6 +442,34 @@ class TestMain(unittest.TestCase):
 
         main(args)
         mock_print.assert_called()
+
+    @patch("builtins.print")
+    def test_main_with_too_many_hosts(self, mock_print):
+        """Test main function with too many hosts"""
+        hosts = [f"host{idx}.com" for idx in range(MAX_HOST_THREADS + 1)]
+        args = argparse.Namespace(
+            timeout=1,
+            count=4,
+            interval=1.0,
+            slow_threshold=0.5,
+            verbose=False,
+            color=False,
+            hosts=hosts,
+            input=None,
+            panel_position="right",
+            pause_mode="display",
+            timezone=None,
+            snapshot_timezone="utc",
+            ping_helper="./ping_helper",
+        )
+
+        main(args)
+        call_args = [str(call) for call in mock_print.call_args_list]
+        self.assertTrue(
+            any(
+                "exceeds maximum supported threads" in call for call in call_args
+            )
+        )
 
     @patch("main.queue.Queue")
     @patch("main.sys.stdin")

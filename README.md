@@ -149,6 +149,7 @@ Example (explicit IPv4 addresses only):
 - ICMP requires elevated privileges (run with `sudo` or Administrator on Windows).
 - ASN lookups use `whois.cymru.com`; blocked networks will show blank ASN values.
 - IPv6 is not supported; use IPv4 addresses or hostnames that resolve to IPv4.
+- The monitor starts one worker thread per host and enforces a hard limit of 128 hosts. It exits with an error if exceeded.
 - When the summary panel is positioned at the top/bottom, it expands to use available empty rows.
 - When the summary panel is positioned at the top/bottom, it shows all summary fields if the width allows.
 
