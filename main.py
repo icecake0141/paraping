@@ -2017,7 +2017,10 @@ def read_key():
         seq = ""
         deadline = time.monotonic() + ARROW_KEY_READ_TIMEOUT
         while time.monotonic() < deadline:
-            ready, _, _ = select.select([sys.stdin], [], [], 0)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            ready, _, _ = select.select([sys.stdin], [], [], remaining)
             if not ready:
                 break
             seq += sys.stdin.read(1)
