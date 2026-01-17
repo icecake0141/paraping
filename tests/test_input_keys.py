@@ -88,10 +88,10 @@ class TestParseEscapeSequence(unittest.TestCase):
 
     def test_generic_arrow_sequences(self):
         """Test generic sequences that should still be recognized."""
-        # Sequences with extra modifiers should still work via fallback logic
+        # Sequences with extra modifiers between [ and letter should work via fallback
         self.assertEqual(parse_escape_sequence("[1A"), "arrow_up")
         self.assertEqual(parse_escape_sequence("[1B"), "arrow_down")
-        self.assertEqual(parse_escape_sequence("O1A"), "arrow_up")
+        # Note: "O1A" is NOT a valid arrow sequence - application mode doesn't use numbers
 
 
 class TestReadKey(unittest.TestCase):
