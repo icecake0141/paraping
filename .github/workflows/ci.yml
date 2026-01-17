@@ -1,3 +1,15 @@
+# CI/CD Pipeline
+#
+# Lint Policy:
+# - Flake8 (strict): Fails on syntax errors and undefined names (E9,F63,F7,F82)
+# - Flake8 (style): Informational only - reports style violations but doesn't fail
+# - Pylint: Fails if code score is below 9.0/10 (current baseline: 9.11/10)
+#
+# Local validation commands:
+#   flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+#   flake8 . --count --max-complexity=10 --max-line-length=127 --statistics
+#   pylint . --fail-under=9.0
+
 name: CI/CD Pipeline
 
 on:
@@ -31,16 +43,25 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements-dev.txt
     
-    - name: Lint with flake8
+    - name: Lint with flake8 (strict)
       run: |
         # Stop the build if there are Python syntax errors or undefined names
+        # These are critical errors that must be fixed
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        # Exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
+    
+    - name: Lint with flake8 (style - informational)
+      run: |
+        # Report style violations but don't fail the build (yet)
+        # TODO: Fix violations and make this blocking in a future PR
+        # Max line length: 127, max complexity: 10
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+      continue-on-error: true
     
     - name: Lint with pylint
       run: |
-        pylint main.py --exit-zero || true
+        # Run pylint on all Python files
+        # Fail if score is below 9.0/10 (current baseline: 9.11/10)
+        pylint . --fail-under=9.0
 
   test:
     name: Test Code

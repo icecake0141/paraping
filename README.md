@@ -153,5 +153,8 @@ Example (explicit IPv4 addresses only):
 - When the summary panel is positioned at the top/bottom, it expands to use available empty rows.
 - When the summary panel is positioned at the top/bottom, it shows all summary fields if the width allows.
 
+## Contributing
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines, code quality standards, and how to submit pull requests.
+
 ## License
 Apache License 2.0. See [LICENSE](LICENSE).
