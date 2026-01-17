@@ -158,5 +158,80 @@ Example (explicit IPv4 addresses only):
 ## Contributing
 Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines, code quality standards, and how to submit pull requests.
 
+## Development & Validation
+
+This section provides exact commands for validating your changes locally before submitting a pull request. These commands match the CI pipeline configuration and must pass for PRs to be merged.
+
+### Building the Project
+
+**Build the ICMP helper binary:**
+```bash
+make build
+```
+
+**Set capabilities (Linux only, requires sudo):**
+```bash
+sudo make setcap
+```
+
+**Platform notes:**
+- **Linux**: Use `setcap` to grant `cap_net_raw` to the `ping_helper` binary. This is more secure than running Python as root.
+- **macOS/BSD**: The `setcap` command is not available. You can use the setuid bit (`sudo chown root:wheel ping_helper && sudo chmod u+s ping_helper`), but this is not recommended for security reasons. Alternatively, run the main Python script with `sudo`.
+- **Security**: Never grant `cap_net_raw` or any capabilities to general-purpose interpreters like `/usr/bin/python3`. Only grant the minimal required privilege to the specific `ping_helper` binary.
+
+### Linting
+
+The CI pipeline enforces strict linting standards. Run these commands locally before submitting a PR:
+
+**1. Flake8 (strict - MUST PASS):**
+```bash
+flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+```
+This checks for Python syntax errors and undefined names. Zero errors required.
+
+**2. Flake8 (style - informational):**
+```bash
+flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+```
+This reports style violations (line length, complexity, PEP 8). Currently informational only, but fixing these issues is encouraged.
+
+**3. Pylint (code quality - MUST PASS):**
+```bash
+pylint . --fail-under=9.0
+```
+This checks code quality and must score at least 9.0/10 to pass.
+
+**Run all lint checks at once:**
+```bash
+flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics && \
+flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics && \
+pylint . --fail-under=9.0
+```
+
+### Testing
+
+**Run all tests with coverage (matches CI):**
+```bash
+pytest tests/ -v --cov=. --cov-report=term-missing --cov-report=xml
+```
+
+**Run specific test file:**
+```bash
+pytest tests/test_main.py -v
+```
+
+All tests must pass before submitting a PR. Add tests for new functionality.
+
+### Pre-PR Validation Checklist
+
+Before opening a pull request, ensure you:
+1. ✅ Build the project: `make build` (Linux) or verify the helper compiles
+2. ✅ Run lint checks: all three flake8/pylint commands above must pass
+3. ✅ Run tests: `pytest tests/ -v --cov=. --cov-report=term-missing --cov-report=xml`
+4. ✅ Update documentation if behavior changed
+5. ✅ Follow the [LLM PR policy](.github/workflows/copilot-instructions.md) if using AI assistance (include license headers, LLM attribution, and validation commands in your PR description)
+
+For complete contribution guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## License
 Apache License 2.0. See [LICENSE](LICENSE).
