@@ -85,7 +85,7 @@ Fails if the overall code score falls below 9.0/10. Ensures high code quality st
 
 **Command:**
 ```bash
-pylint *.py tests/*.py --fail-under=9.0
+pylint . --fail-under=9.0
 ```
 
 **What Pylint checks:**
@@ -103,7 +103,7 @@ Before submitting a pull request, run all lint checks locally:
 # Run all checks at once
 flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics && \
 flake8 . --count --max-complexity=10 --max-line-length=127 --statistics && \
-pylint *.py tests/*.py --fail-under=9.0
+pylint . --fail-under=9.0
 ```
 
 **Expected output:**

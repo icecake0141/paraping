@@ -8,7 +8,7 @@
 # Local validation commands:
 #   flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
 #   flake8 . --count --max-complexity=10 --max-line-length=127 --statistics
-#   pylint *.py tests/*.py --fail-under=9.0
+#   pylint . --fail-under=9.0
 
 name: CI/CD Pipeline
 
@@ -61,7 +61,7 @@ jobs:
       run: |
         # Run pylint on all Python files
         # Fail if score is below 9.0/10 (current baseline: 9.11/10)
-        pylint *.py tests/*.py --fail-under=9.0
+        pylint . --fail-under=9.0
 
   test:
     name: Test Code
