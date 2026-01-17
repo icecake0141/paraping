@@ -1,1 +1,1 @@
-.github/workflows/copilot-instructions.md
+.github/copilot-instructions.md
