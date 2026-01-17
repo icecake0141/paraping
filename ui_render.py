@@ -27,6 +27,16 @@ import time
 from collections import deque
 from datetime import datetime, timezone
 
+from stats import (
+    compute_fail_streak,
+    latest_ttl_value,
+    latest_rtt_value,
+    build_streak_label,
+    build_summary_suffix,
+    build_summary_all_suffix,
+    compute_summary_data,
+)
+
 
 # ANSI and display constants (imported from main)
 ANSI_RESET = "\x1b[0m"
@@ -501,31 +511,6 @@ def resample_values(values, target_width):
 # Display Building Functions
 # ============================================================================
 
-def compute_fail_streak(timeline, fail_symbol):
-    """Compute the current fail streak from a timeline."""
-    streak = 0
-    for symbol in reversed(timeline):
-        if symbol == fail_symbol:
-            streak += 1
-        else:
-            break
-    return streak
-
-
-def latest_ttl_value(ttl_history):
-    """Get the latest TTL value from history."""
-    if not ttl_history:
-        return None
-    return ttl_history[-1]
-
-
-def latest_rtt_value(rtt_history):
-    """Get the latest RTT value from history."""
-    if not rtt_history:
-        return None
-    return rtt_history[-1]
-
-
 def resolve_display_name(host_info, mode):
     """Resolve the display name for a host based on mode."""
     if mode == "ip":
@@ -626,159 +611,6 @@ def build_display_entries(
         entries.sort(key=lambda item: item["label"])
 
     return [(entry["host_id"], entry["label"]) for entry in entries]
-
-
-def compute_summary_data(
-    host_infos,
-    display_names,
-    buffers,
-    stats,
-    symbols,
-    ordered_host_ids=None,
-):
-    """Compute summary data for all hosts."""
-
-    summary = []
-    success_symbols = {symbols["success"], symbols["slow"]}
-    info_by_id = {info["id"]: info for info in host_infos}
-    host_ids = (
-        ordered_host_ids
-        if ordered_host_ids is not None
-        else [info["id"] for info in host_infos]
-    )
-    for host_id in host_ids:
-        info = info_by_id.get(host_id)
-        if info is None:
-            continue
-        display_name = display_names.get(host_id, info["alias"])
-        total = stats[host_id]["total"]
-        success = stats[host_id]["success"] + stats[host_id]["slow"]
-        fail = stats[host_id]["fail"]
-        success_rate = (success / total * 100) if total > 0 else 0.0
-        loss_rate = (fail / total * 100) if total > 0 else 0.0
-        timeline = list(buffers[host_id]["timeline"])
-        streak_type = None
-        streak_length = 0
-        if timeline:
-            last = timeline[-1]
-            if last in success_symbols:
-                streak_type = "success"
-                for symbol in reversed(timeline):
-                    if symbol in success_symbols:
-                        streak_length += 1
-                    else:
-                        break
-            elif last == symbols["fail"]:
-                streak_type = "fail"
-                for symbol in reversed(timeline):
-                    if symbol == symbols["fail"]:
-                        streak_length += 1
-                    else:
-                        break
-        avg_rtt_ms = None
-        if stats[host_id]["rtt_count"] > 0:
-            avg_rtt_ms = stats[host_id]["rtt_sum"] / stats[host_id]["rtt_count"] * 1000
-        stddev_ms = None
-        if stats[host_id]["rtt_count"] > 1:
-            mean_rtt = stats[host_id]["rtt_sum"] / stats[host_id]["rtt_count"]
-            mean_square = (
-                stats[host_id].get("rtt_sum_sq", 0.0) / stats[host_id]["rtt_count"]
-            )
-            variance = max(0.0, mean_square - mean_rtt * mean_rtt)
-            stddev_ms = math.sqrt(variance) * 1000
-        rtt_values = [
-            value for value in buffers[host_id]["rtt_history"] if value is not None
-        ]
-        jitter_ms = None
-        if len(rtt_values) >= 2:
-            diffs = [
-                abs(current - previous)
-                for previous, current in zip(rtt_values, rtt_values[1:])
-            ]
-            jitter_ms = sum(diffs) / len(diffs) * 1000
-        latest_ttl = latest_ttl_value(buffers[host_id]["ttl_history"])
-        summary.append(
-            {
-                "host": display_name,
-                "success_rate": success_rate,
-                "loss_rate": loss_rate,
-                "streak_type": streak_type,
-                "streak_length": streak_length,
-                "avg_rtt_ms": avg_rtt_ms,
-                "jitter_ms": jitter_ms,
-                "stddev_ms": stddev_ms,
-                "latest_ttl": latest_ttl,
-            }
-        )
-    return summary
-
-
-def build_streak_label(entry):
-    """Build a streak label from an entry."""
-    streak_label = "-"
-    if entry["streak_type"] == "fail":
-        streak_label = f"F{entry['streak_length']}"
-    elif entry["streak_type"] == "success":
-        streak_label = f"S{entry['streak_length']}"
-    return streak_label
-
-
-def build_summary_suffix(entry, summary_mode):
-    """Build the suffix for a summary line based on mode."""
-    if summary_mode == "rtt":
-        avg_rtt = (
-            f"{entry['avg_rtt_ms']:.1f} ms"
-            if entry.get("avg_rtt_ms") is not None
-            else "n/a"
-        )
-        jitter = (
-            f"{entry['jitter_ms']:.1f} ms"
-            if entry.get("jitter_ms") is not None
-            else "n/a"
-        )
-        stddev = (
-            f"{entry['stddev_ms']:.1f} ms"
-            if entry.get("stddev_ms") is not None
-            else "n/a"
-        )
-        return f": avg rtt {avg_rtt} jitter {jitter} stddev {stddev}"
-    if summary_mode == "ttl":
-        latest_ttl = entry.get("latest_ttl")
-        return f": ttl {latest_ttl}" if latest_ttl is not None else ": ttl n/a"
-    if summary_mode == "streak":
-        return f": streak {build_streak_label(entry)}"
-    return f": ok {entry['success_rate']:.1f}% loss {entry['loss_rate']:.1f}%"
-
-
-def build_summary_all_suffix(entry):
-    """Build the full suffix for a summary line with all information."""
-    avg_rtt = (
-        f"{entry['avg_rtt_ms']:.1f} ms"
-        if entry.get("avg_rtt_ms") is not None
-        else "n/a"
-    )
-    jitter = (
-        f"{entry['jitter_ms']:.1f} ms"
-        if entry.get("jitter_ms") is not None
-        else "n/a"
-    )
-    stddev = (
-        f"{entry['stddev_ms']:.1f} ms"
-        if entry.get("stddev_ms") is not None
-        else "n/a"
-    )
-    latest_ttl = entry.get("latest_ttl")
-    ttl_value = f"{latest_ttl}" if latest_ttl is not None else "n/a"
-    streak_label = build_streak_label(entry)
-    parts = [
-        f"ok {entry['success_rate']:.1f}% loss {entry['loss_rate']:.1f}%",
-        f"avg rtt {avg_rtt}",
-        f"jitter {jitter}",
-        f"stddev {stddev}",
-        f"ttl {ttl_value}",
-        f"streak {streak_label}",
-    ]
-    return f": {' | '.join(parts)}"
 
 
 def can_render_full_summary(summary_data, width):

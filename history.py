@@ -166,7 +166,7 @@ def compute_history_page_step(
         Page step size (int)
     """
     # Import here to avoid circular dependency
-    from main import (
+    from ui_render import (
         get_terminal_size, should_show_asn, build_display_names,
         compute_panel_sizes, build_display_entries, compute_main_layout
     )

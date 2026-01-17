@@ -51,6 +51,15 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from ping_wrapper import ping_with_helper
+from stats import (
+    compute_fail_streak,
+    latest_ttl_value,
+    latest_rtt_value,
+    build_streak_label,
+    build_summary_suffix,
+    build_summary_all_suffix,
+    compute_summary_data,
+)
 from ui_render import (
     strip_ansi,
     visible_len,
@@ -75,10 +84,6 @@ from ui_render import (
     build_sparkline,
     build_ascii_graph,
     resample_values,
-    compute_summary_data,
-    build_streak_label,
-    build_summary_suffix,
-    build_summary_all_suffix,
     can_render_full_summary,
     format_summary_line,
     format_status_line,
@@ -103,9 +108,6 @@ from ui_render import (
     toggle_panel_visibility,
     cycle_panel_position,
     should_show_asn,
-    compute_fail_streak,
-    latest_ttl_value,
-    latest_rtt_value,
     resolve_display_name,
     format_asn_label,
     format_display_name,
