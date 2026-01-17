@@ -34,6 +34,17 @@ This file serves as a compatibility shim for the refactored ParaPing package.
 The main logic has been split into separate modules in the paraping/ package.
 """
 
+# Standard library imports for test compatibility (tests patch these from main module)
+import os
+import queue
+import select
+import socket
+import sys
+import termios
+import threading
+import tty
+from concurrent.futures import ThreadPoolExecutor
+
 # Import and re-export from the refactored modules
 from paraping.cli import handle_options, main
 from paraping.core import (

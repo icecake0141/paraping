@@ -244,8 +244,8 @@ class TestReadInputFile(unittest.TestCase):
 class TestPingHost(unittest.TestCase):
     """Test ping host functionality"""
 
-    @patch("main.os.path.exists", return_value=True)
-    @patch("main.ping_with_helper")
+    @patch("paraping.pinger.os.path.exists", return_value=True)
+    @patch("paraping.pinger.ping_with_helper")
     def test_ping_host_success(self, mock_ping_with_helper, mock_path_exists):
         """Test successful ping"""
         mock_ping_with_helper.return_value = (25.0, 64)
@@ -258,8 +258,8 @@ class TestPingHost(unittest.TestCase):
             self.assertIn(result["status"], ["success", "slow"])
             self.assertEqual(result["ttl"], 64)
 
-    @patch("main.os.path.exists", return_value=True)
-    @patch("main.ping_with_helper")
+    @patch("paraping.pinger.os.path.exists", return_value=True)
+    @patch("paraping.pinger.ping_with_helper")
     def test_ping_host_failure(self, mock_ping_with_helper, mock_path_exists):
         """Test failed ping"""
         mock_ping_with_helper.return_value = (None, None)
@@ -272,8 +272,8 @@ class TestPingHost(unittest.TestCase):
             self.assertEqual(result["status"], "fail")
             self.assertIsNone(result["ttl"])
 
-    @patch("main.os.path.exists", return_value=True)
-    @patch("main.ping_with_helper")
+    @patch("paraping.pinger.os.path.exists", return_value=True)
+    @patch("paraping.pinger.ping_with_helper")
     def test_ping_host_partial_success(self, mock_ping_with_helper, mock_path_exists):
         """Test partial ping success"""
         # Mock alternating success/failure
@@ -298,8 +298,8 @@ class TestPingHost(unittest.TestCase):
             else:
                 self.assertIsNone(r["ttl"])
 
-    @patch("main.os.path.exists", return_value=True)
-    @patch("main.ping_with_helper")
+    @patch("paraping.pinger.os.path.exists", return_value=True)
+    @patch("paraping.pinger.ping_with_helper")
     def test_ping_host_with_network_error(
         self, mock_ping_with_helper, mock_path_exists
     ):
@@ -318,11 +318,11 @@ class TestPingHost(unittest.TestCase):
 class TestMain(unittest.TestCase):
     """Test main function"""
 
-    @patch("main.queue.Queue")
-    @patch("main.sys.stdin")
-    @patch("main.get_terminal_size")
-    @patch("main.ThreadPoolExecutor")
-    @patch("main.threading.Thread")
+    @patch("paraping.cli.queue.Queue")
+    @patch("paraping.cli.sys.stdin")
+    @patch("ui_render.get_terminal_size")
+    @patch("paraping.cli.ThreadPoolExecutor")
+    @patch("paraping.cli.threading.Thread")
     def test_main_with_hosts(
         self, mock_thread, mock_executor, mock_term_size, mock_stdin, mock_queue
     ):
@@ -471,12 +471,12 @@ class TestMain(unittest.TestCase):
             )
         )
 
-    @patch("main.queue.Queue")
-    @patch("main.sys.stdin")
-    @patch("main.get_terminal_size")
-    @patch("main.read_input_file")
-    @patch("main.ThreadPoolExecutor")
-    @patch("main.threading.Thread")
+    @patch("paraping.cli.queue.Queue")
+    @patch("paraping.cli.sys.stdin")
+    @patch("ui_render.get_terminal_size")
+    @patch("paraping.cli.read_input_file")
+    @patch("paraping.cli.ThreadPoolExecutor")
+    @patch("paraping.cli.threading.Thread")
     def test_main_with_input_file(
         self,
         mock_thread,
@@ -713,7 +713,7 @@ class TestLayoutComputation(unittest.TestCase):
         main_w, main_h, summ_w, summ_h, pos = compute_panel_sizes(10, 5, "right")
         self.assertEqual(pos, "none")
 
-    @patch("main.get_terminal_size")
+    @patch("ui_render.get_terminal_size")
     def test_bottom_panel_uses_extra_space(self, mock_term_size):
         """Bottom panel expands when main view needs fewer rows."""
         mock_term_size.return_value = os.terminal_size((80, 23))
@@ -1186,7 +1186,7 @@ class TestTimezoneFormatting(unittest.TestCase):
 class TestHostInfoBuilding(unittest.TestCase):
     """Test host info building functions"""
 
-    @patch("main.socket.gethostbyname")
+    @patch("paraping.core.socket.gethostbyname")
     def test_build_host_infos_with_hostname(self, mock_gethostbyname):
         """Test building host infos with resolvable hostname"""
         mock_gethostbyname.return_value = "93.184.216.34"
@@ -1199,7 +1199,7 @@ class TestHostInfoBuilding(unittest.TestCase):
         self.assertEqual(host_infos[0]["alias"], "example.com")
         self.assertIn("example.com", host_map)
 
-    @patch("main.socket.gethostbyname")
+    @patch("paraping.core.socket.gethostbyname")
     def test_build_host_infos_with_ip(self, mock_gethostbyname):
         """Test building host infos with IP address"""
         mock_gethostbyname.side_effect = OSError()
@@ -1209,7 +1209,7 @@ class TestHostInfoBuilding(unittest.TestCase):
         self.assertEqual(len(host_infos), 1)
         self.assertEqual(host_infos[0]["ip"], "192.168.1.1")
 
-    @patch("main.socket.gethostbyname")
+    @patch("paraping.core.socket.gethostbyname")
     def test_build_host_infos_multiple_hosts(self, mock_gethostbyname):
         """Test building host infos with multiple hosts"""
         mock_gethostbyname.side_effect = ["1.1.1.1", "2.2.2.2", "3.3.3.3"]
@@ -1363,12 +1363,12 @@ class TestPanelToggle(unittest.TestCase):
 class TestQuitHotkey(unittest.TestCase):
     """Test quit hotkey functionality"""
 
-    @patch("main.queue.Queue")
-    @patch("main.sys.stdin")
-    @patch("main.get_terminal_size")
-    @patch("main.ThreadPoolExecutor")
-    @patch("main.threading.Thread")
-    @patch("main.read_key")
+    @patch("paraping.cli.queue.Queue")
+    @patch("paraping.cli.sys.stdin")
+    @patch("ui_render.get_terminal_size")
+    @patch("paraping.cli.ThreadPoolExecutor")
+    @patch("paraping.cli.threading.Thread")
+    @patch("paraping.cli.read_key")
     def test_quit_key_exits_immediately(
         self, mock_read_key, mock_thread, mock_executor, mock_term_size, mock_stdin, mock_queue
     ):
@@ -1431,12 +1431,12 @@ class TestQuitHotkey(unittest.TestCase):
                     # Should exit without raising exception when 'q' is pressed
                     main(args)
 
-    @patch("main.queue.Queue")
-    @patch("main.sys.stdin")
-    @patch("main.get_terminal_size")
-    @patch("main.ThreadPoolExecutor")
-    @patch("main.threading.Thread")
-    @patch("main.read_key")
+    @patch("paraping.cli.queue.Queue")
+    @patch("paraping.cli.sys.stdin")
+    @patch("ui_render.get_terminal_size")
+    @patch("paraping.cli.ThreadPoolExecutor")
+    @patch("paraping.cli.threading.Thread")
+    @patch("paraping.cli.read_key")
     def test_quit_key_uppercase_exits_immediately(
         self, mock_read_key, mock_thread, mock_executor, mock_term_size, mock_stdin, mock_queue
     ):
@@ -1499,12 +1499,12 @@ class TestQuitHotkey(unittest.TestCase):
                     # Should exit without raising exception when 'Q' is pressed
                     main(args)
 
-    @patch("main.queue.Queue")
-    @patch("main.sys.stdin")
-    @patch("main.get_terminal_size")
-    @patch("main.ThreadPoolExecutor")
-    @patch("main.threading.Thread")
-    @patch("main.read_key")
+    @patch("paraping.cli.queue.Queue")
+    @patch("paraping.cli.sys.stdin")
+    @patch("ui_render.get_terminal_size")
+    @patch("paraping.cli.ThreadPoolExecutor")
+    @patch("paraping.cli.threading.Thread")
+    @patch("paraping.cli.read_key")
     def test_quit_key_exits_from_help_screen(
         self, mock_read_key, mock_thread, mock_executor, mock_term_size, mock_stdin, mock_queue
     ):
@@ -1571,8 +1571,8 @@ class TestQuitHotkey(unittest.TestCase):
 class TestTerminalSize(unittest.TestCase):
     """Test terminal size retrieval function"""
 
-    @patch("main.os.get_terminal_size")
-    @patch("main.sys.stdout")
+    @patch("paraping.cli.os.get_terminal_size")
+    @patch("paraping.cli.sys.stdout")
     def test_get_terminal_size_from_stdout(
         self, mock_stdout, mock_os_get_size
     ):
@@ -1587,9 +1587,9 @@ class TestTerminalSize(unittest.TestCase):
         self.assertEqual(result.lines, 50)
         mock_os_get_size.assert_called_once_with(1)
 
-    @patch("main.os.get_terminal_size")
-    @patch("main.sys.stdout")
-    @patch("main.sys.stderr")
+    @patch("paraping.cli.os.get_terminal_size")
+    @patch("paraping.cli.sys.stdout")
+    @patch("paraping.cli.sys.stderr")
     def test_get_terminal_size_fallback_to_stderr(
         self, mock_stderr, mock_stdout, mock_os_get_size
     ):
@@ -1604,10 +1604,10 @@ class TestTerminalSize(unittest.TestCase):
         self.assertEqual(result.columns, 120)
         self.assertEqual(result.lines, 40)
 
-    @patch("main.os.get_terminal_size")
-    @patch("main.sys.stdout")
-    @patch("main.sys.stderr")
-    @patch("main.sys.stdin")
+    @patch("paraping.cli.os.get_terminal_size")
+    @patch("paraping.cli.sys.stdout")
+    @patch("paraping.cli.sys.stderr")
+    @patch("paraping.cli.sys.stdin")
     def test_get_terminal_size_fallback_to_default(
         self, mock_stdin, mock_stderr, mock_stdout, mock_os_get_size
     ):
@@ -1621,8 +1621,8 @@ class TestTerminalSize(unittest.TestCase):
         self.assertEqual(result.columns, 80)
         self.assertEqual(result.lines, 24)
 
-    @patch("main.os.get_terminal_size")
-    @patch("main.sys.stdout")
+    @patch("paraping.cli.os.get_terminal_size")
+    @patch("paraping.cli.sys.stdout")
     def test_get_terminal_size_handles_os_error(
         self, mock_stdout, mock_os_get_size
     ):
@@ -1695,8 +1695,8 @@ class TestFlashAndBell(unittest.TestCase):
             self.assertFalse(args.flash_on_fail)
             self.assertFalse(args.bell_on_fail)
 
-    @patch("main.sys.stdout")
-    @patch("main.time.sleep")
+    @patch("paraping.cli.sys.stdout")
+    @patch("paraping.cli.time.sleep")
     def test_flash_screen(self, mock_sleep, mock_stdout):
         """Test flash_screen function"""
         flash_screen()
@@ -1710,7 +1710,7 @@ class TestFlashAndBell(unittest.TestCase):
         # Should have called flush
         self.assertGreaterEqual(mock_stdout.flush.call_count, 2)
 
-    @patch("main.sys.stdout")
+    @patch("paraping.cli.sys.stdout")
     def test_ring_bell(self, mock_stdout):
         """Test ring_bell function"""
         ring_bell()
@@ -1730,8 +1730,8 @@ class TestFlashAndBell(unittest.TestCase):
 class TestArrowKeyNavigation(unittest.TestCase):
     """Test arrow key navigation for history viewing"""
 
-    @patch("main.select.select")
-    @patch("main.sys.stdin")
+    @patch("input_keys.select.select")
+    @patch("paraping.cli.sys.stdin")
     def test_read_key_arrow_left(self, mock_stdin, mock_select):
         """Test reading left arrow key"""
         mock_stdin.isatty.return_value = True
@@ -1746,8 +1746,8 @@ class TestArrowKeyNavigation(unittest.TestCase):
         result = read_key()
         self.assertEqual(result, 'arrow_left')
 
-    @patch("main.select.select")
-    @patch("main.sys.stdin")
+    @patch("input_keys.select.select")
+    @patch("paraping.cli.sys.stdin")
     def test_read_key_arrow_right(self, mock_stdin, mock_select):
         """Test reading right arrow key"""
         mock_stdin.isatty.return_value = True
@@ -1760,8 +1760,8 @@ class TestArrowKeyNavigation(unittest.TestCase):
         result = read_key()
         self.assertEqual(result, 'arrow_right')
 
-    @patch("main.select.select")
-    @patch("main.sys.stdin")
+    @patch("input_keys.select.select")
+    @patch("paraping.cli.sys.stdin")
     def test_read_key_arrow_up(self, mock_stdin, mock_select):
         """Test reading up arrow key"""
         mock_stdin.isatty.return_value = True
@@ -1774,8 +1774,8 @@ class TestArrowKeyNavigation(unittest.TestCase):
         result = read_key()
         self.assertEqual(result, 'arrow_up')
 
-    @patch("main.select.select")
-    @patch("main.sys.stdin")
+    @patch("input_keys.select.select")
+    @patch("paraping.cli.sys.stdin")
     def test_read_key_arrow_down(self, mock_stdin, mock_select):
         """Test reading down arrow key"""
         mock_stdin.isatty.return_value = True
@@ -1788,8 +1788,8 @@ class TestArrowKeyNavigation(unittest.TestCase):
         result = read_key()
         self.assertEqual(result, 'arrow_down')
 
-    @patch("main.select.select")
-    @patch("main.sys.stdin")
+    @patch("input_keys.select.select")
+    @patch("paraping.cli.sys.stdin")
     def test_read_key_normal_character(self, mock_stdin, mock_select):
         """Test reading a normal character (not arrow key)"""
         mock_stdin.isatty.return_value = True
@@ -1953,7 +1953,7 @@ class TestArrowKeyNavigation(unittest.TestCase):
         combined = "\n".join(lines)
         self.assertIn("<- / ->", combined)
 
-    @patch("main.get_terminal_size")
+    @patch("ui_render.get_terminal_size")
     def test_compute_history_page_step_uses_timeline_width(self, mock_terminal_size):
         """Test history page step uses timeline width for navigation."""
         mock_terminal_size.return_value = os.terminal_size((40, 10))
@@ -2008,7 +2008,7 @@ class TestArrowKeyNavigation(unittest.TestCase):
 
         self.assertEqual(page_step, 32)
 
-    @patch("main.get_terminal_size")
+    @patch("ui_render.get_terminal_size")
     def test_get_cached_page_step_returns_cached_value(self, mock_terminal_size):
         """Test that get_cached_page_step returns cached value when terminal size unchanged"""
         mock_terminal_size.return_value = os.terminal_size((80, 24))
@@ -2074,7 +2074,7 @@ class TestArrowKeyNavigation(unittest.TestCase):
         # but not called compute_history_page_step again (which would call it internally)
         self.assertEqual(mock_terminal_size.call_count, first_call_count + 1)
 
-    @patch("main.get_terminal_size")
+    @patch("ui_render.get_terminal_size")
     def test_get_cached_page_step_recalculates_on_resize(self, mock_terminal_size):
         """Test that get_cached_page_step recalculates when terminal is resized"""
         # First call with 80x24
@@ -2138,8 +2138,8 @@ class TestArrowKeyNavigation(unittest.TestCase):
         self.assertEqual(term_size2.columns, 120)
         self.assertEqual(term_size2.lines, 40)
 
-    @patch("main.get_terminal_size")
-    @patch("main.compute_history_page_step")
+    @patch("ui_render.get_terminal_size")
+    @patch("paraping.core.compute_history_page_step")
     def test_rapid_arrow_keys_use_cache(self, mock_compute, mock_term_size):
         """Test that rapid arrow key presses use cached value, not recalculate each time"""
         mock_term_size.return_value = os.terminal_size((80, 24))
