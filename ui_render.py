@@ -1571,23 +1571,3 @@ def cycle_panel_position(current_position, default_position="right"):
         return default_position if default_position in positions else positions[0]
     next_index = (positions.index(current_position) + 1) % len(positions)
     return positions[next_index]
-
-
-def should_show_asn(
-    host_infos, mode, show_asn, term_width, min_timeline_width=10, asn_width=8
-):
-    """Determine if ASN should be shown based on available space."""
-    if not show_asn:
-        return False
-    base_label_width = max(
-        (len(resolve_display_name(info, mode)) for info in host_infos), default=0
-    )
-    labels = [
-        format_display_name(info, mode, True, asn_width, base_label_width)
-        for info in host_infos
-    ]
-    if not labels:
-        return False
-    label_width = max(len(label) for label in labels)
-    timeline_width = term_width - label_width - 3
-    return timeline_width >= min_timeline_width
