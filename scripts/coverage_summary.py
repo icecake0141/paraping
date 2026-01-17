@@ -29,10 +29,10 @@ Usage:
 import argparse
 import re
 import sys
-from typing import Dict
+from typing import Any, Dict
 
 
-def parse_coverage_report(content: str) -> Dict[str, Dict[str, any]]:
+def parse_coverage_report(content: str) -> Dict[str, Dict[str, Any]]:
     """
     Parse pytest coverage output and extract module coverage data.
 
@@ -74,7 +74,8 @@ def parse_coverage_report(content: str) -> Dict[str, Dict[str, any]]:
         # Parse module coverage lines
         if in_table:
             # Match pattern: module_name.py    stmts   miss   cover%
-            match = re.match(r'^(\S+\.py)\s+(\d+)\s+(\d+)\s+(\d+)%', line)
+            # Supports both integer and decimal percentages (e.g., 80% or 80.5%)
+            match = re.match(r'^(\S+\.py)\s+(\d+)\s+(\d+)\s+(\d+(?:\.\d+)?)%', line)
             if match:
                 module = match.group(1)
                 coverage_data[module] = {
@@ -86,7 +87,7 @@ def parse_coverage_report(content: str) -> Dict[str, Dict[str, any]]:
     return coverage_data
 
 
-def format_coverage_table(coverage_data: Dict[str, Dict[str, any]],
+def format_coverage_table(coverage_data: Dict[str, Dict[str, Any]],
                          title: str = "Coverage Summary") -> str:
     """
     Format coverage data as a readable table.
@@ -120,8 +121,8 @@ def format_coverage_table(coverage_data: Dict[str, Dict[str, any]],
     return '\n'.join(output)
 
 
-def _calculate_coverage_delta(baseline: Dict[str, Dict[str, any]],
-                              current: Dict[str, Dict[str, any]],
+def _calculate_coverage_delta(baseline: Dict[str, Dict[str, Any]],
+                              current: Dict[str, Dict[str, Any]],
                               module: str) -> tuple:
     """Calculate coverage delta for a module."""
     base_cov = baseline.get(module, {}).get('cover', '0')
@@ -144,8 +145,8 @@ def _calculate_coverage_delta(baseline: Dict[str, Dict[str, any]],
     return (module, f"{base_val:.1f}%", f"{curr_val:.1f}%", delta_str, delta)
 
 
-def compare_coverage(baseline: Dict[str, Dict[str, any]],
-                    current: Dict[str, Dict[str, any]]) -> str:
+def compare_coverage(baseline: Dict[str, Dict[str, Any]],
+                    current: Dict[str, Dict[str, Any]]) -> str:
     """
     Compare two coverage reports and show deltas.
 
