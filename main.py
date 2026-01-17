@@ -905,11 +905,13 @@ def main(args):
                             host_select_index = min(
                                 max(host_select_index, 0), len(display_entries) - 1
                             )
-                        if key == "arrow_up" and display_entries:
+                        if key in ("p", "P") and display_entries:
+                            # 'p' moves up (previous)
                             host_select_index = max(0, host_select_index - 1)
                             force_render = True
                             updated = True
-                        elif key == "arrow_down" and display_entries:
+                        elif key in ("n", "N") and display_entries:
+                            # 'n' moves down (next)
                             host_select_index = min(
                                 len(display_entries) - 1, host_select_index + 1
                             )
@@ -921,8 +923,14 @@ def main(args):
                                 host_select_active = False
                                 force_render = True
                                 updated = True
-                        # ESC handler removed for host selection - arrow keys were being
-                        # misinterpreted as ESC, causing unintended exits
+                        elif key == "\x1b":
+                            # ESC exits host selection
+                            host_select_active = False
+                            force_render = True
+                            updated = True
+                        # All host selection keys are handled above.
+                        # The 'continue' statement below ensures we don't fall through
+                        # to the main key handlers (e.g., 'n' for mode cycling).
                         continue
                     elif graph_host_id is not None:
                         if key == "\x1b":

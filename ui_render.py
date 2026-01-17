@@ -932,7 +932,7 @@ def render_host_selection_view(
 
     title = f"Select Host for RTT Graph [{mode_label}]"
     lines = [title[:width], "-" * width]
-    status_line = "↑/↓ move | Enter: view graph"
+    status_line = "n/p: move | Enter: select | ESC: cancel"
     list_height = max(0, height - 3)
 
     if not display_entries:
