@@ -85,7 +85,7 @@ int main(int argc, char *argv[]) {
         errno = 0;
         long seq_long = strtol(seq_arg, &seq_endptr, 10);
         if (seq_endptr == seq_arg || *seq_endptr != '\0') {
-            fprintf(stderr, "Error: icmp_seq must be an integer value\n");
+            fprintf(stderr, "Error: icmp_seq must be an integer\n");
             return 2;
         }
         if (errno == ERANGE || seq_long < 0 || seq_long > 65535) {
