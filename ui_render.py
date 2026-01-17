@@ -910,7 +910,7 @@ def render_help_view(width, height, boxed=False):
         "  s: save snapshot to file",
         "  <- / -> : navigate backward/forward in time (1 page)",
         "  up / down: scroll host list",
-        "  ESC: exit fullscreen graph/selection",
+        "  ESC: exit fullscreen graph",
         "  H: show help (Press any key to close)",
         "  q: quit",
     ]
@@ -932,7 +932,7 @@ def render_host_selection_view(
 
     title = f"Select Host for RTT Graph [{mode_label}]"
     lines = [title[:width], "-" * width]
-    status_line = "↑/↓ move | Enter: view graph | ESC: cancel"
+    status_line = "↑/↓ move | Enter: view graph"
     list_height = max(0, height - 3)
 
     if not display_entries:

@@ -2250,5 +2250,68 @@ class TestTTLFunctionality(unittest.TestCase):
         self.assertIn("ttl 64", combined)
 
 
+class TestHostSelectionView(unittest.TestCase):
+    """Test host selection view rendering and interaction"""
+
+    def test_host_selection_view_no_esc_in_status_line(self):
+        """Test that host selection view doesn't show ESC as cancel option"""
+        display_entries = [
+            ("host1", "192.168.1.1"),
+            ("host2", "192.168.1.2"),
+            ("host3", "192.168.1.3"),
+        ]
+        lines = render_host_selection_view(display_entries, 0, 60, 10, "ip")
+        
+        # Status line should not contain ESC: cancel
+        status_line = lines[-1]
+        self.assertNotIn("ESC:", status_line)
+        self.assertNotIn("cancel", status_line)
+        
+        # But should contain the other instructions
+        self.assertIn("move", status_line)
+        self.assertIn("Enter", status_line)
+
+    def test_host_selection_view_displays_selection_indicator(self):
+        """Test that the selection indicator is properly displayed"""
+        display_entries = [
+            ("host1", "192.168.1.1"),
+            ("host2", "192.168.1.2"),
+            ("host3", "192.168.1.3"),
+        ]
+        
+        # Test with different selected indices
+        for selected_idx in range(len(display_entries)):
+            lines = render_host_selection_view(
+                display_entries, selected_idx, 60, 10, "ip"
+            )
+            combined = "\n".join(lines)
+            
+            # The selected host should have "> " prefix
+            selected_host = display_entries[selected_idx][1]
+            self.assertIn(f"> {selected_host}", combined)
+
+    def test_fullscreen_graph_retains_esc_handler(self):
+        """Test that the fullscreen RTT graph still has ESC in status line"""
+        host_label = "test.example.com"
+        rtt_values = [0.01, 0.02, 0.015, 0.03]
+        time_history = [1.0, 2.0, 3.0, 4.0]
+        
+        lines = render_fullscreen_rtt_graph(
+            host_label,
+            rtt_values,
+            time_history,
+            80,
+            24,
+            "line",
+            False,
+            "2025-01-01 00:00:00 (UTC)",
+        )
+        
+        # The fullscreen graph should still have ESC: back
+        combined = "\n".join(lines)
+        self.assertIn("ESC:", combined)
+        self.assertIn("back", combined)
+
+
 if __name__ == "__main__":
     unittest.main()

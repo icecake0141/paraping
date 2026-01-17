@@ -921,10 +921,8 @@ def main(args):
                                 host_select_active = False
                                 force_render = True
                                 updated = True
-                        elif key == "\x1b":
-                            host_select_active = False
-                            force_render = True
-                            updated = True
+                        # ESC handler removed for host selection - arrow keys were being
+                        # misinterpreted as ESC, causing unintended exits
                         continue
                     elif graph_host_id is not None:
                         if key == "\x1b":
