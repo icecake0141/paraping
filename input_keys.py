@@ -24,7 +24,9 @@ import time
 
 
 # Constants for arrow key reading
-ARROW_KEY_READ_TIMEOUT = 0.05  # Timeout for reading arrow key escape sequences
+# Increased from 0.05 to 0.1 seconds to handle slow terminals/remote connections
+# where escape sequence bytes may arrive with delays (e.g., SSH, RDP, VMs)
+ARROW_KEY_READ_TIMEOUT = 0.1  # Timeout for reading arrow key escape sequences
 
 
 def parse_escape_sequence(seq):

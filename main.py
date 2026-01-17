@@ -52,6 +52,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from ping_wrapper import ping_with_helper
 from network_asn import resolve_asn, asn_worker, should_retry_asn
+from input_keys import parse_escape_sequence, read_key
 from stats import (
     compute_fail_streak,
     latest_ttl_value,
@@ -119,7 +120,6 @@ from ui_render import (
 # Constants for time navigation feature
 HISTORY_DURATION_MINUTES = 30  # Store up to 30 minutes of history
 SNAPSHOT_INTERVAL_SECONDS = 1.0  # Take snapshot every second
-ARROW_KEY_READ_TIMEOUT = 0.05  # Timeout for reading arrow key escape sequences
 MAX_HOST_THREADS = 128  # Hard cap to avoid unbounded thread growth.
 
 
@@ -585,58 +585,6 @@ def rdns_worker(request_queue, result_queue, stop_event):
         host, ip_address = item
         result_queue.put((host, resolve_rdns(ip_address)))
         request_queue.task_done()
-
-
-def parse_escape_sequence(seq):
-    arrow_map = {
-        "A": "arrow_up",
-        "B": "arrow_down",
-        "C": "arrow_right",
-        "D": "arrow_left",
-    }
-    if not seq:
-        return None
-    if seq in ("[A", "OA"):
-        return "arrow_up"
-    if seq in ("[B", "OB"):
-        return "arrow_down"
-    if seq in ("[C", "OC"):
-        return "arrow_right"
-    if seq in ("[D", "OD"):
-        return "arrow_left"
-    if seq[0] in ("[", "O") and seq[-1] in arrow_map:
-        return arrow_map[seq[-1]]
-    return None
-
-
-def read_key():
-    """
-    Read a key from stdin, handling multi-byte sequences like arrow keys.
-    Returns special strings for arrow keys: 'arrow_left', 'arrow_right', 'arrow_up', 'arrow_down'
-    """
-    if not sys.stdin.isatty():
-        return None
-    ready, _, _ = select.select([sys.stdin], [], [], 0)
-    if not ready:
-        return None
-    char = sys.stdin.read(1)
-    # Check for escape sequence (arrow keys start with ESC)
-    if char == "\x1b":
-        seq = ""
-        deadline = time.monotonic() + ARROW_KEY_READ_TIMEOUT
-        while time.monotonic() < deadline:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                break
-            ready, _, _ = select.select([sys.stdin], [], [], remaining)
-            if not ready:
-                break
-            seq += sys.stdin.read(1)
-            if seq and seq[-1] in ("A", "B", "C", "D"):
-                break
-        parsed = parse_escape_sequence(seq)
-        return parsed if parsed is not None else char
-    return char
 
 
 def create_state_snapshot(buffers, stats, timestamp):
