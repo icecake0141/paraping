@@ -31,3 +31,7 @@ coverage.xml
 htmlcov/
 *.cover
 
+# Logs directory (keep directory, ignore log files)
+logs/*.txt
+logs/*.log
+
