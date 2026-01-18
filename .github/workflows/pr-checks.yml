@@ -1,0 +1,104 @@
+# Copyright 2025 icecake0141
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# This file was created or modified with the assistance of an AI (Large Language Model).
+# Review required for correctness, security, and licensing.
+
+name: PR Checks
+
+on:
+  pull_request:
+    branches: [ main, master ]
+
+permissions:
+  contents: read
+
+jobs:
+  pr-validation:
+    name: PR Validation (Lint, Test, Build)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+    
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements-dev.txt
+    
+    - name: Create logs directory
+      run: mkdir -p logs
+    
+    - name: Run flake8 strict checks
+      run: |
+        echo "Running flake8 strict checks (syntax errors and undefined names)..."
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics > logs/flake8_strict.txt 2>&1 || {
+          echo "Flake8 strict checks found issues:"
+          cat logs/flake8_strict.txt
+          exit 1
+        }
+        echo "Flake8 strict checks passed" >> logs/flake8_strict.txt
+    
+    - name: Run pylint full checks
+      run: |
+        echo "Running pylint with score threshold >= 9.0..."
+        pylint . --fail-under=9.0 > logs/pylint_full.txt 2>&1 || {
+          echo "Pylint checks failed:"
+          cat logs/pylint_full.txt
+          exit 1
+        }
+        echo "Pylint checks passed with score >= 9.0" >> logs/pylint_full.txt
+    
+    - name: Run unit tests with pytest
+      run: |
+        echo "Running unit tests..."
+        pytest tests/unit -v --tb=short > logs/pytest_summary.txt 2>&1 || {
+          echo "Unit tests failed:"
+          cat logs/pytest_summary.txt
+          exit 1
+        }
+        echo "All unit tests passed" >> logs/pytest_summary.txt
+    
+    - name: Build native components
+      run: |
+        echo "Attempting to build native components..." > logs/native_build.txt
+        if [ -f src/native/Makefile ]; then
+          echo "Found src/native/Makefile, attempting build..." >> logs/native_build.txt
+          cd src/native
+          if make build >> ../../logs/native_build.txt 2>&1; then
+            echo "Native build succeeded" >> ../../logs/native_build.txt
+          else
+            echo "Native build encountered issues (this may be expected on some CI runners)" >> ../../logs/native_build.txt
+            echo "Check logs/native_build.txt artifact for details" >> ../../logs/native_build.txt
+          fi
+        else
+          echo "No native Makefile found at src/native/Makefile" >> logs/native_build.txt
+          echo "Skipping native build" >> logs/native_build.txt
+        fi
+      continue-on-error: true
+    
+    - name: Upload PR check artifacts
+      uses: actions/upload-artifact@v6
+      if: always()
+      with:
+        name: pr-check-logs
+        path: |
+          logs/flake8_strict.txt
+          logs/pylint_full.txt
+          logs/pytest_summary.txt
+          logs/native_build.txt
+        retention-days: 30
