@@ -23,7 +23,7 @@ from unittest.mock import patch
 # Add parent directory to path to import main
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from paraping.core import _normalize_term_size
+from paraping.core import _normalize_term_size, _extract_timeline_width_from_layout
 
 
 class TestTermSizeNormalization(unittest.TestCase):
@@ -275,6 +275,76 @@ class TestTermSizeNormalizationInContext(unittest.TestCase):
         # Should not crash and should recalculate
         self.assertIsNotNone(page_step)
         self.assertIsInstance(new_term_size, os.terminal_size)
+
+
+class TestExtractTimelineWidth(unittest.TestCase):
+    """Test cases for timeline width extraction from layout results"""
+
+    def test_extract_from_tuple(self):
+        """Test extraction from tuple (width, label_width, timeline_width, hosts)"""
+        layout = (80, 20, 57, 10)
+        result = _extract_timeline_width_from_layout(layout, 80)
+        self.assertEqual(result, 57)
+
+    def test_extract_from_list(self):
+        """Test extraction from list [width, label_width, timeline_width, hosts]"""
+        layout = [120, 25, 92, 15]
+        result = _extract_timeline_width_from_layout(layout, 120)
+        self.assertEqual(result, 92)
+
+    def test_extract_from_object_with_attribute(self):
+        """Test extraction from object with timeline_width attribute"""
+        from types import SimpleNamespace
+        layout = SimpleNamespace(
+            width=100,
+            label_width=20,
+            timeline_width=77,
+            visible_hosts=12
+        )
+        result = _extract_timeline_width_from_layout(layout, 100)
+        self.assertEqual(result, 77)
+
+    def test_extract_fallback_short_tuple(self):
+        """Test fallback when tuple is too short"""
+        layout = (80, 20)
+        result = _extract_timeline_width_from_layout(layout, 80)
+        # Should fall back to main_width - 15 (TIMELINE_LABEL_ESTIMATE_WIDTH)
+        self.assertEqual(result, 65)
+
+    def test_extract_fallback_invalid_value(self):
+        """Test fallback when timeline_width is invalid"""
+        layout = (80, 20, "invalid", 10)
+        result = _extract_timeline_width_from_layout(layout, 80)
+        # Should fall back to main_width - 15
+        self.assertEqual(result, 65)
+
+    def test_extract_fallback_none_value(self):
+        """Test fallback when timeline_width is None"""
+        layout = (80, 20, None, 10)
+        result = _extract_timeline_width_from_layout(layout, 80)
+        # Should fall back to main_width - 15
+        self.assertEqual(result, 65)
+
+    def test_extract_ensures_minimum(self):
+        """Test that result is always at least 1"""
+        layout = (10, 5, 2, 5)
+        result = _extract_timeline_width_from_layout(layout, 10)
+        self.assertEqual(result, 2)
+        self.assertGreaterEqual(result, 1)
+
+    def test_extract_fallback_ensures_minimum(self):
+        """Test that fallback result is always at least 1"""
+        layout = (5, 3)
+        result = _extract_timeline_width_from_layout(layout, 5)
+        # main_width - 15 = -10, but should be clamped to 1
+        self.assertEqual(result, 1)
+
+    def test_extract_string_number_conversion(self):
+        """Test that string numbers are converted to integers"""
+        layout = (80, 20, "60", 10)
+        result = _extract_timeline_width_from_layout(layout, 80)
+        self.assertEqual(result, 60)
+        self.assertIsInstance(result, int)
 
 
 if __name__ == "__main__":
