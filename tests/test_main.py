@@ -780,7 +780,7 @@ class TestLayoutComputation(unittest.TestCase):
             index for index, line in enumerate(lines) if "Summary (" in line
         )
         self.assertEqual(summary_line_index, 12)
-        self.assertEqual(len(lines), 24)
+        self.assertEqual(len(lines), 23)
 
 
 class TestDisplayNames(unittest.TestCase):
