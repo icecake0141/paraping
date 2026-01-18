@@ -35,3 +35,8 @@ htmlcov/
 logs/*.txt
 logs/*.log
 
+# Distribution / packaging
+*.egg-info/
+dist/
+build/
+

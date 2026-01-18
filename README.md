@@ -97,6 +97,30 @@ ping_helper <host> <timeout_ms> [icmp_seq]
 **Security Note:** Never grant `cap_net_raw` or any capabilities to `/usr/bin/python3` or other general-purpose interpreters. Only grant the minimal required privilege to the specific `ping_helper` binary.
 
 ## Installation
+
+### Standard Installation (Editable Mode)
+
+Install ParaPing in editable mode for development or local use:
+
+```bash
+git clone https://github.com/icecake0141/paraping.git
+cd paraping
+
+# Install the package in editable mode
+pip install -e .
+
+# Build the privileged ICMP helper (Linux only)
+make build
+sudo make setcap
+
+# Now you can run 'paraping' from anywhere
+paraping --help
+```
+
+### Legacy Installation (Without Package Installation)
+
+If you prefer to run ParaPing without installing it as a package:
+
 ```bash
 git clone https://github.com/icecake0141/paraping.git
 cd paraping
@@ -105,7 +129,12 @@ python -m pip install -r requirements.txt
 # Build the privileged ICMP helper (Linux only)
 make build
 sudo make setcap
+
+# Run directly from the repository
+./main.py --help
 ```
+
+**Note:** When using `pip install -e .`, the `paraping` command becomes available system-wide (in your current Python environment). The native `ping_helper` binary must still be built separately using `make build` and configured with capabilities using `sudo make setcap` (Linux only).
 
 ## Usage
 
