@@ -17,11 +17,7 @@ This module contains the main entry point and command-line argument handling.
 """
 
 import argparse
-import math
-import os
 import queue
-import re
-import select
 import sys
 import termios
 import threading
@@ -35,32 +31,17 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from paraping.core import (
     read_input_file,
     build_host_infos,
-    create_state_snapshot,
     update_history_buffer,
     resolve_render_state,
-    compute_history_page_step,
     get_cached_page_step,
     MAX_HOST_THREADS,
     HISTORY_DURATION_MINUTES,
     SNAPSHOT_INTERVAL_SECONDS,
 )
 from paraping.pinger import worker_ping, rdns_worker
-from ping_wrapper import ping_with_helper
-from network_asn import resolve_asn, asn_worker, should_retry_asn
-from input_keys import parse_escape_sequence, read_key
-from stats import (
-    compute_fail_streak,
-    latest_ttl_value,
-    latest_rtt_value,
-    build_streak_label,
-    build_summary_suffix,
-    build_summary_all_suffix,
-    compute_summary_data,
-)
+from network_asn import asn_worker, should_retry_asn
+from input_keys import read_key
 from ui_render import (
-    strip_ansi,
-    visible_len,
-    truncate_visible,
     get_terminal_size,
     compute_main_layout,
     compute_host_scroll_bounds,
@@ -83,7 +64,7 @@ from ui_render import (
 
 
 def handle_options():
-
+    """Parse and validate command-line arguments."""
     parser = argparse.ArgumentParser(
         description="ParaPing - Perform ICMP ping operations to multiple hosts concurrently"
     )
@@ -197,9 +178,8 @@ def handle_options():
 
 
 
-
 def main(args):
-
+    """Run the ParaPing monitor with parsed arguments."""
     # Validate count parameter - allow 0 for infinite
     if args.count < 0:
         print("Error: Count must be a non-negative number (0 for infinite).")
@@ -250,11 +230,12 @@ def main(args):
     snapshot_tz = display_tz if args.snapshot_timezone == "display" else timezone.utc
 
     symbols = {"success": ".", "fail": "x", "slow": "!"}
-    term_size = get_terminal_size(fallback=(80, 24))
+    initial_term_size = get_terminal_size(fallback=(80, 24))
     host_infos, host_info_map = build_host_infos(all_hosts)
     host_labels = [info["alias"] for info in host_infos]
+    header_lines = 2
     _, _, timeline_width, _ = compute_main_layout(
-        host_labels, term_size.columns, term_size.lines, header_lines=2
+        host_labels, initial_term_size.columns, initial_term_size.lines, header_lines
     )
     buffers = {
         info["id"]: {
@@ -280,10 +261,10 @@ def main(args):
     }
     result_queue = queue.Queue()
 
-    count_display = "infinite" if args.count == 0 else str(args.count)
+    count_label = "infinite" if args.count == 0 else str(args.count)
     print(
         f"ParaPing - Pinging {len(all_hosts)} host(s) with timeout={args.timeout}s, "
-        f"count={count_display}, interval={args.interval}s, slow-threshold={args.slow_threshold}s"
+        f"count={count_label}, interval={args.interval}s, slow-threshold={args.slow_threshold}s"
     )
 
     modes = ["ip", "rdns", "alias"]
@@ -673,7 +654,7 @@ def main(args):
                     elif key == "arrow_up":
                         scroll_buffers = buffers
                         scroll_stats = stats
-                        if history_offset > 0 and history_offset <= len(history_buffer):
+                        if 0 < history_offset <= len(history_buffer):
                             snapshot = history_buffer[-(history_offset + 1)]
                             scroll_buffers = snapshot["buffers"]
                             scroll_stats = snapshot["stats"]
@@ -703,7 +684,7 @@ def main(args):
                     elif key == "arrow_down":
                         scroll_buffers = buffers
                         scroll_stats = stats
-                        if history_offset > 0 and history_offset <= len(history_buffer):
+                        if 0 < history_offset <= len(history_buffer):
                             snapshot = history_buffer[-(history_offset + 1)]
                             scroll_buffers = snapshot["buffers"]
                             scroll_stats = snapshot["stats"]
@@ -837,7 +818,7 @@ def main(args):
                     display_timestamp = format_timestamp(
                         datetime.now(timezone.utc), display_tz
                     )
-                    if history_offset > 0 and history_offset <= len(history_buffer):
+                    if 0 < history_offset <= len(history_buffer):
                         snapshot = history_buffer[-(history_offset + 1)]
                         snapshot_dt = datetime.fromtimestamp(
                             snapshot["timestamp"], timezone.utc
@@ -855,8 +836,7 @@ def main(args):
                         args.slow_threshold,
                         show_asn,
                     )
-                    if host_scroll_offset > max_offset:
-                        host_scroll_offset = max_offset
+                    host_scroll_offset = min(host_scroll_offset, max_offset)
                     override_lines = None
                     term_size = get_terminal_size(fallback=(80, 24))
                     if show_help:
@@ -971,4 +951,3 @@ def main(args):
             f"{info['alias']:30} {success}/{total} replies, {slow} slow, {fail} failed "
             f"({percentage:.1f}%) [{status}]"
         )
-

@@ -17,6 +17,7 @@ Unit tests for terminal size normalization in paraping.core
 import unittest
 import os
 import sys
+from collections.abc import Sequence
 from unittest.mock import patch
 
 # Add parent directory to path to import main
@@ -46,6 +47,24 @@ class TestTermSizeNormalization(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(result.columns, 120)
         self.assertEqual(result.lines, 40)
+
+    def test_normalize_tuple_like_sequence(self):
+        """Test normalization of tuple-like sequences"""
+
+        class TupleLikeSize(Sequence):
+            def __init__(self, columns, lines):
+                self._values = (columns, lines)
+
+            def __getitem__(self, index):
+                return self._values[index]
+
+            def __len__(self):
+                return len(self._values)
+
+        result = _normalize_term_size(TupleLikeSize(90, 20))
+        self.assertIsNotNone(result)
+        self.assertEqual(result.columns, 90)
+        self.assertEqual(result.lines, 20)
 
     def test_normalize_dict(self):
         """Test normalization of dict with columns and lines keys"""
