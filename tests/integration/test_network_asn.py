@@ -26,7 +26,7 @@ import unittest
 from unittest.mock import patch, MagicMock
 
 # Add parent directory to path to import network_asn
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from network_asn import (
     parse_asn_response,

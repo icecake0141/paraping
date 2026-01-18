@@ -24,7 +24,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 # Add parent directory to path to import ping_wrapper
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from ping_wrapper import PingHelperError, ping_with_helper, main  # noqa: E402
 

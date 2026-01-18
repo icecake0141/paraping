@@ -20,8 +20,8 @@ import sys
 from collections.abc import Sequence
 from unittest.mock import patch
 
-# Add parent directory to path to import main
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+# Add parent directory to path to import paraping
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from paraping.core import _normalize_term_size, _extract_timeline_width_from_layout
 
