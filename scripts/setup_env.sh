@@ -36,7 +36,6 @@ for arg in "$@"; do
     case $arg in
         --skip-branch)
             SKIP_BRANCH=true
-            shift
             ;;
         *)
             echo "Unknown option: $arg"
@@ -103,15 +102,14 @@ echo ""
 
 # Step 5: Install development tools
 echo "[5/5] Installing development tools..."
-pip install pytest flake8 pylint
-echo ""
-
-# Optional: Install dev requirements if they exist
 if [ -f requirements-dev.txt ]; then
-    echo "[Bonus] Installing from requirements-dev.txt..."
+    echo "Installing from requirements-dev.txt (includes pytest, flake8, pylint)..."
     pip install -r requirements-dev.txt || echo "Warning: Some requirements-dev.txt dependencies failed to install"
-    echo ""
+else
+    echo "No requirements-dev.txt found, installing individual tools..."
+    pip install pytest flake8 pylint
 fi
+echo ""
 
 echo "=================================="
 echo "Environment setup complete!"
