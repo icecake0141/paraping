@@ -23,8 +23,8 @@ import socket
 import sys
 from collections import deque
 
+import ui_render
 from ui_render import (
-    get_terminal_size,
     compute_main_layout,
     should_show_asn,
     build_display_names,
@@ -40,6 +40,17 @@ MAX_HOST_THREADS = 128  # Hard cap to avoid unbounded thread growth.
 
 
 def parse_host_file_line(line, line_number, input_file):
+    """
+    Parse a single line from the host input file.
+    
+    Args:
+        line: Line of text from the file
+        line_number: Line number in the file
+        input_file: Path to the input file (for error messages)
+        
+    Returns:
+        Dict with host info (host, alias, ip) or None if invalid/comment
+    """
     stripped = line.strip()
     if not stripped or stripped.startswith("#"):
         return None
@@ -77,6 +88,15 @@ def parse_host_file_line(line, line_number, input_file):
 
 
 def read_input_file(input_file):
+    """
+    Read and parse hosts from an input file.
+    
+    Args:
+        input_file: Path to the file containing host entries
+        
+    Returns:
+        List of host info dictionaries
+    """
     host_list = []
     try:
         with open(input_file, "r", encoding="utf-8") as f:
@@ -112,7 +132,7 @@ def compute_history_page_step(
     header_lines=2,
 ):
     """Compute the page step for history navigation based on timeline width."""
-    term_size = get_terminal_size(fallback=(80, 24))
+    term_size = ui_render.get_terminal_size(fallback=(80, 24))
     term_width = term_size.columns
     term_height = term_size.lines
     status_box_height = 3 if term_height >= 4 and term_width >= 2 else 1
@@ -177,7 +197,7 @@ def get_cached_page_step(
             return True  # Terminal height changed
         return False
 
-    current_term_size = get_terminal_size(fallback=(80, 24))
+    current_term_size = ui_render.get_terminal_size(fallback=(80, 24))
 
     # Check if we need to recalculate
     if should_recalculate_page_step(cached_page_step, last_term_size, current_term_size):

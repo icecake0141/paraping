@@ -61,42 +61,15 @@ from ui_render import (
     strip_ansi,
     visible_len,
     truncate_visible,
-    pad_visible,
-    rjust_visible,
-    colorize_text,
-    status_from_symbol,
-    latest_status_from_timeline,
-    build_colored_timeline,
-    build_colored_sparkline,
-    build_activity_indicator,
-    compute_activity_indicator_width,
     get_terminal_size,
     compute_main_layout,
-    compute_panel_sizes,
-    resolve_boxed_dimensions,
     compute_host_scroll_bounds,
-    pad_lines,
-    box_lines,
-    resize_buffers,
-    build_sparkline,
-    build_ascii_graph,
-    resample_values,
-    can_render_full_summary,
-    format_summary_line,
-    format_status_line,
-    build_status_line,
     build_display_entries,
-    render_timeline_view,
-    render_sparkline_view,
-    render_main_view,
-    render_summary_view,
     render_help_view,
     render_host_selection_view,
     render_fullscreen_rtt_graph,
-    render_status_box,
     build_display_lines,
     render_display,
-    format_timezone_label,
     format_timestamp,
     prepare_terminal_for_exit,
     flash_screen,
@@ -105,9 +78,6 @@ from ui_render import (
     toggle_panel_visibility,
     cycle_panel_position,
     should_show_asn,
-    resolve_display_name,
-    format_asn_label,
-    format_display_name,
     build_display_names,
 )
 
@@ -284,7 +254,7 @@ def main(args):
     host_infos, host_info_map = build_host_infos(all_hosts)
     host_labels = [info["alias"] for info in host_infos]
     _, _, timeline_width, _ = compute_main_layout(
-        host_labels, term_size.columns, term_size.lines
+        host_labels, term_size.columns, term_size.lines, header_lines=2
     )
     buffers = {
         info["id"]: {
