@@ -48,7 +48,7 @@ from concurrent.futures import ThreadPoolExecutor
 # pylint: enable=unused-import
 
 # Import and re-export from the refactored modules
-from paraping.cli import handle_options, main
+from paraping.cli import handle_options, run, main as cli_main
 from paraping.core import (
     read_input_file,
     parse_host_file_line,
@@ -136,6 +136,8 @@ __all__ = [
     # CLI functions
     "handle_options",
     "main",
+    "run",
+    "cli_main",
     # Core functions
     "read_input_file",
     "parse_host_file_line",
@@ -226,6 +228,9 @@ __all__ = [
 ]
 
 
+# Backward compatibility: main(args) is now run(args), but keep main alias
+main = run
+
+
 if __name__ == "__main__":
-    options = handle_options()
-    main(options)
+    cli_main()

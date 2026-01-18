@@ -206,7 +206,7 @@ def handle_options():
     return args
 
 
-def main(args):
+def run(args):
     """Run the ParaPing monitor with parsed arguments."""
     # Validate count parameter - allow 0 for infinite
     if args.count < 0:
@@ -980,3 +980,9 @@ def main(args):
             f"{info['alias']:30} {success}/{total} replies, {slow} slow, {fail} failed "
             f"({percentage:.1f}%) [{status}]"
         )
+
+
+def main():
+    """Main entrypoint for the CLI - parses arguments and runs the application."""
+    args = handle_options()
+    run(args)
