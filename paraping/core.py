@@ -81,6 +81,46 @@ def _normalize_term_size(term_size):
     return None
 
 
+def _extract_timeline_width_from_layout(layout, main_width):
+    """
+    Defensively extract timeline width from compute_main_layout result.
+
+    Supports tuple/list indexing and attribute-style extraction with fallbacks.
+
+    Args:
+        layout: Result from compute_main_layout (tuple, list, or object)
+        main_width: Main panel width for fallback calculation
+
+    Returns:
+        int: Timeline width (always >= 1)
+    """
+    timeline_width = None
+
+    # Method 1: Try tuple/list indexing (expected case)
+    if isinstance(layout, (tuple, list)) and len(layout) > 2:
+        try:
+            timeline_width = layout[2]
+        except (TypeError, IndexError):
+            timeline_width = None
+
+    # Method 2: Try attribute access (for named tuples or objects)
+    if timeline_width is None:
+        timeline_width = getattr(layout, "timeline_width", None)
+
+    # Method 3: Fallback to a conservative default based on main_width
+    if timeline_width is None:
+        # Estimate: main_width minus label column and spacing
+        timeline_width = max(1, main_width - TIMELINE_LABEL_ESTIMATE_WIDTH)
+
+    # Ensure timeline_width is a valid integer
+    try:
+        timeline_width = int(timeline_width)
+    except (TypeError, ValueError):
+        timeline_width = max(1, main_width - TIMELINE_LABEL_ESTIMATE_WIDTH)
+
+    return max(1, timeline_width)
+
+
 def parse_host_file_line(line, line_number, input_file):
     """
     Parse a single line from the host input file.
@@ -201,36 +241,13 @@ def compute_history_page_step(
     if not host_labels:
         host_labels = [info["alias"] for info in host_infos]
 
-    # Defensively extract timeline_width from compute_main_layout result
+    # Compute layout and extract timeline width defensively
     layout_result = compute_main_layout(
         host_labels, main_width, main_height, header_lines
     )
+    timeline_width = _extract_timeline_width_from_layout(layout_result, main_width)
 
-    # Try different extraction methods to handle various return types
-    timeline_width = None
-
-    # Method 1: Try tuple/list indexing (expected case)
-    if isinstance(layout_result, (tuple, list)) and len(layout_result) > 2:
-        try:
-            timeline_width = layout_result[2]
-        except TypeError:
-            timeline_width = None
-
-    # Method 2: Try attribute access (for named tuples or objects)
-    if timeline_width is None:
-        timeline_width = getattr(layout_result, "timeline_width", None)
-
-    # Method 3: Fallback to a reasonable default based on main_width
-    if timeline_width is None:
-        # Estimate: main_width minus label column and spacing
-        timeline_width = max(1, main_width - TIMELINE_LABEL_ESTIMATE_WIDTH)
-
-    try:
-        timeline_width = int(timeline_width)
-    except (TypeError, ValueError):
-        timeline_width = max(1, main_width - TIMELINE_LABEL_ESTIMATE_WIDTH)
-
-    return max(1, timeline_width)
+    return timeline_width
 
 
 def get_cached_page_step(
