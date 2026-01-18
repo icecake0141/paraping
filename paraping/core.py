@@ -39,7 +39,7 @@ from ui_render import (
 HISTORY_DURATION_MINUTES = 30  # Store up to 30 minutes of history
 SNAPSHOT_INTERVAL_SECONDS = 1.0  # Take snapshot every second
 MAX_HOST_THREADS = 128  # Hard cap to avoid unbounded thread growth.
-TIMELINE_LABEL_ESTIMATE_WIDTH = 15
+TIMELINE_LABEL_ESTIMATE_WIDTH = 15  # Estimated label column + spacing width.
 
 
 def _build_term_size(columns_value, lines_value):

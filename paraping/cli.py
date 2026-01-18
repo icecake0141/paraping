@@ -66,7 +66,18 @@ from ui_render import (
 
 
 def _compute_initial_timeline_width(host_labels, term_size, panel_position, header_lines=2):
-    """Compute the initial timeline width for buffer sizing."""
+    """
+    Compute the initial timeline width for buffer sizing.
+
+    Args:
+        host_labels: List of host labels to size the label column.
+        term_size: Terminal size object with columns/lines attributes.
+        panel_position: Current summary panel position selection.
+        header_lines: Number of header lines in the main panel.
+
+    Returns:
+        Positive integer timeline width for buffer maxlen sizing.
+    """
     status_box_height = 3 if term_size.lines >= 4 and term_size.columns >= 2 else 1
     panel_height = max(1, term_size.lines - status_box_height)
     main_width, main_height, _, _, _ = compute_panel_sizes(
