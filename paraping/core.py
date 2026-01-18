@@ -22,9 +22,10 @@ import ipaddress
 import socket
 import sys
 from collections import deque
+from types import SimpleNamespace
 
+import ui_render
 from ui_render import (
-    get_terminal_size,
     compute_main_layout,
     should_show_asn,
     build_display_names,
@@ -39,7 +40,58 @@ SNAPSHOT_INTERVAL_SECONDS = 1.0  # Take snapshot every second
 MAX_HOST_THREADS = 128  # Hard cap to avoid unbounded thread growth.
 
 
+def _normalize_term_size(term_size):
+    """
+    Normalize terminal size to an object with .columns and .lines attributes.
+    
+    Handles tuples, lists, dicts, and objects with columns/lines attributes.
+    
+    Args:
+        term_size: Terminal size as tuple, list, dict, or object with attributes
+        
+    Returns:
+        Object with .columns and .lines attributes, or None if invalid
+    """
+    if term_size is None:
+        return None
+    
+    # Already has the right attributes
+    if hasattr(term_size, 'columns') and hasattr(term_size, 'lines'):
+        return term_size
+    
+    # Handle tuple or list (columns, lines)
+    if isinstance(term_size, (tuple, list)) and len(term_size) >= 2:
+        try:
+            return SimpleNamespace(columns=int(term_size[0]), lines=int(term_size[1]))
+        except (ValueError, TypeError, IndexError):
+            return None
+    
+    # Handle dict with 'columns' and 'lines' keys
+    if isinstance(term_size, dict):
+        if 'columns' in term_size and 'lines' in term_size:
+            try:
+                return SimpleNamespace(
+                    columns=int(term_size['columns']),
+                    lines=int(term_size['lines'])
+                )
+            except (ValueError, TypeError, KeyError):
+                return None
+    
+    return None
+
+
 def parse_host_file_line(line, line_number, input_file):
+    """
+    Parse a single line from the host input file.
+    
+    Args:
+        line: Line of text from the file
+        line_number: Line number in the file
+        input_file: Path to the input file (for error messages)
+        
+    Returns:
+        Dict with keys 'host', 'alias', 'ip' or None if invalid/comment
+    """
     stripped = line.strip()
     if not stripped or stripped.startswith("#"):
         return None
@@ -77,6 +129,15 @@ def parse_host_file_line(line, line_number, input_file):
 
 
 def read_input_file(input_file):
+    """
+    Read and parse hosts from an input file.
+    
+    Args:
+        input_file: Path to the file containing host entries
+        
+    Returns:
+        List of host info dictionaries
+    """
     host_list = []
     try:
         with open(input_file, "r", encoding="utf-8") as f:
@@ -112,7 +173,7 @@ def compute_history_page_step(
     header_lines=2,
 ):
     """Compute the page step for history navigation based on timeline width."""
-    term_size = get_terminal_size(fallback=(80, 24))
+    term_size = ui_render.get_terminal_size(fallback=(80, 24))
     term_width = term_size.columns
     term_height = term_size.lines
     status_box_height = 3 if term_height >= 4 and term_width >= 2 else 1
@@ -138,9 +199,31 @@ def compute_history_page_step(
     host_labels = [entry[1] for entry in display_entries]
     if not host_labels:
         host_labels = [info["alias"] for info in host_infos]
-    _, _, timeline_width, _ = compute_main_layout(
+    
+    # Defensively extract timeline_width from compute_main_layout result
+    layout_result = compute_main_layout(
         host_labels, main_width, main_height, header_lines
     )
+    
+    # Try different extraction methods to handle various return types
+    timeline_width = None
+    
+    # Method 1: Try tuple/list indexing (expected case)
+    try:
+        if isinstance(layout_result, (tuple, list)) and len(layout_result) > 2:
+            timeline_width = layout_result[2]
+    except (IndexError, TypeError):
+        pass
+    
+    # Method 2: Try attribute access (for named tuples or objects)
+    if timeline_width is None:
+        timeline_width = getattr(layout_result, 'timeline_width', None)
+    
+    # Method 3: Fallback to a reasonable default based on main_width
+    if timeline_width is None:
+        # Estimate: main_width minus label column and spacing
+        timeline_width = max(1, main_width - 15)
+    
     return max(1, timeline_width)
 
 
@@ -171,13 +254,17 @@ def get_cached_page_step(
         """Check if page step needs recalculation due to cache miss or terminal resize"""
         if cached_value is None or last_size is None:
             return True  # First time - need to calculate
-        if current_size.columns != last_size.columns:
+        # Normalize last_size to ensure we can access .columns and .lines
+        normalized_last = _normalize_term_size(last_size)
+        if normalized_last is None:
+            return True  # Invalid last_size, recalculate
+        if current_size.columns != normalized_last.columns:
             return True  # Terminal width changed
-        if current_size.lines != last_size.lines:
+        if current_size.lines != normalized_last.lines:
             return True  # Terminal height changed
         return False
 
-    current_term_size = get_terminal_size(fallback=(80, 24))
+    current_term_size = ui_render.get_terminal_size(fallback=(80, 24))
 
     # Check if we need to recalculate
     if should_recalculate_page_step(cached_page_step, last_term_size, current_term_size):
