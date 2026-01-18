@@ -44,3 +44,9 @@ setcap: $(TARGET)
 .PHONY: clean
 clean:
 	rm -f $(TARGET)
+
+# Build native components in src/native/
+.PHONY: native
+native:
+	@echo "Building native components in src/native..."
+	@cd src/native && if [ -f Makefile ]; then $(MAKE) build || exit 1; else echo "No native Makefile found in src/native"; fi

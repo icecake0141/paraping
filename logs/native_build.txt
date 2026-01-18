@@ -1,0 +1,4 @@
+Building native components in src/native...
+make[1]: Entering directory '/home/runner/work/paraping/paraping/src/native'
+gcc -Wall -Wextra -O2 -o ping_helper ping_helper.c
+make[1]: Leaving directory '/home/runner/work/paraping/paraping/src/native'
