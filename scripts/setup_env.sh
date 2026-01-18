@@ -73,9 +73,17 @@ if [ "${SKIP_BRANCH}" = false ]; then
     else
         echo "Creating new branch ${TARGET_BRANCH} from ${BASE_BRANCH}..."
         git checkout -b "${TARGET_BRANCH}" "${BASE_BRANCH}" || {
-            echo "Warning: Failed to create branch from ${BASE_BRANCH}"
-            echo "Attempting to create from current HEAD..."
-            git checkout -b "${TARGET_BRANCH}"
+            echo "ERROR: Failed to create branch from ${BASE_BRANCH}"
+            echo "This typically happens when ${BASE_BRANCH} doesn't exist."
+            echo ""
+            echo "Current branch: ${CURRENT_BRANCH}"
+            echo "Please verify that ${BASE_BRANCH} exists or update BASE_BRANCH in the script."
+            echo ""
+            echo "To create the branch manually:"
+            echo "  git fetch origin"
+            echo "  git checkout -b ${TARGET_BRANCH} origin/master"
+            echo ""
+            exit 1
         }
     fi
     echo ""
@@ -94,7 +102,11 @@ echo ""
 echo "[4/5] Installing project dependencies..."
 if [ -f requirements.txt ]; then
     echo "Installing from requirements.txt..."
-    pip install -r requirements.txt || echo "Warning: Some requirements.txt dependencies failed to install"
+    if ! pip install -r requirements.txt; then
+        echo "Warning: Some requirements.txt dependencies failed to install"
+        echo "This may be expected if requirements.txt is empty or has no external dependencies"
+        echo "Continuing with setup..."
+    fi
 else
     echo "No requirements.txt found, skipping..."
 fi
@@ -104,10 +116,23 @@ echo ""
 echo "[5/5] Installing development tools..."
 if [ -f requirements-dev.txt ]; then
     echo "Installing from requirements-dev.txt (includes pytest, flake8, pylint)..."
-    pip install -r requirements-dev.txt || echo "Warning: Some requirements-dev.txt dependencies failed to install"
+    if ! pip install -r requirements-dev.txt; then
+        echo "ERROR: Failed to install development dependencies from requirements-dev.txt"
+        echo "This is required for linting and testing. Please resolve the error above."
+        echo ""
+        echo "You can try installing manually:"
+        echo "  pip install -r requirements-dev.txt"
+        echo ""
+        exit 1
+    fi
 else
     echo "No requirements-dev.txt found, installing individual tools..."
-    pip install pytest flake8 pylint
+    if ! pip install pytest flake8 pylint; then
+        echo "ERROR: Failed to install pytest, flake8, and pylint"
+        echo "These tools are required for development. Please resolve the error above."
+        echo ""
+        exit 1
+    fi
 fi
 echo ""
 
