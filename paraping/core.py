@@ -24,6 +24,7 @@ import sys
 from collections import deque
 from collections.abc import Sequence
 from types import SimpleNamespace
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import ui_render
 from ui_render import (
@@ -42,7 +43,7 @@ MAX_HOST_THREADS = 128  # Hard cap to avoid unbounded thread growth.
 TIMELINE_LABEL_ESTIMATE_WIDTH = 15  # Estimated label column + spacing width.
 
 
-def _build_term_size(columns_value, lines_value):
+def _build_term_size(columns_value: Any, lines_value: Any) -> Optional[SimpleNamespace]:
     """Build a terminal size namespace from column and line values."""
     try:
         columns = int(columns_value)
@@ -54,7 +55,7 @@ def _build_term_size(columns_value, lines_value):
     return SimpleNamespace(columns=columns, lines=lines)
 
 
-def _normalize_term_size(term_size):
+def _normalize_term_size(term_size: Any) -> Optional[SimpleNamespace]:
     """
     Normalize terminal size to an object with .columns and .lines attributes.
 
@@ -81,7 +82,7 @@ def _normalize_term_size(term_size):
     return None
 
 
-def _extract_timeline_width_from_layout(layout, main_width):
+def _extract_timeline_width_from_layout(layout: Any, main_width: int) -> int:
     """
     Defensively extract timeline width from compute_main_layout result.
 
@@ -121,7 +122,7 @@ def _extract_timeline_width_from_layout(layout, main_width):
     return max(1, timeline_width)
 
 
-def parse_host_file_line(line, line_number, input_file):
+def parse_host_file_line(line: str, line_number: int, input_file: str) -> Optional[Dict[str, str]]:
     """
     Parse a single line from the host input file.
 
@@ -169,7 +170,7 @@ def parse_host_file_line(line, line_number, input_file):
     return {"host": ip_text, "alias": alias, "ip": ip_text}
 
 
-def read_input_file(input_file):
+def read_input_file(input_file: str) -> List[Dict[str, str]]:
     """
     Read and parse hosts from an input file.
 
@@ -192,7 +193,7 @@ def read_input_file(input_file):
     except PermissionError:
         print(f"Error: Permission denied reading file '{input_file}'.")
         return []
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         print(f"Error reading input file '{input_file}': {e}")
         return []
 
@@ -310,7 +311,7 @@ def get_cached_page_step(
     return cached_page_step, cached_page_step, last_term_size
 
 
-def build_host_infos(hosts):
+def build_host_infos(hosts: List[Union[str, Dict[str, str]]]) -> Tuple[List[Dict[str, Any]], Dict[str, List[Dict[str, Any]]]]:
     """Build host information structures from a list of hosts."""
     host_infos = []
     host_map = {}
@@ -343,7 +344,7 @@ def build_host_infos(hosts):
     return host_infos, host_map
 
 
-def create_state_snapshot(buffers, stats, timestamp):
+def create_state_snapshot(buffers: Dict[int, Any], stats: Dict[int, Any], timestamp: float) -> Dict[str, Any]:
     """
     Create a deep copy snapshot of current buffers and stats.
 
@@ -392,13 +393,13 @@ def create_state_snapshot(buffers, stats, timestamp):
 
 
 def update_history_buffer(
-    history_buffer,
-    buffers,
-    stats,
-    now,
-    last_snapshot_time,
-    history_offset,
-):
+    history_buffer: "deque[Dict[str, Any]]",
+    buffers: Dict[int, Any],
+    stats: Dict[int, Any],
+    now: float,
+    last_snapshot_time: float,
+    history_offset: int,
+) -> Tuple[float, int]:
     """Update history buffer with new snapshot if enough time has elapsed."""
     if (now - last_snapshot_time) < SNAPSHOT_INTERVAL_SECONDS:
         return last_snapshot_time, history_offset
@@ -411,7 +412,13 @@ def update_history_buffer(
     return last_snapshot_time, history_offset
 
 
-def resolve_render_state(history_offset, history_buffer, buffers, stats, paused):
+def resolve_render_state(
+    history_offset: int,
+    history_buffer: "deque[Dict[str, Any]]",
+    buffers: Dict[int, Any],
+    stats: Dict[int, Any],
+    paused: bool,
+) -> Tuple[Dict[int, Any], Dict[int, Any], bool]:
     """Resolve the current render state based on history offset."""
     if 0 < history_offset <= len(history_buffer):
         snapshot = history_buffer[-(history_offset + 1)]

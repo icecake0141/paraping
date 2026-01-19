@@ -1,0 +1,66 @@
+# Copyright 2025 icecake0141
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# This file was created or modified with the assistance of an AI (Large Language Model).
+# Review for correctness and security.
+
+[MASTER]
+# Python code to execute, usually for sys.path manipulation such as
+# pygtk.require().
+#init-hook=
+
+# Files or directories to be skipped. They should be base names, not paths.
+ignore=CVS
+
+# Files or directories matching the regex patterns are skipped.
+ignore-patterns=
+
+[MESSAGES CONTROL]
+# Disable certain warnings to align with project standards
+disable=
+    too-many-arguments,
+    too-many-positional-arguments,
+    too-many-locals,
+    too-many-branches,
+    too-many-statements,
+    too-few-public-methods
+
+[FORMAT]
+# Maximum number of characters on a single line.
+max-line-length=127
+
+# Allow the body of an if to be on the same line as the test if there is no else.
+single-line-if-stmt=no
+
+[BASIC]
+# Good variable names which should always be accepted, separated by a comma.
+good-names=i,j,k,ex,Run,_,e,f,id,ip
+
+[DESIGN]
+# Maximum number of arguments for function / method
+max-args=12
+
+# Maximum number of locals for function / method body
+max-locals=25
+
+# Maximum number of return / yield for function / method body
+max-returns=6
+
+# Maximum number of branch for function / method body
+max-branches=12
+
+# Maximum number of statements in function / method body
+max-statements=50
+
+# Maximum number of attributes for a class (see R0902).
+max-attributes=7
+
+[IMPORTS]
+# Allow wildcard imports from modules listed here.
+allow-wildcard-with-all=no
