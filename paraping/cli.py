@@ -29,62 +29,74 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from paraping.core import (
-    read_input_file,
-    build_host_infos,
-    update_history_buffer,
-    resolve_render_state,
-    get_cached_page_step,
-    MAX_HOST_THREADS,
-    HISTORY_DURATION_MINUTES,
-    SNAPSHOT_INTERVAL_SECONDS,
-)
-from paraping.pinger import worker_ping, rdns_worker
-from network_asn import asn_worker, should_retry_asn
 from input_keys import read_key
+from network_asn import asn_worker, should_retry_asn
+from paraping.core import (
+    HISTORY_DURATION_MINUTES,
+    MAX_HOST_THREADS,
+    SNAPSHOT_INTERVAL_SECONDS,
+    _normalize_term_size,
+    build_host_infos,
+    get_cached_page_step,
+    read_input_file,
+    resolve_render_state,
+    update_history_buffer,
+)
+from paraping.pinger import rdns_worker, worker_ping
 from ui_render import (
-    get_terminal_size,
+    build_display_entries,
+    build_display_lines,
+    build_display_names,
+    compute_host_scroll_bounds,
     compute_main_layout,
     compute_panel_sizes,
-    compute_host_scroll_bounds,
-    build_display_entries,
+    cycle_panel_position,
+    flash_screen,
+    format_timestamp,
+    get_terminal_size,
+    prepare_terminal_for_exit,
+    render_display,
+    render_fullscreen_rtt_graph,
     render_help_view,
     render_host_selection_view,
-    render_fullscreen_rtt_graph,
-    build_display_lines,
-    render_display,
-    format_timestamp,
-    prepare_terminal_for_exit,
-    flash_screen,
     ring_bell,
     should_flash_on_fail,
-    toggle_panel_visibility,
-    cycle_panel_position,
     should_show_asn,
-    build_display_names,
+    toggle_panel_visibility,
 )
 
 
-def _compute_initial_timeline_width(host_labels, term_size, panel_position, header_lines=2):
+def _compute_initial_timeline_width(host_labels, term_size, panel_position):
     """
     Compute the initial timeline width for buffer sizing.
+
+    Always uses header_lines=2 to ensure consistent layout sizing at startup.
 
     Args:
         host_labels: List of host labels to size the label column.
         term_size: Terminal size object with columns/lines attributes.
         panel_position: Current summary panel position selection.
-        header_lines: Number of header lines in the main panel.
 
     Returns:
         Positive integer timeline width for buffer maxlen sizing.
     """
-    status_box_height = 3 if term_size.lines >= 4 and term_size.columns >= 2 else 1
-    panel_height = max(1, term_size.lines - status_box_height)
-    main_width, main_height, _, _, _ = compute_panel_sizes(
-        term_size.columns, panel_height, panel_position
+    # Normalize term_size defensively
+    normalized_size = _normalize_term_size(term_size)
+    if normalized_size is None:
+        # Fallback to reasonable default timeline width
+        # Typical 80-column terminal minus label area (~20 chars) = ~60
+        return 60
+
+    status_box_height = (
+        3 if normalized_size.lines >= 4 and normalized_size.columns >= 2 else 1
     )
+    panel_height = max(1, normalized_size.lines - status_box_height)
+    main_width, main_height, _, _, _ = compute_panel_sizes(
+        normalized_size.columns, panel_height, panel_position
+    )
+    # Always use header_lines=2 for consistent initial sizing
     _, _, timeline_width, _ = compute_main_layout(
-        host_labels, main_width, main_height, header_lines
+        host_labels, main_width, main_height, header_lines=2
     )
     try:
         return max(1, int(timeline_width))
@@ -265,9 +277,8 @@ def run(args):
     initial_term_size = get_terminal_size(fallback=(80, 24))
     host_infos, host_info_map = build_host_infos(all_hosts)
     host_labels = [info["alias"] for info in host_infos]
-    header_lines = 2
     timeline_width = _compute_initial_timeline_width(
-        host_labels, initial_term_size, panel_position, header_lines
+        host_labels, initial_term_size, panel_position
     )
     buffers = {
         info["id"]: {
