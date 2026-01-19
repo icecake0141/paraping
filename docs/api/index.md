@@ -99,7 +99,7 @@ This API documentation is a work in progress. Detailed function-level documentat
 
 For now, please refer to:
 - [Code Review Report](../reviews/CODE_REVIEW.md) for architectural overview
-- [Modularization Guide](../../MODULARIZATION.md) for module boundaries and ownership
+- [Modularization Guide](../MODULARIZATION.md) for module boundaries and ownership
 - Source code docstrings for function-specific documentation
 
 ## Contributing to Documentation
@@ -111,7 +111,7 @@ When adding new modules or functions:
 4. Note any security considerations
 5. Include usage examples where appropriate
 
-For documentation standards, see [CONTRIBUTING.md](../../CONTRIBUTING.md).
+For documentation standards, see [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ## Future Work
 

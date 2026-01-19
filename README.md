@@ -16,7 +16,7 @@ Review required for correctness, security, and licensing.
 
 ParaPing is an interactive, terminal-based ICMP monitor that pings many hosts in parallel and visualizes results as a live timeline or sparkline. It provides operator controls for sorting, filtering, pausing, snapshots, and per-host RTT inspection to aid rapid network triage.
 
-> 日本語版 README: [README.ja.md](README.ja.md)
+> 日本語版 README: [README.ja.md](docs/README.ja.md)
 
 ## Features
 - Concurrent ICMP ping to multiple hosts (capability-based helper binary).
@@ -233,9 +233,9 @@ Potential optimizations for large-scale deployments (not currently implemented):
 **Note**: The current one-process-per-ping model is intentional and provides the best security/reliability trade-off for typical monitoring workloads (1-128 hosts at 1-second intervals). For different workloads, consider the above optimizations.
 
 ## Contributing
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines, code quality standards, and how to submit pull requests.
+Contributions are welcome! Please see [CONTRIBUTING.md](docs/CONTRIBUTING.md) for development guidelines, code quality standards, and how to submit pull requests.
 
-For information about the codebase modularization, module ownership boundaries, test organization, and coverage reporting, see [MODULARIZATION.md](MODULARIZATION.md).
+For information about the codebase modularization, module ownership boundaries, test organization, and coverage reporting, see [MODULARIZATION.md](docs/MODULARIZATION.md).
 
 ## Development & Validation
 
@@ -326,7 +326,7 @@ Before opening a pull request, ensure you:
 4. ✅ Update documentation if behavior changed
 5. ✅ Follow the [LLM PR policy](.github/workflows/copilot-instructions.md) if using AI assistance (include license headers, LLM attribution, and validation commands in your PR description)
 
-For complete contribution guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
+For complete contribution guidelines, see [CONTRIBUTING.md](docs/CONTRIBUTING.md).
 
 ## License
 Apache License 2.0. See [LICENSE](LICENSE).

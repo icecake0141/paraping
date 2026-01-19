@@ -46,8 +46,8 @@ Welcome to the ParaPing documentation hub. This directory contains comprehensive
 - [日本語版 README](../README.ja.md) - Japanese version of the README
 
 ### For Contributors
-- [Contributing Guidelines](../CONTRIBUTING.md) - Development guidelines and PR requirements
-- [Modularization Guide](../MODULARIZATION.md) - Module ownership and test organization
+- [Contributing Guidelines](CONTRIBUTING.md) - Development guidelines and PR requirements
+- [Modularization Guide](MODULARIZATION.md) - Module ownership and test organization
 - [Code Review Report](reviews/CODE_REVIEW.md) - Security and quality analysis
 
 ### For Developers
@@ -68,8 +68,8 @@ ParaPing is an interactive terminal-based ICMP monitor that pings multiple hosts
 
 1. **Installation**: See the [main README](../README.md#installation)
 2. **Development Setup**: See [environment_setup.md](environment_setup.md)
-3. **Contributing**: Read [CONTRIBUTING.md](../CONTRIBUTING.md)
-4. **Understanding the Code**: Review [MODULARIZATION.md](../MODULARIZATION.md)
+3. **Contributing**: Read [CONTRIBUTING.md](CONTRIBUTING.md)
+4. **Understanding the Code**: Review [MODULARIZATION.md](MODULARIZATION.md)
 
 ## Documentation Conventions
 
