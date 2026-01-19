@@ -24,11 +24,11 @@ import math
 def compute_fail_streak(timeline, fail_symbol):
     """
     Compute the current consecutive failure streak.
-    
+
     Args:
         timeline: Deque of status symbols
         fail_symbol: The symbol representing a failure
-        
+
     Returns:
         Number of consecutive failures from the end of the timeline
     """
@@ -44,10 +44,10 @@ def compute_fail_streak(timeline, fail_symbol):
 def build_streak_label(entry):
     """
     Build a display label for a streak.
-    
+
     Args:
         entry: Dictionary with streak_type and streak_length
-        
+
     Returns:
         String label like "F5" for fail streak or "S10" for success streak
     """
@@ -62,30 +62,18 @@ def build_streak_label(entry):
 def build_summary_suffix(entry, summary_mode):
     """
     Build the suffix for a summary line based on the summary mode.
-    
+
     Args:
         entry: Dictionary with statistics data
         summary_mode: Display mode ('rtt', 'ttl', 'streak', or 'rates')
-        
+
     Returns:
         Formatted suffix string
     """
     if summary_mode == "rtt":
-        avg_rtt = (
-            f"{entry['avg_rtt_ms']:.1f} ms"
-            if entry.get("avg_rtt_ms") is not None
-            else "n/a"
-        )
-        jitter = (
-            f"{entry['jitter_ms']:.1f} ms"
-            if entry.get("jitter_ms") is not None
-            else "n/a"
-        )
-        stddev = (
-            f"{entry['stddev_ms']:.1f} ms"
-            if entry.get("stddev_ms") is not None
-            else "n/a"
-        )
+        avg_rtt = f"{entry['avg_rtt_ms']:.1f} ms" if entry.get("avg_rtt_ms") is not None else "n/a"
+        jitter = f"{entry['jitter_ms']:.1f} ms" if entry.get("jitter_ms") is not None else "n/a"
+        stddev = f"{entry['stddev_ms']:.1f} ms" if entry.get("stddev_ms") is not None else "n/a"
         return f": avg rtt {avg_rtt} jitter {jitter} stddev {stddev}"
     if summary_mode == "ttl":
         latest_ttl = entry.get("latest_ttl")
@@ -98,28 +86,16 @@ def build_summary_suffix(entry, summary_mode):
 def build_summary_all_suffix(entry):
     """
     Build a comprehensive summary suffix with all statistics.
-    
+
     Args:
         entry: Dictionary with statistics data
-        
+
     Returns:
         Formatted suffix string with all statistics
     """
-    avg_rtt = (
-        f"{entry['avg_rtt_ms']:.1f} ms"
-        if entry.get("avg_rtt_ms") is not None
-        else "n/a"
-    )
-    jitter = (
-        f"{entry['jitter_ms']:.1f} ms"
-        if entry.get("jitter_ms") is not None
-        else "n/a"
-    )
-    stddev = (
-        f"{entry['stddev_ms']:.1f} ms"
-        if entry.get("stddev_ms") is not None
-        else "n/a"
-    )
+    avg_rtt = f"{entry['avg_rtt_ms']:.1f} ms" if entry.get("avg_rtt_ms") is not None else "n/a"
+    jitter = f"{entry['jitter_ms']:.1f} ms" if entry.get("jitter_ms") is not None else "n/a"
+    stddev = f"{entry['stddev_ms']:.1f} ms" if entry.get("stddev_ms") is not None else "n/a"
     latest_ttl = entry.get("latest_ttl")
     ttl_value = f"{latest_ttl}" if latest_ttl is not None else "n/a"
     streak_label = build_streak_label(entry)
@@ -144,7 +120,7 @@ def compute_summary_data(
 ):
     """
     Compute summary statistics for all hosts.
-    
+
     Args:
         host_infos: List of host information dictionaries
         display_names: Dictionary mapping host IDs to display names
@@ -152,18 +128,14 @@ def compute_summary_data(
         stats: Dictionary of per-host statistics
         symbols: Dictionary mapping status to symbol
         ordered_host_ids: Optional list of host IDs in desired order
-        
+
     Returns:
         List of summary data dictionaries, one per host
     """
     summary = []
     success_symbols = {symbols["success"], symbols["slow"]}
     info_by_id = {info["id"]: info for info in host_infos}
-    host_ids = (
-        ordered_host_ids
-        if ordered_host_ids is not None
-        else [info["id"] for info in host_infos]
-    )
+    host_ids = ordered_host_ids if ordered_host_ids is not None else [info["id"] for info in host_infos]
     for host_id in host_ids:
         info = info_by_id.get(host_id)
         if info is None:
@@ -199,20 +171,13 @@ def compute_summary_data(
         stddev_ms = None
         if stats[host_id]["rtt_count"] > 1:
             mean_rtt = stats[host_id]["rtt_sum"] / stats[host_id]["rtt_count"]
-            mean_square = (
-                stats[host_id].get("rtt_sum_sq", 0.0) / stats[host_id]["rtt_count"]
-            )
+            mean_square = stats[host_id].get("rtt_sum_sq", 0.0) / stats[host_id]["rtt_count"]
             variance = max(0.0, mean_square - mean_rtt * mean_rtt)
             stddev_ms = math.sqrt(variance) * 1000
-        rtt_values = [
-            value for value in buffers[host_id]["rtt_history"] if value is not None
-        ]
+        rtt_values = [value for value in buffers[host_id]["rtt_history"] if value is not None]
         jitter_ms = None
         if len(rtt_values) >= 2:
-            diffs = [
-                abs(current - previous)
-                for previous, current in zip(rtt_values, rtt_values[1:])
-            ]
+            diffs = [abs(current - previous) for previous, current in zip(rtt_values, rtt_values[1:])]
             jitter_ms = sum(diffs) / len(diffs) * 1000
         latest_ttl = latest_ttl_value(buffers[host_id]["ttl_history"])
         summary.append(
@@ -234,10 +199,10 @@ def compute_summary_data(
 def latest_ttl_value(ttl_history):
     """
     Get the latest TTL value from history.
-    
+
     Args:
         ttl_history: Deque of TTL values
-        
+
     Returns:
         The most recent TTL value, or None if history is empty
     """
@@ -249,10 +214,10 @@ def latest_ttl_value(ttl_history):
 def latest_rtt_value(rtt_history):
     """
     Get the latest RTT value from history.
-    
+
     Args:
         rtt_history: Deque of RTT values
-        
+
     Returns:
         The most recent RTT value, or None if history is empty
     """

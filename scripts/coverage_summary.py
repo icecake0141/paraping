@@ -45,29 +45,25 @@ def parse_coverage_report(content: str) -> Dict[str, Dict[str, Any]]:
     coverage_data = {}
 
     # Find the coverage table in the output
-    lines = content.split('\n')
+    lines = content.split("\n")
     in_table = False
 
     for line in lines:
         # Look for the start of coverage table
-        if 'Name' in line and 'Stmts' in line and 'Miss' in line and 'Cover' in line:
+        if "Name" in line and "Stmts" in line and "Miss" in line and "Cover" in line:
             in_table = True
             continue
 
         # Look for the end of coverage table
-        if in_table and line.startswith('---'):
+        if in_table and line.startswith("---"):
             continue
 
-        if in_table and (line.startswith('TOTAL') or line.strip() == ''):
+        if in_table and (line.startswith("TOTAL") or line.strip() == ""):
             # Parse TOTAL line
-            if line.startswith('TOTAL'):
+            if line.startswith("TOTAL"):
                 parts = line.split()
                 if len(parts) >= 4:
-                    coverage_data['TOTAL'] = {
-                        'stmts': int(parts[1]),
-                        'miss': int(parts[2]),
-                        'cover': parts[3].rstrip('%')
-                    }
+                    coverage_data["TOTAL"] = {"stmts": int(parts[1]), "miss": int(parts[2]), "cover": parts[3].rstrip("%")}
             in_table = False
             continue
 
@@ -75,20 +71,15 @@ def parse_coverage_report(content: str) -> Dict[str, Dict[str, Any]]:
         if in_table:
             # Match pattern: module_name.py    stmts   miss   cover%
             # Supports both integer and decimal percentages (e.g., 80% or 80.5%)
-            match = re.match(r'^(\S+\.py)\s+(\d+)\s+(\d+)\s+(\d+(?:\.\d+)?)%', line)
+            match = re.match(r"^(\S+\.py)\s+(\d+)\s+(\d+)\s+(\d+(?:\.\d+)?)%", line)
             if match:
                 module = match.group(1)
-                coverage_data[module] = {
-                    'stmts': int(match.group(2)),
-                    'miss': int(match.group(3)),
-                    'cover': match.group(4)
-                }
+                coverage_data[module] = {"stmts": int(match.group(2)), "miss": int(match.group(3)), "cover": match.group(4)}
 
     return coverage_data
 
 
-def format_coverage_table(coverage_data: Dict[str, Dict[str, Any]],
-                         title: str = "Coverage Summary") -> str:
+def format_coverage_table(coverage_data: Dict[str, Dict[str, Any]], title: str = "Coverage Summary") -> str:
     """
     Format coverage data as a readable table.
 
@@ -106,27 +97,25 @@ def format_coverage_table(coverage_data: Dict[str, Dict[str, Any]],
     output.append("-" * 67)
 
     # Sort modules alphabetically, but put TOTAL last
-    modules = sorted([k for k in coverage_data.keys() if k != 'TOTAL'])
+    modules = sorted([k for k in coverage_data.keys() if k != "TOTAL"])
 
     for module in modules:
         data = coverage_data[module]
         output.append(f"{module:<40} {data['stmts']:>8} {data['miss']:>8} {data['cover']:>7}%")
 
     # Add TOTAL if present
-    if 'TOTAL' in coverage_data:
+    if "TOTAL" in coverage_data:
         output.append("-" * 67)
-        data = coverage_data['TOTAL']
+        data = coverage_data["TOTAL"]
         output.append(f"{'TOTAL':<40} {data['stmts']:>8} {data['miss']:>8} {data['cover']:>7}%")
 
-    return '\n'.join(output)
+    return "\n".join(output)
 
 
-def _calculate_coverage_delta(baseline: Dict[str, Dict[str, Any]],
-                              current: Dict[str, Dict[str, Any]],
-                              module: str) -> tuple:
+def _calculate_coverage_delta(baseline: Dict[str, Dict[str, Any]], current: Dict[str, Dict[str, Any]], module: str) -> tuple:
     """Calculate coverage delta for a module."""
-    base_cov = baseline.get(module, {}).get('cover', '0')
-    curr_cov = current.get(module, {}).get('cover', '0')
+    base_cov = baseline.get(module, {}).get("cover", "0")
+    curr_cov = current.get(module, {}).get("cover", "0")
 
     base_val = float(base_cov)
     curr_val = float(curr_cov)
@@ -145,8 +134,7 @@ def _calculate_coverage_delta(baseline: Dict[str, Dict[str, Any]],
     return (module, f"{base_val:.1f}%", f"{curr_val:.1f}%", delta_str, delta)
 
 
-def compare_coverage(baseline: Dict[str, Dict[str, Any]],
-                    current: Dict[str, Dict[str, Any]]) -> str:
+def compare_coverage(baseline: Dict[str, Dict[str, Any]], current: Dict[str, Dict[str, Any]]) -> str:
     """
     Compare two coverage reports and show deltas.
 
@@ -164,10 +152,9 @@ def compare_coverage(baseline: Dict[str, Dict[str, Any]],
     output.append("-" * 73)
 
     # Get all modules from both reports
-    all_modules = sorted(set(baseline.keys()) | set(current.keys()) - {'TOTAL'})
+    all_modules = sorted(set(baseline.keys()) | set(current.keys()) - {"TOTAL"})
 
-    changes = [_calculate_coverage_delta(baseline, current, module)
-               for module in all_modules]
+    changes = [_calculate_coverage_delta(baseline, current, module) for module in all_modules]
 
     # Sort by delta (largest improvements first)
     changes.sort(key=lambda x: x[4], reverse=True)
@@ -176,10 +163,10 @@ def compare_coverage(baseline: Dict[str, Dict[str, Any]],
         output.append(f"{module:<40} {base:>10} {curr:>10} {delta_str:>10}")
 
     # TOTAL comparison
-    if 'TOTAL' in baseline and 'TOTAL' in current:
+    if "TOTAL" in baseline and "TOTAL" in current:
         output.append("-" * 73)
-        base_total = float(baseline['TOTAL']['cover'])
-        curr_total = float(current['TOTAL']['cover'])
+        base_total = float(baseline["TOTAL"]["cover"])
+        curr_total = float(current["TOTAL"]["cover"])
         delta_total = curr_total - base_total
         sign = "+" if delta_total > 0 else ""
         delta_str = f"{sign}{delta_total:.1f}%" if delta_total != 0 else "—"
@@ -195,7 +182,7 @@ def compare_coverage(baseline: Dict[str, Dict[str, Any]],
         else:
             output.append("➡️  Coverage unchanged")
 
-    return '\n'.join(output)
+    return "\n".join(output)
 
 
 def main():
@@ -210,18 +197,17 @@ Examples:
 
   # Compare baseline vs current
   python scripts/coverage_summary.py baseline.txt current.txt --compare
-        """
+        """,
     )
-    parser.add_argument('baseline', help='Baseline coverage report file')
-    parser.add_argument('current', nargs='?', help='Current coverage report file (for comparison)')
-    parser.add_argument('--compare', action='store_true',
-                       help='Compare baseline and current reports')
+    parser.add_argument("baseline", help="Baseline coverage report file")
+    parser.add_argument("current", nargs="?", help="Current coverage report file (for comparison)")
+    parser.add_argument("--compare", action="store_true", help="Compare baseline and current reports")
 
     args = parser.parse_args()
 
     # Read baseline report
     try:
-        with open(args.baseline, 'r', encoding='utf-8') as f:
+        with open(args.baseline, "r", encoding="utf-8") as f:
             baseline_content = f.read()
     except FileNotFoundError:
         print(f"Error: File not found: {args.baseline}", file=sys.stderr)
@@ -240,7 +226,7 @@ Examples:
             return 1
 
         try:
-            with open(args.current, 'r', encoding='utf-8') as f:
+            with open(args.current, "r", encoding="utf-8") as f:
                 current_content = f.read()
         except FileNotFoundError:
             print(f"Error: File not found: {args.current}", file=sys.stderr)
@@ -263,5 +249,5 @@ Examples:
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

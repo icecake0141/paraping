@@ -14,8 +14,8 @@ Review required for correctness, security, and licensing.
 
 # ParaPing Modularization Guide
 
-**Last Updated**: 2026-01-17  
-**Status**: Active  
+**Last Updated**: 2026-01-17
+**Status**: Active
 **Related**: Issue #94 (Follow-up to PR #93)
 
 ## Overview
@@ -157,7 +157,7 @@ As modules are extracted or integrated, tests should follow this pattern:
    - Keep integration tests that span multiple modules in `test_main.py`
    - Update test names to reflect new module ownership
 
-3. **Coverage Requirements**: 
+3. **Coverage Requirements**:
    - Aim for >90% coverage for utility modules (stats, input_keys, network_*)
    - Aim for >80% coverage for UI modules (ui_render)
    - Aim for >60% coverage for main application (main.py)

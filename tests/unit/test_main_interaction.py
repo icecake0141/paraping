@@ -14,35 +14,27 @@
 Unit tests for user interaction, keyboard handling, and UI controls
 """
 
-import unittest
-from unittest.mock import patch, MagicMock
 import argparse
 import os
 import queue
 import sys
-from collections import deque
-from datetime import datetime, timezone
+import unittest
+from unittest.mock import MagicMock, patch
 
 # Add parent directory to path to import main
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from main import (
-    parse_escape_sequence,
-    toggle_panel_visibility,
+from main import (  # noqa: E402
     cycle_panel_position,
     flash_screen,
-    ring_bell,
-    should_flash_on_fail,
-    read_key,
-    create_state_snapshot,
-    update_history_buffer,
-    compute_history_page_step,
-    get_cached_page_step,
-    render_help_view,
     handle_options,
     main,
+    parse_escape_sequence,
     render_fullscreen_rtt_graph,
-)  # noqa: E402
+    ring_bell,
+    should_flash_on_fail,
+    toggle_panel_visibility,
+)
 
 
 class TestEscapeSequenceParsing(unittest.TestCase):
@@ -121,7 +113,7 @@ class TestQuitHotkey(unittest.TestCase):
 
     @patch("paraping.cli.queue.Queue")
     @patch("paraping.cli.sys.stdin")
-    @patch("ui_render.get_terminal_size")
+    @patch("paraping.ui_render.get_terminal_size")
     @patch("paraping.cli.ThreadPoolExecutor")
     @patch("paraping.cli.threading.Thread")
     @patch("paraping.cli.read_key")
@@ -145,10 +137,10 @@ class TestQuitHotkey(unittest.TestCase):
         # Queue instances: result_queue, rdns_request_queue, rdns_result_queue, asn_request_queue, asn_result_queue
         mock_queue.side_effect = [
             result_queue,  # result_queue
-            MagicMock(),   # rdns_request_queue
-            empty_queue,   # rdns_result_queue
-            MagicMock(),   # asn_request_queue
-            empty_queue,   # asn_result_queue
+            MagicMock(),  # rdns_request_queue
+            empty_queue,  # rdns_result_queue
+            MagicMock(),  # asn_request_queue
+            empty_queue,  # asn_result_queue
         ]
 
         # Mock read_key to return 'q' after a few iterations
@@ -189,7 +181,7 @@ class TestQuitHotkey(unittest.TestCase):
 
     @patch("paraping.cli.queue.Queue")
     @patch("paraping.cli.sys.stdin")
-    @patch("ui_render.get_terminal_size")
+    @patch("paraping.ui_render.get_terminal_size")
     @patch("paraping.cli.ThreadPoolExecutor")
     @patch("paraping.cli.threading.Thread")
     @patch("paraping.cli.read_key")
@@ -213,10 +205,10 @@ class TestQuitHotkey(unittest.TestCase):
         # Queue instances: result_queue, rdns_request_queue, rdns_result_queue, asn_request_queue, asn_result_queue
         mock_queue.side_effect = [
             result_queue,  # result_queue
-            MagicMock(),   # rdns_request_queue
-            empty_queue,   # rdns_result_queue
-            MagicMock(),   # asn_request_queue
-            empty_queue,   # asn_result_queue
+            MagicMock(),  # rdns_request_queue
+            empty_queue,  # rdns_result_queue
+            MagicMock(),  # asn_request_queue
+            empty_queue,  # asn_result_queue
         ]
 
         # Mock read_key to return 'Q' (uppercase) after a few iterations
@@ -257,7 +249,7 @@ class TestQuitHotkey(unittest.TestCase):
 
     @patch("paraping.cli.queue.Queue")
     @patch("paraping.cli.sys.stdin")
-    @patch("ui_render.get_terminal_size")
+    @patch("paraping.ui_render.get_terminal_size")
     @patch("paraping.cli.ThreadPoolExecutor")
     @patch("paraping.cli.threading.Thread")
     @patch("paraping.cli.read_key")
@@ -281,10 +273,10 @@ class TestQuitHotkey(unittest.TestCase):
         # Queue instances: result_queue, rdns_request_queue, rdns_result_queue, asn_request_queue, asn_result_queue
         mock_queue.side_effect = [
             result_queue,  # result_queue
-            MagicMock(),   # rdns_request_queue
-            empty_queue,   # rdns_result_queue
-            MagicMock(),   # asn_request_queue
-            empty_queue,   # asn_result_queue
+            MagicMock(),  # rdns_request_queue
+            empty_queue,  # rdns_result_queue
+            MagicMock(),  # asn_request_queue
+            empty_queue,  # asn_result_queue
         ]
 
         # Mock read_key to open help screen with 'H', then press 'q' to quit

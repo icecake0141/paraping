@@ -34,9 +34,7 @@ class TestPingHelperContract(unittest.TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.helper_path = os.path.join(
-            os.path.dirname(__file__), "..", "ping_helper"
-        )
+        self.helper_path = os.path.join(os.path.dirname(__file__), "..", "ping_helper")
         if not os.path.exists(self.helper_path):
             self.skipTest("ping_helper binary not found")
 
@@ -167,7 +165,7 @@ class TestPingHelperContract(unittest.TestCase):
             "rtt_ms=0.123 ttl=128\n",
             "rtt_ms=999.999 ttl=32\n",
         ]
-        
+
         for output in test_outputs:
             with self.subTest(output=output):
                 rtt_ms = None
@@ -179,7 +177,7 @@ class TestPingHelperContract(unittest.TestCase):
                                 rtt_ms = float(token.split("=", 1)[1])
                             elif token.startswith("ttl="):
                                 ttl = int(token.split("=", 1)[1])
-                
+
                 self.assertIsNotNone(rtt_ms)
                 self.assertIsNotNone(ttl)
                 self.assertGreater(rtt_ms, 0)

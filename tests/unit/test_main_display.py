@@ -14,31 +14,31 @@
 Unit tests for display formatting and summary data computation
 """
 
-import unittest
-from unittest.mock import patch
 import os
 import sys
+import unittest
 from collections import deque
 from datetime import datetime, timezone
+from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 # Add parent directory to path to import main
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from main import (
-    build_display_names,
-    format_display_name,
-    compute_summary_data,
-    render_summary_view,
-    format_timestamp,
-    format_timezone_label,
-    build_host_infos,
-    build_sparkline,
-    build_status_line,
+from main import (  # noqa: E402
     build_activity_indicator,
     build_colored_sparkline,
     build_colored_timeline,
-)  # noqa: E402
+    build_display_names,
+    build_host_infos,
+    build_sparkline,
+    build_status_line,
+    compute_summary_data,
+    format_display_name,
+    format_timestamp,
+    format_timezone_label,
+    render_summary_view,
+)
 
 
 class TestDisplayNames(unittest.TestCase):
@@ -287,10 +287,7 @@ class TestSummaryData(unittest.TestCase):
 
         # All lines should be exactly 'width' characters
         for line in lines:
-            self.assertEqual(
-                len(line), width,
-                f"Line '{line}' has length {len(line)}, expected {width}"
-            )
+            self.assertEqual(len(line), width, f"Line '{line}' has length {len(line)}, expected {width}")
 
     def test_render_summary_view_truncates_long_hostnames(self):
         """Test that long hostnames are truncated to fit"""
@@ -372,9 +369,7 @@ class TestSummaryData(unittest.TestCase):
 
         width = 120
         height = 6
-        lines = render_summary_view(
-            summary_data, width, height, "rates", prefer_all=True
-        )
+        lines = render_summary_view(summary_data, width, height, "rates", prefer_all=True)
 
         self.assertIn("Summary (All)", lines[0])
         combined = "\n".join(lines)
@@ -522,9 +517,7 @@ class TestActivityIndicator(unittest.TestCase):
     def test_activity_indicator_moves(self):
         """Indicator should move between ticks"""
         first = build_activity_indicator(datetime.fromtimestamp(0, tz=timezone.utc))
-        second = build_activity_indicator(
-            datetime.fromtimestamp(0.25, tz=timezone.utc)
-        )
+        second = build_activity_indicator(datetime.fromtimestamp(0.25, tz=timezone.utc))
         self.assertEqual(len(first), 10)
         self.assertEqual(len(second), 10)
         self.assertNotEqual(first, second)
@@ -548,9 +541,7 @@ class TestColorOutput(unittest.TestCase):
         symbols = {"success": ".", "fail": "x", "slow": "!"}
         sparkline = "▁▂▃"
         status_symbols = [".", "!", "x"]
-        colored = build_colored_sparkline(
-            sparkline, status_symbols, symbols, use_color=True
-        )
+        colored = build_colored_sparkline(sparkline, status_symbols, symbols, use_color=True)
         self.assertIn("\x1b[37m", colored)
         self.assertIn("\x1b[33m", colored)
         self.assertIn("\x1b[31m", colored)
@@ -584,9 +575,7 @@ class TestStatusLine(unittest.TestCase):
 
     def test_build_status_line_all_summary(self):
         """Test status line when summary displays all fields"""
-        result = build_status_line(
-            "latency", "failures", "rates", False, None, summary_all=True
-        )
+        result = build_status_line("latency", "failures", "rates", False, None, summary_all=True)
         self.assertIn("Summary: All", result)
 
 

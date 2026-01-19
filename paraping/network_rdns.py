@@ -25,10 +25,10 @@ import socket
 def resolve_rdns(ip_address):
     """
     Perform reverse DNS lookup for an IP address.
-    
+
     Args:
         ip_address: IP address string to lookup
-        
+
     Returns:
         Hostname string if successful, None if lookup fails
     """
@@ -41,7 +41,7 @@ def resolve_rdns(ip_address):
 def rdns_worker(request_queue, result_queue, stop_event):
     """
     Worker thread for processing rDNS requests.
-    
+
     Args:
         request_queue: Queue of (host, ip_address) tuples to process
         result_queue: Queue for results as (host, rdns_result) tuples

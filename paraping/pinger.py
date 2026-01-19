@@ -21,7 +21,7 @@ import queue
 import socket
 import time
 
-from ping_wrapper import ping_with_helper
+from paraping.ping_wrapper import ping_with_helper
 
 
 def ping_host(
@@ -55,10 +55,7 @@ def ping_host(
         print(f"\n--- Pinging {host} ---")
 
     if not os.path.exists(helper_path):
-        message = (
-            f"ping_helper binary not found at {helper_path}. "
-            "Please run 'make build' and 'sudo make setcap'."
-        )
+        message = f"ping_helper binary not found at {helper_path}. " "Please run 'make build' and 'sudo make setcap'."
         if verbose:
             print(message)
         yield {
@@ -84,9 +81,7 @@ def ping_host(
                     return
                 time.sleep(0.05)
         try:
-            rtt_ms, ttl = ping_with_helper(
-                host, timeout_ms=int(timeout * 1000), helper_path=helper_path
-            )
+            rtt_ms, ttl = ping_with_helper(host, timeout_ms=int(timeout * 1000), helper_path=helper_path)
             if rtt_ms is not None:
                 rtt = rtt_ms / 1000.0
                 status = "slow" if rtt >= slow_threshold else "success"

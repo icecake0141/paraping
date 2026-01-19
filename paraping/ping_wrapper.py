@@ -27,10 +27,10 @@ The ping_helper binary follows a strict CLI contract:
 For detailed information about the helper contract, see docs/ping_helper.md.
 """
 
+import json
 import os
 import subprocess
 import sys
-import json
 
 
 class PingHelperError(RuntimeError):
@@ -92,10 +92,7 @@ def ping_with_helper(host, timeout_ms=1000, helper_path="./ping_helper"):
         raise ValueError("timeout_ms must be a positive integer in milliseconds.")
 
     if not os.path.exists(helper_path):
-        raise FileNotFoundError(
-            f"ping_helper binary not found at {helper_path}. "
-            f"Please run 'make build' to compile it."
-        )
+        raise FileNotFoundError(f"ping_helper binary not found at {helper_path}. " f"Please run 'make build' to compile it.")
 
     try:
         # Run the helper binary

@@ -1,8 +1,8 @@
 # Comprehensive Code Review Report
 
-**Repository**: icecake0141/paraping  
-**Review Date**: 2026-01-13  
-**Reviewer**: AI Code Review Agent  
+**Repository**: icecake0141/paraping
+**Review Date**: 2026-01-13
+**Reviewer**: AI Code Review Agent
 **Review Type**: Comprehensive Security and Quality Review
 
 ## Executive Summary
@@ -148,7 +148,7 @@ class DisplayConfig:
     paused: bool
     use_color: bool
     summary_fullscreen: bool
-    
+
 def build_display_lines(host_infos, buffers, stats, symbols, config: DisplayConfig, ...):
     # Much cleaner function signature
 ```
@@ -182,7 +182,7 @@ global LAST_RENDER_LINES
 class DisplayState:
     def __init__(self):
         self.last_render_lines = None
-    
+
     def render_display(self, ...):
         # Use self.last_render_lines instead of global
 ```
@@ -250,7 +250,7 @@ for _, host_buffers in buffers.items():
 
 ### ✅ **Good Security Practices Identified**
 
-1. **Capability-Based Privileges**: 
+1. **Capability-Based Privileges**:
    - Uses Linux capabilities (`cap_net_raw`) instead of running as root
    - Limits privilege scope to a small C binary
    - Documented in README with security notes

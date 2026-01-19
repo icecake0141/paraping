@@ -67,18 +67,6 @@ where = ["."]
 include = ["paraping*"]
 exclude = ["tests*"]
 
-[tool.setuptools]
-# Include root-level Python modules that are imported by the paraping package
-py-modules = [
-    "ui_render",
-    "network_asn",
-    "network_rdns",
-    "input_keys",
-    "history",
-    "stats",
-    "ping_wrapper",
-]
-
 [tool.pytest.ini_options]
 minversion = "7.0"
 testpaths = ["tests"]

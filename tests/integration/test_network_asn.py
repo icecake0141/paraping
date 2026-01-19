@@ -23,18 +23,12 @@ import sys
 import threading
 import time
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 # Add parent directory to path to import network_asn
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from network_asn import (
-    parse_asn_response,
-    fetch_asn_via_whois,
-    resolve_asn,
-    asn_worker,
-    should_retry_asn,
-)
+from paraping.network_asn import asn_worker, fetch_asn_via_whois, parse_asn_response, resolve_asn, should_retry_asn
 
 
 class TestParseASNResponse(unittest.TestCase):
@@ -98,7 +92,7 @@ NA      | 127.0.0.1        | NA"""
 
     def test_parse_response_without_pipes(self):
         """Test parsing response without pipe delimiters.
-        
+
         Note: The function splits by pipe, so without pipes,
         the entire line becomes a single field. This behavior
         is acceptable as malformed data from Team Cymru is unlikely.
@@ -115,7 +109,7 @@ NA      | 127.0.0.1        | NA"""
 class TestFetchASNViaWhois(unittest.TestCase):
     """Test network fetch function with mocked socket."""
 
-    @patch("network_asn.socket.create_connection")
+    @patch("paraping.network_asn.socket.create_connection")
     def test_fetch_successful(self, mock_create_connection):
         """Test successful ASN fetch via socket."""
         # Mock socket that returns valid response
@@ -134,7 +128,7 @@ class TestFetchASNViaWhois(unittest.TestCase):
         mock_sock.settimeout.assert_called_once_with(3.0)
         mock_sock.sendall.assert_called_once()
 
-    @patch("network_asn.socket.create_connection")
+    @patch("paraping.network_asn.socket.create_connection")
     def test_fetch_timeout(self, mock_create_connection):
         """Test handling of socket timeout."""
         mock_create_connection.side_effect = TimeoutError("Connection timeout")
@@ -143,7 +137,7 @@ class TestFetchASNViaWhois(unittest.TestCase):
 
         self.assertIsNone(result)
 
-    @patch("network_asn.socket.create_connection")
+    @patch("paraping.network_asn.socket.create_connection")
     def test_fetch_connection_error(self, mock_create_connection):
         """Test handling of connection error."""
         mock_create_connection.side_effect = OSError("Connection refused")
@@ -152,7 +146,7 @@ class TestFetchASNViaWhois(unittest.TestCase):
 
         self.assertIsNone(result)
 
-    @patch("network_asn.socket.create_connection")
+    @patch("paraping.network_asn.socket.create_connection")
     def test_fetch_respects_max_bytes(self, mock_create_connection):
         """Test that fetch respects max_bytes limit."""
         # Mock socket that returns more data than max_bytes
@@ -166,7 +160,7 @@ class TestFetchASNViaWhois(unittest.TestCase):
         # With 4096 byte chunks, should read twice (8192 bytes total)
         self.assertEqual(mock_sock.recv.call_count, 2)
 
-    @patch("network_asn.socket.create_connection")
+    @patch("paraping.network_asn.socket.create_connection")
     def test_fetch_custom_host_port(self, mock_create_connection):
         """Test fetch with custom whois server host and port."""
         mock_sock = MagicMock()
@@ -175,11 +169,9 @@ class TestFetchASNViaWhois(unittest.TestCase):
 
         fetch_asn_via_whois("8.8.8.8", host="custom.whois.server", port=4343)
 
-        mock_create_connection.assert_called_once_with(
-            ("custom.whois.server", 4343), timeout=3.0
-        )
+        mock_create_connection.assert_called_once_with(("custom.whois.server", 4343), timeout=3.0)
 
-    @patch("network_asn.socket.create_connection")
+    @patch("paraping.network_asn.socket.create_connection")
     def test_fetch_handles_non_utf8(self, mock_create_connection):
         """Test that fetch handles non-UTF-8 bytes gracefully."""
         mock_sock = MagicMock()
@@ -201,7 +193,7 @@ class TestFetchASNViaWhois(unittest.TestCase):
 class TestResolveASN(unittest.TestCase):
     """Test high-level ASN resolution combining fetch and parse."""
 
-    @patch("network_asn.fetch_asn_via_whois")
+    @patch("paraping.network_asn.fetch_asn_via_whois")
     def test_resolve_successful(self, mock_fetch):
         """Test successful ASN resolution."""
         mock_fetch.return_value = """AS      | IP               | BGP Prefix
@@ -212,7 +204,7 @@ class TestResolveASN(unittest.TestCase):
         self.assertEqual(result, "AS15133")
         mock_fetch.assert_called_once_with("8.8.8.8", 3.0, 65536)
 
-    @patch("network_asn.fetch_asn_via_whois")
+    @patch("paraping.network_asn.fetch_asn_via_whois")
     def test_resolve_fetch_failure(self, mock_fetch):
         """Test ASN resolution when network fetch fails."""
         mock_fetch.return_value = None
@@ -221,7 +213,7 @@ class TestResolveASN(unittest.TestCase):
 
         self.assertIsNone(result)
 
-    @patch("network_asn.fetch_asn_via_whois")
+    @patch("paraping.network_asn.fetch_asn_via_whois")
     def test_resolve_parse_failure(self, mock_fetch):
         """Test ASN resolution when parsing fails."""
         mock_fetch.return_value = "Invalid response"
@@ -230,7 +222,7 @@ class TestResolveASN(unittest.TestCase):
 
         self.assertIsNone(result)
 
-    @patch("network_asn.fetch_asn_via_whois")
+    @patch("paraping.network_asn.fetch_asn_via_whois")
     def test_resolve_with_custom_timeout(self, mock_fetch):
         """Test ASN resolution with custom timeout."""
         mock_fetch.return_value = """AS      | IP
@@ -301,7 +293,7 @@ class TestShouldRetryASN(unittest.TestCase):
 class TestASNWorker(unittest.TestCase):
     """Test ASN worker thread function."""
 
-    @patch("network_asn.resolve_asn")
+    @patch("paraping.network_asn.resolve_asn")
     def test_asn_worker_processes_requests(self, mock_resolve):
         """Test ASN worker processes requests from queue."""
         mock_resolve.side_effect = ["AS12345", "AS67890", None]
@@ -329,7 +321,7 @@ class TestASNWorker(unittest.TestCase):
         self.assertEqual(results[1], ("host2.com", "AS67890"))
         self.assertEqual(results[2], ("host3.com", None))
 
-    @patch("network_asn.resolve_asn")
+    @patch("paraping.network_asn.resolve_asn")
     def test_asn_worker_stops_on_event(self, mock_resolve):
         """Test ASN worker stops when stop_event is set."""
         mock_resolve.return_value = "AS12345"
@@ -357,7 +349,7 @@ class TestASNWorker(unittest.TestCase):
         # Worker should have exited
         self.assertFalse(worker_thread.is_alive())
 
-    @patch("network_asn.resolve_asn")
+    @patch("paraping.network_asn.resolve_asn")
     def test_asn_worker_handles_empty_queue(self, mock_resolve):
         """Test ASN worker handles empty queue gracefully."""
         request_queue = queue.Queue()
@@ -382,7 +374,7 @@ class TestASNWorker(unittest.TestCase):
         self.assertFalse(worker_thread.is_alive())
         self.assertTrue(result_queue.empty())
 
-    @patch("network_asn.resolve_asn")
+    @patch("paraping.network_asn.resolve_asn")
     def test_asn_worker_passes_timeout(self, mock_resolve):
         """Test ASN worker passes timeout parameter to resolve_asn."""
         mock_resolve.return_value = "AS12345"

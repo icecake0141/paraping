@@ -14,20 +14,14 @@
 Unit tests for rendering help views, boxes, and ASCII graphs
 """
 
-import unittest
 import os
 import sys
+import unittest
 
 # Add parent directory to path to import main
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from main import (
-    render_help_view,
-    box_lines,
-    render_status_box,
-    build_ascii_graph,
-    render_host_selection_view,
-)  # noqa: E402
+from main import box_lines, build_ascii_graph, render_help_view, render_host_selection_view, render_status_box  # noqa: E402
 
 
 class TestHelpView(unittest.TestCase):

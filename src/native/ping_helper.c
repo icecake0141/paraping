@@ -145,7 +145,7 @@ int main(int argc, char *argv[]) {
     /* Prepare ICMP echo request */
     char packet[PACKET_SIZE];
     memset(packet, 0, PACKET_SIZE);
-    
+
     struct icmp *icmp_hdr = (struct icmp *)packet;
     icmp_hdr->icmp_type = ICMP_ECHO;
     icmp_hdr->icmp_code = 0;
@@ -159,7 +159,7 @@ int main(int argc, char *argv[]) {
     gettimeofday(&start_time, NULL);
 
     /* Send ICMP echo request */
-    ssize_t sent = sendto(sockfd, packet, PACKET_SIZE, 0, 
+    ssize_t sent = sendto(sockfd, packet, PACKET_SIZE, 0,
                           (struct sockaddr *)dest_addr, sizeof(*dest_addr));
     if (sent < 0) {
         fprintf(stderr, "Error: sendto failed: %s\n", strerror(errno));
@@ -188,16 +188,16 @@ int main(int argc, char *argv[]) {
         /* Calculate remaining time until deadline */
         struct timeval now;
         gettimeofday(&now, NULL);
-        
+
         struct timeval remaining;
         remaining.tv_sec = deadline.tv_sec - now.tv_sec;
         remaining.tv_usec = deadline.tv_usec - now.tv_usec;
-        
+
         if (remaining.tv_usec < 0) {
             remaining.tv_sec -= 1;
             remaining.tv_usec += 1000000;
         }
-        
+
         /* Check if timeout has already expired */
         if (remaining.tv_sec < 0 || (remaining.tv_sec == 0 && remaining.tv_usec <= 0)) {
             /* Timeout */
@@ -230,7 +230,7 @@ int main(int argc, char *argv[]) {
         char recv_buf[1024];
         struct sockaddr_in recv_addr;
         socklen_t addr_len = sizeof(recv_addr);
-        
+
         ssize_t recv_len = recvfrom(sockfd, recv_buf, sizeof(recv_buf), 0,
                                     (struct sockaddr *)&recv_addr, &addr_len);
         if (recv_len < 0) {
@@ -249,25 +249,25 @@ int main(int argc, char *argv[]) {
         /* Parse IP header to get to ICMP header */
         struct ip *ip_hdr = (struct ip *)recv_buf;
         int ip_header_len = ip_hdr->ip_hl * 4;
-        
+
         /* Validate IP header length is reasonable (min 20, max 60 bytes) */
         if (ip_header_len < 20 || ip_header_len > 60) {
             /* Invalid IP header length, skip packet */
             continue;
         }
-        
+
         /* Validate IP version is 4 */
         if (ip_hdr->ip_v != 4) {
             /* Wrong IP version, skip packet */
             continue;
         }
-        
+
         /* Validate IP protocol is ICMP (1) */
         if (ip_hdr->ip_p != IPPROTO_ICMP) {
             /* Not an ICMP packet, skip it */
             continue;
         }
-        
+
         /* Now verify the packet is long enough for this IP header + ICMP header */
         if (recv_len < ip_header_len + ICMP_HEADER_SIZE) {
             /* Packet too short, skip it and continue waiting */
@@ -281,7 +281,7 @@ int main(int argc, char *argv[]) {
             /* Not an echo reply, skip it and continue waiting */
             continue;
         }
-        
+
         /* Check ICMP code is 0 for echo reply */
         if (recv_icmp->icmp_code != 0) {
             /* Invalid code for echo reply, skip it */

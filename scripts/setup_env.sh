@@ -64,7 +64,7 @@ echo ""
 if [ "${SKIP_BRANCH}" = false ]; then
     echo "[2/5] Creating/switching to ${TARGET_BRANCH} from ${BASE_BRANCH}..."
     CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-    
+
     if [ "${CURRENT_BRANCH}" = "${TARGET_BRANCH}" ]; then
         echo "Already on ${TARGET_BRANCH}"
     elif git show-ref --verify --quiet "refs/heads/${TARGET_BRANCH}"; then
