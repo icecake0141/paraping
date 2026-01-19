@@ -22,7 +22,6 @@ import select
 import sys
 import time
 
-
 # Constants for arrow key reading
 # Increased from 0.05 to 0.1 seconds to handle slow terminals/remote connections
 # where escape sequence bytes may arrive with delays (e.g., SSH, RDP, VMs)
@@ -32,10 +31,10 @@ ARROW_KEY_READ_TIMEOUT = 0.1  # Timeout for reading arrow key escape sequences
 def parse_escape_sequence(seq):
     """
     Parse ANSI escape sequence to identify arrow keys.
-    
+
     Args:
         seq: The escape sequence string (without the leading ESC)
-        
+
     Returns:
         String identifier for arrow keys ('arrow_up', 'arrow_down', etc.)
         or None if sequence is not recognized
@@ -64,9 +63,9 @@ def parse_escape_sequence(seq):
 def read_key():
     """
     Read a key from stdin, handling multi-byte sequences like arrow keys.
-    
-    Returns special strings for arrow keys: 'arrow_left', 'arrow_right', 
-    'arrow_up', 'arrow_down'. Returns the character for normal keys, 
+
+    Returns special strings for arrow keys: 'arrow_left', 'arrow_right',
+    'arrow_up', 'arrow_down'. Returns the character for normal keys,
     or None if no input is available.
     """
     if not sys.stdin.isatty():

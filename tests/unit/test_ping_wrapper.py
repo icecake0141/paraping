@@ -26,7 +26,7 @@ from unittest.mock import patch
 # Add parent directory to path to import ping_wrapper
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from paraping.ping_wrapper import PingHelperError, ping_with_helper, main  # noqa: E402
+from paraping.ping_wrapper import PingHelperError, main, ping_with_helper  # noqa: E402
 
 
 class TestPingWithHelper(unittest.TestCase):
@@ -49,10 +49,7 @@ class TestPingWithHelper(unittest.TestCase):
     @patch("paraping.ping_wrapper.subprocess.run")
     def test_subprocess_timeout_returns_none(self, mock_run, _mock_exists):
         """subprocess.TimeoutExpired should return (None, None)."""
-        mock_run.side_effect = subprocess.TimeoutExpired(
-            cmd=["./ping_helper", "example.com", "1000"],
-            timeout=2.0
-        )
+        mock_run.side_effect = subprocess.TimeoutExpired(cmd=["./ping_helper", "example.com", "1000"], timeout=2.0)
 
         result = ping_with_helper("example.com")
         self.assertEqual(result, (None, None))
@@ -136,9 +133,10 @@ class TestPingWrapperMain(unittest.TestCase):
         """CLI should output success JSON on successful ping."""
         mock_ping_with_helper.return_value = (12.345, 64)
 
-        with patch("sys.argv", ["ping_wrapper.py", "example.com"]), patch(
-            "sys.stdout", new_callable=io.StringIO
-        ) as mock_stdout:
+        with (
+            patch("sys.argv", ["ping_wrapper.py", "example.com"]),
+            patch("sys.stdout", new_callable=io.StringIO) as mock_stdout,
+        ):
             with self.assertRaises(SystemExit) as context:
                 main()
 
@@ -155,9 +153,10 @@ class TestPingWrapperMain(unittest.TestCase):
         """CLI should output failure JSON on timeout."""
         mock_ping_with_helper.return_value = (None, None)
 
-        with patch("sys.argv", ["ping_wrapper.py", "example.com"]), patch(
-            "sys.stdout", new_callable=io.StringIO
-        ) as mock_stdout:
+        with (
+            patch("sys.argv", ["ping_wrapper.py", "example.com"]),
+            patch("sys.stdout", new_callable=io.StringIO) as mock_stdout,
+        ):
             with self.assertRaises(SystemExit) as context:
                 main()
 
@@ -172,13 +171,12 @@ class TestPingWrapperMain(unittest.TestCase):
     @patch("paraping.ping_wrapper.ping_with_helper")
     def test_main_file_not_found(self, mock_ping_with_helper):
         """CLI should output error JSON when helper not found."""
-        mock_ping_with_helper.side_effect = FileNotFoundError(
-            "ping_helper binary not found at /nonexistent/ping_helper"
-        )
+        mock_ping_with_helper.side_effect = FileNotFoundError("ping_helper binary not found at /nonexistent/ping_helper")
 
-        with patch("sys.argv", ["ping_wrapper.py", "example.com"]), patch(
-            "sys.stdout", new_callable=io.StringIO
-        ) as mock_stdout:
+        with (
+            patch("sys.argv", ["ping_wrapper.py", "example.com"]),
+            patch("sys.stdout", new_callable=io.StringIO) as mock_stdout,
+        ):
             with self.assertRaises(SystemExit) as context:
                 main()
 
@@ -193,14 +191,13 @@ class TestPingWrapperMain(unittest.TestCase):
     def test_main_helper_error_with_stderr(self, mock_ping_with_helper):
         """CLI should output error JSON with stderr on helper errors."""
         mock_ping_with_helper.side_effect = PingHelperError(
-            "ping_helper failed with return code 2: permission denied",
-            returncode=2,
-            stderr="permission denied"
+            "ping_helper failed with return code 2: permission denied", returncode=2, stderr="permission denied"
         )
 
-        with patch("sys.argv", ["ping_wrapper.py", "example.com"]), patch(
-            "sys.stdout", new_callable=io.StringIO
-        ) as mock_stdout:
+        with (
+            patch("sys.argv", ["ping_wrapper.py", "example.com"]),
+            patch("sys.stdout", new_callable=io.StringIO) as mock_stdout,
+        ):
             with self.assertRaises(SystemExit) as context:
                 main()
 
@@ -216,9 +213,10 @@ class TestPingWrapperMain(unittest.TestCase):
         """CLI should output error JSON on unexpected exceptions."""
         mock_ping_with_helper.side_effect = RuntimeError("Unexpected error")
 
-        with patch("sys.argv", ["ping_wrapper.py", "example.com"]), patch(
-            "sys.stdout", new_callable=io.StringIO
-        ) as mock_stdout:
+        with (
+            patch("sys.argv", ["ping_wrapper.py", "example.com"]),
+            patch("sys.stdout", new_callable=io.StringIO) as mock_stdout,
+        ):
             with self.assertRaises(SystemExit) as context:
                 main()
 

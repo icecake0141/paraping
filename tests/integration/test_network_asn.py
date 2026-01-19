@@ -23,16 +23,16 @@ import sys
 import threading
 import time
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 # Add parent directory to path to import network_asn
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from paraping.network_asn import (
-    parse_asn_response,
-    fetch_asn_via_whois,
-    resolve_asn,
     asn_worker,
+    fetch_asn_via_whois,
+    parse_asn_response,
+    resolve_asn,
     should_retry_asn,
 )
 
@@ -98,7 +98,7 @@ NA      | 127.0.0.1        | NA"""
 
     def test_parse_response_without_pipes(self):
         """Test parsing response without pipe delimiters.
-        
+
         Note: The function splits by pipe, so without pipes,
         the entire line becomes a single field. This behavior
         is acceptable as malformed data from Team Cymru is unlikely.
@@ -175,9 +175,7 @@ class TestFetchASNViaWhois(unittest.TestCase):
 
         fetch_asn_via_whois("8.8.8.8", host="custom.whois.server", port=4343)
 
-        mock_create_connection.assert_called_once_with(
-            ("custom.whois.server", 4343), timeout=3.0
-        )
+        mock_create_connection.assert_called_once_with(("custom.whois.server", 4343), timeout=3.0)
 
     @patch("paraping.network_asn.socket.create_connection")
     def test_fetch_handles_non_utf8(self, mock_create_connection):

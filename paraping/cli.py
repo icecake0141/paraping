@@ -29,8 +29,6 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from paraping.input_keys import read_key
-from paraping.network_asn import asn_worker, should_retry_asn
 from paraping.core import (
     HISTORY_DURATION_MINUTES,
     MAX_HOST_THREADS,
@@ -42,6 +40,8 @@ from paraping.core import (
     resolve_render_state,
     update_history_buffer,
 )
+from paraping.input_keys import read_key
+from paraping.network_asn import asn_worker, should_retry_asn
 from paraping.pinger import rdns_worker, worker_ping
 from paraping.ui_render import (
     build_display_entries,
@@ -87,17 +87,11 @@ def _compute_initial_timeline_width(host_labels, term_size, panel_position):
         # Typical 80-column terminal minus label area (~20 chars) = ~60
         return 60
 
-    status_box_height = (
-        3 if normalized_size.lines >= 4 and normalized_size.columns >= 2 else 1
-    )
+    status_box_height = 3 if normalized_size.lines >= 4 and normalized_size.columns >= 2 else 1
     panel_height = max(1, normalized_size.lines - status_box_height)
-    main_width, main_height, _, _, _ = compute_panel_sizes(
-        normalized_size.columns, panel_height, panel_position
-    )
+    main_width, main_height, _, _, _ = compute_panel_sizes(normalized_size.columns, panel_height, panel_position)
     # Always use header_lines=2 for consistent initial sizing
-    _, _, timeline_width, _ = compute_main_layout(
-        host_labels, main_width, main_height, header_lines=2
-    )
+    _, _, timeline_width, _ = compute_main_layout(host_labels, main_width, main_height, header_lines=2)
     try:
         return max(1, int(timeline_width))
     except (TypeError, ValueError):
@@ -106,9 +100,7 @@ def _compute_initial_timeline_width(host_labels, term_size, panel_position):
 
 def handle_options():
     """Parse and validate command-line arguments."""
-    parser = argparse.ArgumentParser(
-        description="ParaPing - Perform ICMP ping operations to multiple hosts concurrently"
-    )
+    parser = argparse.ArgumentParser(description="ParaPing - Perform ICMP ping operations to multiple hosts concurrently")
     parser.add_argument(
         "-t",
         "--timeout",
@@ -206,9 +198,7 @@ def handle_options():
         default="./ping_helper",
         help="Path to ping_helper binary (default: ./ping_helper)",
     )
-    parser.add_argument(
-        "hosts", nargs="*", help="Hosts to ping (IP addresses or hostnames)"
-    )
+    parser.add_argument("hosts", nargs="*", help="Hosts to ping (IP addresses or hostnames)")
 
     args = parser.parse_args()
     if args.timeout <= 0:
@@ -247,9 +237,7 @@ def run(args):
 
     # Check if we have any hosts to ping
     if not all_hosts:
-        print(
-            "Error: No hosts specified. Provide hosts as arguments or use -f/--input option."
-        )
+        print("Error: No hosts specified. Provide hosts as arguments or use -f/--input option.")
         return
     if len(all_hosts) > MAX_HOST_THREADS:
         print(
@@ -263,9 +251,7 @@ def run(args):
         try:
             display_tz = ZoneInfo(args.timezone)
         except ZoneInfoNotFoundError:
-            print(
-                f"Error: Unknown timezone '{args.timezone}'. Use an IANA name like 'Asia/Tokyo'."
-            )
+            print(f"Error: Unknown timezone '{args.timezone}'. Use an IANA name like 'Asia/Tokyo'.")
             return
     snapshot_tz = display_tz if args.snapshot_timezone == "display" else timezone.utc
     ping_helper_path = os.path.expanduser(args.ping_helper)
@@ -277,9 +263,7 @@ def run(args):
     initial_term_size = get_terminal_size(fallback=(80, 24))
     host_infos, host_info_map = build_host_infos(all_hosts)
     host_labels = [info["alias"] for info in host_infos]
-    timeline_width = _compute_initial_timeline_width(
-        host_labels, initial_term_size, panel_position
-    )
+    timeline_width = _compute_initial_timeline_width(host_labels, initial_term_size, panel_position)
     buffers = {
         info["id"]: {
             "timeline": deque(maxlen=timeline_width),
@@ -343,9 +327,7 @@ def run(args):
 
     # History navigation state
     # Store snapshots at regular intervals for time navigation
-    max_history_snapshots = int(
-        HISTORY_DURATION_MINUTES * 60 / SNAPSHOT_INTERVAL_SECONDS
-    )
+    max_history_snapshots = int(HISTORY_DURATION_MINUTES * 60 / SNAPSHOT_INTERVAL_SECONDS)
     history_buffer = deque(maxlen=max_history_snapshots)
     history_offset = 0  # 0 = live, >0 = viewing history
     last_snapshot_time = 0.0
@@ -444,9 +426,7 @@ def run(args):
                             show_asn,
                             term_size.columns,
                         )
-                        display_names = build_display_names(
-                            host_infos, modes[mode_index], include_asn, asn_width=8
-                        )
+                        display_names = build_display_names(host_infos, modes[mode_index], include_asn, asn_width=8)
                         display_entries = build_display_entries(
                             host_infos,
                             display_names,
@@ -460,9 +440,7 @@ def run(args):
                         if not display_entries:
                             host_select_index = 0
                         else:
-                            host_select_index = min(
-                                max(host_select_index, 0), len(display_entries) - 1
-                            )
+                            host_select_index = min(max(host_select_index, 0), len(display_entries) - 1)
                         if key in ("p", "P") and display_entries:
                             # 'p' moves up (previous)
                             host_select_index = max(0, host_select_index - 1)
@@ -470,9 +448,7 @@ def run(args):
                             updated = True
                         elif key in ("n", "N") and display_entries:
                             # 'n' moves down (next)
-                            host_select_index = min(
-                                len(display_entries) - 1, host_select_index + 1
-                            )
+                            host_select_index = min(len(display_entries) - 1, host_select_index + 1)
                             force_render = True
                             updated = True
                         elif key in ("\r", "\n"):
@@ -511,9 +487,7 @@ def run(args):
                         cached_page_step = None  # Invalidate cache - display mode changed
                         updated = True
                     elif key == "v":
-                        display_mode_index = (display_mode_index + 1) % len(
-                            display_modes
-                        )
+                        display_mode_index = (display_mode_index + 1) % len(display_modes)
                         updated = True
                     elif key == "o":
                         sort_mode_index = (sort_mode_index + 1) % len(sort_modes)
@@ -528,40 +502,26 @@ def run(args):
                         cached_page_step = None  # Invalidate cache - ASN display toggled
                         updated = True
                     elif key == "m":
-                        summary_mode_index = (summary_mode_index + 1) % len(
-                            summary_modes
-                        )
-                        status_message = (
-                            f"Summary: {summary_modes[summary_mode_index].upper()}"
-                        )
+                        summary_mode_index = (summary_mode_index + 1) % len(summary_modes)
+                        status_message = f"Summary: {summary_modes[summary_mode_index].upper()}"
                         updated = True
                     elif key == "c":
                         if not color_supported:
                             status_message = "Color output unavailable (no TTY)"
                         else:
                             use_color = not use_color
-                            status_message = (
-                                "Color output enabled"
-                                if use_color
-                                else "Color output disabled"
-                            )
+                            status_message = "Color output enabled" if use_color else "Color output disabled"
                         force_render = True
                         updated = True
                     elif key == "b":
                         bell_on_fail = not bell_on_fail
-                        status_message = (
-                            "Bell on fail enabled"
-                            if bell_on_fail
-                            else "Bell on fail disabled"
-                        )
+                        status_message = "Bell on fail enabled" if bell_on_fail else "Bell on fail disabled"
                         force_render = True
                         updated = True
                     elif key == "F":
                         summary_fullscreen = not summary_fullscreen
                         status_message = (
-                            "Summary fullscreen view enabled"
-                            if summary_fullscreen
-                            else "Summary fullscreen view disabled"
+                            "Summary fullscreen view enabled" if summary_fullscreen else "Summary fullscreen view disabled"
                         )
                         force_render = True
                         updated = True
@@ -571,27 +531,17 @@ def run(args):
                             last_panel_position,
                             default_position=panel_toggle_default,
                         )
-                        status_message = (
-                            "Summary panel hidden"
-                            if panel_position == "none"
-                            else "Summary panel shown"
-                        )
+                        status_message = "Summary panel hidden" if panel_position == "none" else "Summary panel shown"
                         cached_page_step = None  # Invalidate cache - panel visibility changed
                         force_render = True
                         updated = True
                     elif key == "W":
                         reference_position = (
-                            panel_position
-                            if panel_position != "none"
-                            else last_panel_position or panel_toggle_default
+                            panel_position if panel_position != "none" else last_panel_position or panel_toggle_default
                         )
-                        panel_position = cycle_panel_position(
-                            reference_position, default_position=panel_toggle_default
-                        )
+                        panel_position = cycle_panel_position(reference_position, default_position=panel_toggle_default)
                         last_panel_position = panel_position
-                        status_message = (
-                            f"Summary panel position: {panel_position.upper()}"
-                        )
+                        status_message = f"Summary panel position: {panel_position.upper()}"
                         cached_page_step = None  # Invalidate cache - panel position changed
                         force_render = True
                         updated = True
@@ -608,9 +558,7 @@ def run(args):
                     elif key == "s":
                         now_utc = datetime.now(timezone.utc)
                         snapshot_dt = now_utc.astimezone(snapshot_tz)
-                        snapshot_name = snapshot_dt.strftime(
-                            "paraping_snapshot_%Y%m%d_%H%M%S.txt"
-                        )
+                        snapshot_name = snapshot_dt.strftime("paraping_snapshot_%Y%m%d_%H%M%S.txt")
                         snapshot_lines = build_display_lines(
                             host_infos,
                             buffers,
@@ -633,9 +581,7 @@ def run(args):
                             host_scroll_offset,
                             summary_fullscreen,
                         )
-                        with open(
-                            snapshot_name, "w", encoding="utf-8"
-                        ) as snapshot_file:
+                        with open(snapshot_name, "w", encoding="utf-8") as snapshot_file:
                             snapshot_file.write("\n".join(snapshot_lines) + "\n")
                         status_message = f"Saved: {snapshot_name}"
                         updated = True
@@ -712,13 +658,8 @@ def run(args):
                         )
                         if host_scroll_offset > 0 and total_hosts > 0:
                             host_scroll_offset = max(0, host_scroll_offset - 1)
-                            end_index = min(
-                                host_scroll_offset + visible_hosts, total_hosts
-                            )
-                            status_message = (
-                                f"Hosts {host_scroll_offset + 1}-{end_index} "
-                                f"of {total_hosts}"
-                            )
+                            end_index = min(host_scroll_offset + visible_hosts, total_hosts)
+                            status_message = f"Hosts {host_scroll_offset + 1}-{end_index} " f"of {total_hosts}"
                             force_render = True
                             updated = True
                     elif key == "arrow_down":
@@ -742,13 +683,8 @@ def run(args):
                         )
                         if host_scroll_offset < max_offset and total_hosts > 0:
                             host_scroll_offset = min(max_offset, host_scroll_offset + 1)
-                            end_index = min(
-                                host_scroll_offset + visible_hosts, total_hosts
-                            )
-                            status_message = (
-                                f"Hosts {host_scroll_offset + 1}-{end_index} "
-                                f"of {total_hosts}"
-                            )
+                            end_index = min(host_scroll_offset + visible_hosts, total_hosts)
+                            status_message = f"Hosts {host_scroll_offset + 1}-{end_index} " f"of {total_hosts}"
                             force_render = True
                             updated = True
                     elif key in ("g", "G"):
@@ -852,17 +788,11 @@ def run(args):
                     paused,
                 )
 
-                if force_render or (
-                    not paused and (updated or (now - last_render) >= refresh_interval)
-                ):
-                    display_timestamp = format_timestamp(
-                        datetime.now(timezone.utc), display_tz
-                    )
+                if force_render or (not paused and (updated or (now - last_render) >= refresh_interval)):
+                    display_timestamp = format_timestamp(datetime.now(timezone.utc), display_tz)
                     if 0 < history_offset <= len(history_buffer):
                         snapshot = history_buffer[-(history_offset + 1)]
-                        snapshot_dt = datetime.fromtimestamp(
-                            snapshot["timestamp"], timezone.utc
-                        )
+                        snapshot_dt = datetime.fromtimestamp(snapshot["timestamp"], timezone.utc)
                         display_timestamp = format_timestamp(snapshot_dt, display_tz)
                     max_offset, _visible_hosts, _total_hosts = compute_host_scroll_bounds(
                         host_infos,
@@ -880,9 +810,7 @@ def run(args):
                     override_lines = None
                     term_size = get_terminal_size(fallback=(80, 24))
                     if show_help:
-                        override_lines = render_help_view(
-                            term_size.columns, term_size.lines
-                        )
+                        override_lines = render_help_view(term_size.columns, term_size.lines)
                     elif host_select_active:
                         include_asn = should_show_asn(
                             host_infos,
@@ -890,9 +818,7 @@ def run(args):
                             show_asn,
                             term_size.columns,
                         )
-                        display_names = build_display_names(
-                            host_infos, modes[mode_index], include_asn, asn_width=8
-                        )
+                        display_names = build_display_names(host_infos, modes[mode_index], include_asn, asn_width=8)
                         display_entries = build_display_entries(
                             host_infos,
                             display_names,
@@ -917,12 +843,8 @@ def run(args):
                             show_asn,
                             term_size.columns,
                         )
-                        display_names = build_display_names(
-                            host_infos, modes[mode_index], include_asn, asn_width=8
-                        )
-                        host_label = display_names.get(
-                            graph_host_id, host_infos[graph_host_id]["alias"]
-                        )
+                        display_names = build_display_names(host_infos, modes[mode_index], include_asn, asn_width=8)
+                        host_label = display_names.get(graph_host_id, host_infos[graph_host_id]["alias"])
                         rtt_values = render_buffers[graph_host_id]["rtt_history"]
                         time_history = render_buffers[graph_host_id]["time_history"]
                         override_lines = render_fullscreen_rtt_graph(
@@ -987,10 +909,7 @@ def run(args):
         total = stats[host_id]["total"]
         percentage = (success / total * 100) if total > 0 else 0
         status = "OK" if success > 0 else "FAILED"
-        print(
-            f"{info['alias']:30} {success}/{total} replies, {slow} slow, {fail} failed "
-            f"({percentage:.1f}%) [{status}]"
-        )
+        print(f"{info['alias']:30} {success}/{total} replies, {slow} slow, {fail} failed " f"({percentage:.1f}%) [{status}]")
 
 
 def main():

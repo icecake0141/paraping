@@ -17,10 +17,10 @@ Tests cover arrow key escape sequence parsing across different operating systems
 and terminal emulators to ensure consistent behavior on Windows, Mac, and Linux.
 """
 
-import unittest
-from unittest.mock import patch, MagicMock
-import sys
 import os
+import sys
+import unittest
+from unittest.mock import MagicMock, patch
 
 # Add parent directory to path to import input_keys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
@@ -52,7 +52,7 @@ class TestParseEscapeSequence(unittest.TestCase):
         self.assertEqual(parse_escape_sequence("[1;5B"), "arrow_down")
         self.assertEqual(parse_escape_sequence("[1;5C"), "arrow_right")
         self.assertEqual(parse_escape_sequence("[1;5D"), "arrow_left")
-        
+
         # Shift+Arrow sequences
         self.assertEqual(parse_escape_sequence("[1;2A"), "arrow_up")
         self.assertEqual(parse_escape_sequence("[1;2B"), "arrow_down")
@@ -109,10 +109,10 @@ class TestReadKey(unittest.TestCase):
             ([mock_stdin], [], []),  # 'A' ready
         ]
         # Simulate ESC [ A sequence
-        mock_stdin.read.side_effect = ['\x1b', '[', 'A']
+        mock_stdin.read.side_effect = ["\x1b", "[", "A"]
 
         result = read_key()
-        self.assertEqual(result, 'arrow_up')
+        self.assertEqual(result, "arrow_up")
 
     @patch("paraping.input_keys.select.select")
     @patch("paraping.input_keys.sys.stdin")
@@ -124,10 +124,10 @@ class TestReadKey(unittest.TestCase):
             ([mock_stdin], [], []),
             ([mock_stdin], [], []),
         ]
-        mock_stdin.read.side_effect = ['\x1b', '[', 'B']
+        mock_stdin.read.side_effect = ["\x1b", "[", "B"]
 
         result = read_key()
-        self.assertEqual(result, 'arrow_down')
+        self.assertEqual(result, "arrow_down")
 
     @patch("paraping.input_keys.select.select")
     @patch("paraping.input_keys.sys.stdin")
@@ -139,10 +139,10 @@ class TestReadKey(unittest.TestCase):
             ([mock_stdin], [], []),
             ([mock_stdin], [], []),
         ]
-        mock_stdin.read.side_effect = ['\x1b', '[', 'D']
+        mock_stdin.read.side_effect = ["\x1b", "[", "D"]
 
         result = read_key()
-        self.assertEqual(result, 'arrow_left')
+        self.assertEqual(result, "arrow_left")
 
     @patch("paraping.input_keys.select.select")
     @patch("paraping.input_keys.sys.stdin")
@@ -154,10 +154,10 @@ class TestReadKey(unittest.TestCase):
             ([mock_stdin], [], []),
             ([mock_stdin], [], []),
         ]
-        mock_stdin.read.side_effect = ['\x1b', '[', 'C']
+        mock_stdin.read.side_effect = ["\x1b", "[", "C"]
 
         result = read_key()
-        self.assertEqual(result, 'arrow_right')
+        self.assertEqual(result, "arrow_right")
 
     @patch("paraping.input_keys.select.select")
     @patch("paraping.input_keys.sys.stdin")
@@ -169,10 +169,10 @@ class TestReadKey(unittest.TestCase):
             ([mock_stdin], [], []),
             ([mock_stdin], [], []),
         ]
-        mock_stdin.read.side_effect = ['\x1b', 'O', 'A']
+        mock_stdin.read.side_effect = ["\x1b", "O", "A"]
 
         result = read_key()
-        self.assertEqual(result, 'arrow_up')
+        self.assertEqual(result, "arrow_up")
 
     @patch("paraping.input_keys.select.select")
     @patch("paraping.input_keys.sys.stdin")
@@ -188,10 +188,10 @@ class TestReadKey(unittest.TestCase):
             ([mock_stdin], [], []),
         ]
         # Sequence: ESC [ 1 ; 5 A
-        mock_stdin.read.side_effect = ['\x1b', '[', '1', ';', '5', 'A']
+        mock_stdin.read.side_effect = ["\x1b", "[", "1", ";", "5", "A"]
 
         result = read_key()
-        self.assertEqual(result, 'arrow_up')
+        self.assertEqual(result, "arrow_up")
 
     @patch("paraping.input_keys.select.select")
     @patch("paraping.input_keys.sys.stdin")
@@ -199,10 +199,10 @@ class TestReadKey(unittest.TestCase):
         """Test reading a normal character (not an arrow key)."""
         mock_stdin.isatty.return_value = True
         mock_select.return_value = ([mock_stdin], [], [])
-        mock_stdin.read.return_value = 'q'
+        mock_stdin.read.return_value = "q"
 
         result = read_key()
-        self.assertEqual(result, 'q')
+        self.assertEqual(result, "q")
 
     @patch("paraping.input_keys.select.select")
     @patch("paraping.input_keys.sys.stdin")
@@ -214,11 +214,11 @@ class TestReadKey(unittest.TestCase):
             ([mock_stdin], [], []),  # ESC ready
             ([], [], []),  # Timeout - no more data
         ]
-        mock_stdin.read.side_effect = ['\x1b']  # Only ESC read
+        mock_stdin.read.side_effect = ["\x1b"]  # Only ESC read
 
         result = read_key()
         # Should return ESC character when sequence incomplete/times out
-        self.assertEqual(result, '\x1b')
+        self.assertEqual(result, "\x1b")
 
     @patch("paraping.input_keys.select.select")
     @patch("paraping.input_keys.sys.stdin")

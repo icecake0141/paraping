@@ -19,7 +19,6 @@ including ANSI text utilities, color/timeline building, layout computation,
 view rendering, graph utilities, formatting functions, and terminal utilities.
 """
 
-import math
 import os
 import re
 import sys
@@ -28,15 +27,12 @@ from collections import deque
 from datetime import datetime, timezone
 
 from paraping.stats import (
-    compute_fail_streak,
-    latest_ttl_value,
-    latest_rtt_value,
-    build_streak_label,
-    build_summary_suffix,
     build_summary_all_suffix,
+    build_summary_suffix,
+    compute_fail_streak,
     compute_summary_data,
+    latest_rtt_value,
 )
-
 
 # ANSI and display constants (imported from main)
 ANSI_RESET = "\x1b[0m"
@@ -59,6 +55,7 @@ LAST_RENDER_LINES = None
 # ANSI/Text Utility Functions
 # ============================================================================
 
+
 def strip_ansi(text):
     """Remove ANSI escape sequences from text."""
     return ANSI_ESCAPE_RE.sub("", text)
@@ -72,7 +69,7 @@ def visible_len(text):
 def truncate_visible(text, width):
     """
     Truncate text to a visible width, preserving ANSI codes.
-    
+
     Returns:
         Tuple of (truncated_text, visible_count)
     """
@@ -140,12 +137,10 @@ def latest_status_from_timeline(timeline, symbols):
 # Color/Timeline Building Functions
 # ============================================================================
 
+
 def build_colored_timeline(timeline, symbols, use_color):
     """Build a colored timeline string from symbols."""
-    return "".join(
-        colorize_text(symbol, status_from_symbol(symbol, symbols), use_color)
-        for symbol in timeline
-    )
+    return "".join(colorize_text(symbol, status_from_symbol(symbol, symbols), use_color) for symbol in timeline)
 
 
 def build_colored_sparkline(sparkline, status_symbols, symbols, use_color):
@@ -205,6 +200,7 @@ def compute_activity_indicator_width(
 # ============================================================================
 # Layout/Geometry Functions
 # ============================================================================
+
 
 def get_terminal_size(fallback=(80, 24)):
     """
@@ -298,19 +294,12 @@ def resolve_boxed_dimensions(width, height, boxed):
     return width - 2, height - 2, True
 
 
-def should_show_asn(
-    host_infos, mode, show_asn, term_width, min_timeline_width=10, asn_width=8
-):
+def should_show_asn(host_infos, mode, show_asn, term_width, min_timeline_width=10, asn_width=8):
     """Determine if ASN should be shown based on available space."""
     if not show_asn:
         return False
-    base_label_width = max(
-        (len(resolve_display_name(info, mode)) for info in host_infos), default=0
-    )
-    labels = [
-        format_display_name(info, mode, True, asn_width, base_label_width)
-        for info in host_infos
-    ]
+    base_label_width = max((len(resolve_display_name(info, mode)) for info in host_infos), default=0)
+    labels = [format_display_name(info, mode, True, asn_width, base_label_width) for info in host_infos]
     if not labels:
         return False
     label_width = max(len(label) for label in labels)
@@ -337,13 +326,9 @@ def compute_host_scroll_bounds(
     term_width = term_size.columns
     term_height = term_size.lines
 
-    include_asn = should_show_asn(
-        host_infos, mode_label, show_asn, term_width, asn_width=asn_width
-    )
+    include_asn = should_show_asn(host_infos, mode_label, show_asn, term_width, asn_width=asn_width)
     display_names = build_display_names(host_infos, mode_label, include_asn, asn_width)
-    main_width, main_height, _, _, _ = compute_panel_sizes(
-        term_width, term_height, panel_position
-    )
+    main_width, main_height, _, _, _ = compute_panel_sizes(term_width, term_height, panel_position)
     display_entries = build_display_entries(
         host_infos,
         display_names,
@@ -357,9 +342,7 @@ def compute_host_scroll_bounds(
     host_labels = [entry[1] for entry in display_entries]
     if not host_labels:
         host_labels = [info["alias"] for info in host_infos]
-    _, _, _, visible_hosts = compute_main_layout(
-        host_labels, main_width, main_height, header_lines
-    )
+    _, _, _, visible_hosts = compute_main_layout(host_labels, main_width, main_height, header_lines)
     total_hosts = len(display_entries)
     max_offset = max(0, total_hosts - visible_hosts)
     return max_offset, visible_hosts, total_hosts
@@ -368,6 +351,7 @@ def compute_host_scroll_bounds(
 # ============================================================================
 # Box/Padding Utilities
 # ============================================================================
+
 
 def pad_lines(lines, width, height):
     """Pad lines to fill the specified width and height."""
@@ -394,31 +378,22 @@ def resize_buffers(buffers, timeline_width, symbols):
     """Resize all buffers to match the timeline width."""
     for host, host_buffers in buffers.items():
         if host_buffers["timeline"].maxlen != timeline_width:
-            host_buffers["timeline"] = deque(
-                host_buffers["timeline"], maxlen=timeline_width
-            )
+            host_buffers["timeline"] = deque(host_buffers["timeline"], maxlen=timeline_width)
         if host_buffers["rtt_history"].maxlen != timeline_width:
-            host_buffers["rtt_history"] = deque(
-                host_buffers["rtt_history"], maxlen=timeline_width
-            )
+            host_buffers["rtt_history"] = deque(host_buffers["rtt_history"], maxlen=timeline_width)
         if host_buffers["time_history"].maxlen != timeline_width:
-            host_buffers["time_history"] = deque(
-                host_buffers["time_history"], maxlen=timeline_width
-            )
+            host_buffers["time_history"] = deque(host_buffers["time_history"], maxlen=timeline_width)
         if host_buffers["ttl_history"].maxlen != timeline_width:
-            host_buffers["ttl_history"] = deque(
-                host_buffers["ttl_history"], maxlen=timeline_width
-            )
+            host_buffers["ttl_history"] = deque(host_buffers["ttl_history"], maxlen=timeline_width)
         for status in symbols:
             if host_buffers["categories"][status].maxlen != timeline_width:
-                host_buffers["categories"][status] = deque(
-                    host_buffers["categories"][status], maxlen=timeline_width
-                )
+                host_buffers["categories"][status] = deque(host_buffers["categories"][status], maxlen=timeline_width)
 
 
 # ============================================================================
 # Graph Utilities
 # ============================================================================
+
 
 def build_sparkline(rtt_values, status_symbols, fail_symbol):
     """Build a sparkline from RTT values."""
@@ -501,15 +476,13 @@ def resample_values(values, target_width):
         return list(values)
 
     last_index = len(values) - 1
-    return [
-        values[round(i * last_index / (target_width - 1))]
-        for i in range(target_width)
-    ]
+    return [values[round(i * last_index / (target_width - 1))] for i in range(target_width)]
 
 
 # ============================================================================
 # Display Building Functions
 # ============================================================================
+
 
 def resolve_display_name(host_info, mode):
     """Resolve the display name for a host based on mode."""
@@ -538,9 +511,7 @@ def format_display_name(host_info, mode, include_asn, asn_width, base_label_widt
     base_label = resolve_display_name(host_info, mode)
     if not include_asn:
         return base_label
-    padded_label = (
-        f"{base_label:<{base_label_width}}" if base_label_width else base_label
-    )
+    padded_label = f"{base_label:<{base_label_width}}" if base_label_width else base_label
     asn_label = format_asn_label(host_info, asn_width)
     return f"{padded_label} {asn_label}"
 
@@ -549,15 +520,8 @@ def build_display_names(host_infos, mode, include_asn, asn_width):
     """Build display names for all hosts."""
     base_label_width = 0
     if include_asn:
-        base_label_width = max(
-            (len(resolve_display_name(info, mode)) for info in host_infos), default=0
-        )
-    return {
-        info["id"]: format_display_name(
-            info, mode, include_asn, asn_width, base_label_width
-        )
-        for info in host_infos
-    }
+        base_label_width = max((len(resolve_display_name(info, mode)) for info in host_infos), default=0)
+    return {info["id"]: format_display_name(info, mode, include_asn, asn_width, base_label_width) for info in host_infos}
 
 
 def build_display_entries(
@@ -599,9 +563,7 @@ def build_display_entries(
     if sort_mode == "failures":
         entries.sort(key=lambda item: (item["fail_count"], item["label"]), reverse=True)
     elif sort_mode == "streak":
-        entries.sort(
-            key=lambda item: (item["fail_streak"], item["label"]), reverse=True
-        )
+        entries.sort(key=lambda item: (item["fail_streak"], item["label"]), reverse=True)
     elif sort_mode == "latency":
         entries.sort(
             key=lambda item: ((item["latest_rtt"] or -1.0), item["label"]),
@@ -617,9 +579,7 @@ def can_render_full_summary(summary_data, width):
     """Check if we can render the full summary with all information."""
     if not summary_data:
         return False
-    max_suffix_len = max(
-        len(build_summary_all_suffix(entry)) for entry in summary_data
-    )
+    max_suffix_len = max(len(build_summary_all_suffix(entry)) for entry in summary_data)
     return width >= max_suffix_len + 1
 
 
@@ -692,6 +652,7 @@ def build_status_line(
 # Rendering Functions
 # ============================================================================
 
+
 def render_timeline_view(
     display_entries,
     buffers,
@@ -708,9 +669,7 @@ def render_timeline_view(
     if width <= 0 or height <= 0:
         return []
 
-    render_width, render_height, can_box = resolve_boxed_dimensions(
-        width, height, boxed
-    )
+    render_width, render_height, can_box = resolve_boxed_dimensions(width, height, boxed)
     host_labels = [entry[1] for entry in display_entries]
     render_width, label_width, timeline_width, visible_hosts = compute_main_layout(
         host_labels, render_width, render_height, header_lines
@@ -757,9 +716,7 @@ def render_sparkline_view(
     if width <= 0 or height <= 0:
         return []
 
-    render_width, render_height, can_box = resolve_boxed_dimensions(
-        width, height, boxed
-    )
+    render_width, render_height, can_box = resolve_boxed_dimensions(width, height, boxed)
     host_labels = [entry[1] for entry in display_entries]
     render_width, label_width, timeline_width, visible_hosts = compute_main_layout(
         host_labels, render_width, render_height, header_lines
@@ -777,9 +734,7 @@ def render_sparkline_view(
         rtt_values = list(buffers[host]["rtt_history"])[-timeline_width:]
         status_symbols = list(buffers[host]["timeline"])[-timeline_width:]
         sparkline = build_sparkline(rtt_values, status_symbols, symbols["fail"])
-        sparkline = build_colored_sparkline(
-            sparkline, status_symbols, symbols, use_color
-        )
+        sparkline = build_colored_sparkline(sparkline, status_symbols, symbols, use_color)
         sparkline = rjust_visible(sparkline, timeline_width)
         status = latest_status_from_timeline(status_symbols, symbols)
         colored_label = colorize_text(label, status, use_color)
@@ -812,16 +767,12 @@ def render_main_view(
 ):
     """Render the main view (timeline or sparkline)."""
     pause_label = "PAUSED" if paused else "LIVE"
-    header_base = (
-        f"ParaPing - {pause_label} results [{mode_label} | {display_mode}] {timestamp}"
-    )
+    header_base = f"ParaPing - {pause_label} results [{mode_label} | {display_mode}] {timestamp}"
     activity_indicator = ""
     if not paused:
         indicator_width = compute_activity_indicator_width(width, header_base)
         if indicator_width > 0:
-            activity_indicator = build_activity_indicator(
-                now_utc, width=indicator_width
-            )
+            activity_indicator = build_activity_indicator(now_utc, width=indicator_width)
     if activity_indicator:
         header = f"{header_base} {activity_indicator}"
     else:
@@ -865,9 +816,7 @@ def render_summary_view(
     if width <= 0 or height <= 0:
         return []
 
-    render_width, render_height, can_box = resolve_boxed_dimensions(
-        width, height, boxed
-    )
+    render_width, render_height, can_box = resolve_boxed_dimensions(width, height, boxed)
     mode_labels = {
         "rates": "Rates",
         "rtt": "Avg RTT",
@@ -878,9 +827,7 @@ def render_summary_view(
     mode_label = "All" if allow_all else mode_labels.get(summary_mode, "Rates")
     lines = [f"Summary ({mode_label})", "-" * render_width]
     for entry in summary_data:
-        lines.append(
-            format_summary_line(entry, render_width, summary_mode, prefer_all=allow_all)
-        )
+        lines.append(format_summary_line(entry, render_width, summary_mode, prefer_all=allow_all))
 
     if can_box:
         return box_lines(lines, width, height)
@@ -889,9 +836,7 @@ def render_summary_view(
 
 def render_help_view(width, height, boxed=False):
     """Render the help view."""
-    render_width, render_height, can_box = resolve_boxed_dimensions(
-        width, height, boxed
-    )
+    render_width, render_height, can_box = resolve_boxed_dimensions(width, height, boxed)
     lines = [
         "ParaPing - Help",
         "-" * width,
@@ -982,10 +927,7 @@ def render_fullscreen_rtt_graph(
     graph_style = "bar" if display_mode == "sparkline" else "line"
     pause_label = "PAUSED" if paused else "LIVE"
     graph_label = "Bar" if graph_style == "bar" else "Line"
-    header = (
-        f"ParaPing - {pause_label} RTT Graph "
-        f"[{host_label} | {graph_label}] {timestamp}"
-    )
+    header = f"ParaPing - {pause_label} RTT Graph " f"[{host_label} | {graph_label}] {timestamp}"
 
     rtt_ms = [value * 1000 if value is not None else None for value in rtt_values]
     numeric_values = [value for value in rtt_ms if value is not None]
@@ -993,10 +935,7 @@ def render_fullscreen_rtt_graph(
         min_val = min(numeric_values)
         max_val = max(numeric_values)
         latest_val = numeric_values[-1]
-        range_line = (
-            "RTT range (Y-axis, ms): "
-            f"{min_val:.1f}-{max_val:.1f} | latest: {latest_val:.1f}"
-        )
+        range_line = "RTT range (Y-axis, ms): " f"{min_val:.1f}-{max_val:.1f} | latest: {latest_val:.1f}"
     else:
         min_val = max_val = 0.0
         range_line = "RTT range (Y-axis, ms): n/a"
@@ -1014,9 +953,7 @@ def render_fullscreen_rtt_graph(
     graph_height = max(0, height - 5)
     resampled_values = resample_values(rtt_ms, graph_width)
     resampled_times = resample_values(time_history, graph_width)
-    graph_lines = build_ascii_graph(
-        resampled_values, graph_width, graph_height, style=graph_style
-    )
+    graph_lines = build_ascii_graph(resampled_values, graph_width, graph_height, style=graph_style)
     if not numeric_values and graph_height > 0:
         message = "No RTT samples yet"
         message_line = message[:graph_width].center(graph_width)
@@ -1038,14 +975,9 @@ def render_fullscreen_rtt_graph(
     time_values = [value for value in resampled_times if value is not None]
     if time_values:
         oldest_time = next(value for value in resampled_times if value is not None)
-        latest_time = next(
-            value for value in reversed(resampled_times) if value is not None
-        )
+        latest_time = next(value for value in reversed(resampled_times) if value is not None)
         oldest_age = max(0, int(round(latest_time - oldest_time)))
-        x_axis_line = (
-            "X-axis (seconds ago, oldest→newest): "
-            f"{oldest_age}s → 0s"
-        )
+        x_axis_line = "X-axis (seconds ago, oldest→newest): " f"{oldest_age}s → 0s"
     else:
         x_axis_line = "X-axis (seconds ago): n/a"
     lines.append(x_axis_line[:width].ljust(width))
@@ -1100,9 +1032,7 @@ def build_display_lines(
     status_box_height = 3 if term_height >= 4 and term_width >= 2 else 1
     panel_height = max(1, term_height - status_box_height)
 
-    include_asn = should_show_asn(
-        host_infos, mode_label, show_asn, term_width, asn_width=asn_width
-    )
+    include_asn = should_show_asn(host_infos, mode_label, show_asn, term_width, asn_width=asn_width)
     display_names = build_display_names(host_infos, mode_label, include_asn, asn_width)
 
     display_entries = build_display_entries(
@@ -1115,21 +1045,17 @@ def build_display_lines(
         filter_mode,
         slow_threshold,
     )
-    main_width, main_height, summary_width, summary_height, resolved_position = (
-        compute_panel_sizes(
-            term_width,
-            panel_height,
-            panel_position,
-            min_main_height=min_main_height,
-        )
+    main_width, main_height, summary_width, summary_height, resolved_position = compute_panel_sizes(
+        term_width,
+        panel_height,
+        panel_position,
+        min_main_height=min_main_height,
     )
     if resolved_position in ("top", "bottom") and summary_height > 0:
         required_main_height = header_lines + len(display_entries)
         if use_panel_boxes:
             required_main_height += 2
-        adjusted_main_height = max(
-            min_main_height, min(main_height, required_main_height)
-        )
+        adjusted_main_height = max(min_main_height, min(main_height, required_main_height))
         if adjusted_main_height < main_height:
             main_height = adjusted_main_height
             summary_height = panel_height - main_height - gap_size
@@ -1187,9 +1113,7 @@ def build_display_lines(
     gap = " "
     combined_lines = []
     if show_help:
-        combined_lines = render_help_view(
-            term_width, panel_height, boxed=use_panel_boxes
-        )
+        combined_lines = render_help_view(term_width, panel_height, boxed=use_panel_boxes)
     elif summary_fullscreen:
         combined_lines = summary_lines
     elif resolved_position in ("left", "right"):
@@ -1314,6 +1238,7 @@ def render_display(
 # Formatting Functions
 # ============================================================================
 
+
 def format_timezone_label(now_utc, display_tz):
     """Format the timezone label for display."""
     tzinfo = now_utc.astimezone(display_tz).tzinfo
@@ -1336,6 +1261,7 @@ def format_timestamp(now_utc, display_tz):
 # Terminal Utilities
 # ============================================================================
 
+
 def prepare_terminal_for_exit():
     """Prepare the terminal for exit by clearing the screen area."""
     if not sys.stdout.isatty():
@@ -1350,18 +1276,16 @@ def flash_screen():
     if not sys.stdout.isatty():
         return
     # ANSI escape sequences for visual flash effect
-    SAVE_CURSOR = "\x1b7"           # Save cursor position
-    SET_WHITE_BG = "\x1b[47m"       # White background
-    SET_BLACK_FG = "\x1b[30m"       # Black foreground
-    CLEAR_SCREEN = "\x1b[2J"        # Clear screen
-    MOVE_HOME = "\x1b[H"            # Move cursor to home position
-    RESTORE_CURSOR = "\x1b8"        # Restore cursor position
-    FLASH_DURATION_SECONDS = 0.1    # Duration of flash effect
+    SAVE_CURSOR = "\x1b7"  # Save cursor position
+    SET_WHITE_BG = "\x1b[47m"  # White background
+    SET_BLACK_FG = "\x1b[30m"  # Black foreground
+    CLEAR_SCREEN = "\x1b[2J"  # Clear screen
+    MOVE_HOME = "\x1b[H"  # Move cursor to home position
+    RESTORE_CURSOR = "\x1b8"  # Restore cursor position
+    FLASH_DURATION_SECONDS = 0.1  # Duration of flash effect
 
     # Apply white flash effect and clear screen
-    sys.stdout.write(
-        SAVE_CURSOR + SET_WHITE_BG + SET_BLACK_FG + CLEAR_SCREEN + MOVE_HOME
-    )
+    sys.stdout.write(SAVE_CURSOR + SET_WHITE_BG + SET_BLACK_FG + CLEAR_SCREEN + MOVE_HOME)
     sys.stdout.flush()
     time.sleep(FLASH_DURATION_SECONDS)
     # Restore normal display
@@ -1386,9 +1310,8 @@ def should_flash_on_fail(status, flash_on_fail, show_help):
 # Panel Utilities
 # ============================================================================
 
-def toggle_panel_visibility(
-    current_position, last_visible_position, default_position="right"
-):
+
+def toggle_panel_visibility(current_position, last_visible_position, default_position="right"):
     """Toggle panel visibility between 'none' and last visible position."""
     if current_position == "none":
         restored_position = last_visible_position or default_position

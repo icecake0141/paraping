@@ -28,13 +28,12 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import paraping.ui_render
 from paraping.ui_render import (
-    compute_main_layout,
-    should_show_asn,
-    build_display_names,
-    compute_panel_sizes,
     build_display_entries,
+    build_display_names,
+    compute_main_layout,
+    compute_panel_sizes,
+    should_show_asn,
 )
-
 
 # Constants for time navigation feature
 HISTORY_DURATION_MINUTES = 30  # Store up to 30 minutes of history
@@ -140,16 +139,14 @@ def parse_host_file_line(line: str, line_number: int, input_file: str) -> Option
     parts = [part.strip() for part in stripped.split(",")]
     if len(parts) != 2:
         print(
-            f"Warning: Invalid host entry at {input_file}:{line_number}. "
-            "Expected format 'IP,alias'.",
+            f"Warning: Invalid host entry at {input_file}:{line_number}. " "Expected format 'IP,alias'.",
             file=sys.stderr,
         )
         return None
     ip_text, alias = parts
     if not ip_text or not alias:
         print(
-            f"Warning: Invalid host entry at {input_file}:{line_number}. "
-            "IP address and alias are required.",
+            f"Warning: Invalid host entry at {input_file}:{line_number}. " "IP address and alias are required.",
             file=sys.stderr,
         )
         return None
@@ -221,13 +218,9 @@ def compute_history_page_step(
     status_box_height = 3 if term_height >= 4 and term_width >= 2 else 1
     panel_height = max(1, term_height - status_box_height)
 
-    include_asn = should_show_asn(
-        host_infos, mode_label, show_asn, term_width, asn_width=asn_width
-    )
+    include_asn = should_show_asn(host_infos, mode_label, show_asn, term_width, asn_width=asn_width)
     display_names = build_display_names(host_infos, mode_label, include_asn, asn_width)
-    main_width, main_height, _, _, _ = compute_panel_sizes(
-        term_width, panel_height, panel_position
-    )
+    main_width, main_height, _, _, _ = compute_panel_sizes(term_width, panel_height, panel_position)
     display_entries = build_display_entries(
         host_infos,
         display_names,
@@ -243,9 +236,7 @@ def compute_history_page_step(
         host_labels = [info["alias"] for info in host_infos]
 
     # Compute layout and extract timeline width defensively
-    layout_result = compute_main_layout(
-        host_labels, main_width, main_height, header_lines
-    )
+    layout_result = compute_main_layout(host_labels, main_width, main_height, header_lines)
     timeline_width = _extract_timeline_width_from_layout(layout_result, main_width)
 
     return timeline_width
@@ -274,6 +265,7 @@ def get_cached_page_step(
     Returns:
         tuple: (page_step, new_cached_page_step, new_last_term_size)
     """
+
     def should_recalculate_page_step(cached_value, last_size, current_size):
         """Check if page step needs recalculation due to cache miss or terminal resize"""
         if cached_value is None or last_size is None:
@@ -360,26 +352,13 @@ def create_state_snapshot(buffers: Dict[int, Any], stats: Dict[int, Any], timest
     buffers_copy = {}
     for host_id, host_buffers in buffers.items():
         buffers_copy[host_id] = {
-            "timeline": deque(
-                host_buffers["timeline"],
-                maxlen=host_buffers["timeline"].maxlen
-            ),
-            "rtt_history": deque(
-                host_buffers["rtt_history"],
-                maxlen=host_buffers["rtt_history"].maxlen
-            ),
-            "time_history": deque(
-                host_buffers["time_history"],
-                maxlen=host_buffers["time_history"].maxlen
-            ),
-            "ttl_history": deque(
-                host_buffers["ttl_history"],
-                maxlen=host_buffers["ttl_history"].maxlen
-            ),
+            "timeline": deque(host_buffers["timeline"], maxlen=host_buffers["timeline"].maxlen),
+            "rtt_history": deque(host_buffers["rtt_history"], maxlen=host_buffers["rtt_history"].maxlen),
+            "time_history": deque(host_buffers["time_history"], maxlen=host_buffers["time_history"].maxlen),
+            "ttl_history": deque(host_buffers["ttl_history"], maxlen=host_buffers["ttl_history"].maxlen),
             "categories": {
-                status: deque(cat_deque, maxlen=cat_deque.maxlen)
-                for status, cat_deque in host_buffers["categories"].items()
-            }
+                status: deque(cat_deque, maxlen=cat_deque.maxlen) for status, cat_deque in host_buffers["categories"].items()
+            },
         }
 
     # Deep copy stats

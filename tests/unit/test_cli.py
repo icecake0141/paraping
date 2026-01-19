@@ -18,10 +18,10 @@ This module tests the command-line interface parsing and entrypoint logic
 without performing actual network operations.
 """
 
-import unittest
-from unittest.mock import patch, MagicMock
-import sys
 import os
+import sys
+import unittest
+from unittest.mock import MagicMock, patch
 
 # Add parent directory to path to import paraping
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
@@ -142,21 +142,30 @@ class TestCLIArgumentParsing(unittest.TestCase):
 
     def test_handle_options_combined_flags(self):
         """Test multiple options combined"""
-        with patch("sys.argv", [
-            "paraping",
-            "-t", "3",
-            "-c", "5",
-            "-i", "1.5",
-            "-s", "0.8",
-            "-v",
-            "-P", "left",
-            "-m", "ping",
-            "-F",
-            "-B",
-            "-C",
-            "host1.com",
-            "host2.com"
-        ]):
+        with patch(
+            "sys.argv",
+            [
+                "paraping",
+                "-t",
+                "3",
+                "-c",
+                "5",
+                "-i",
+                "1.5",
+                "-s",
+                "0.8",
+                "-v",
+                "-P",
+                "left",
+                "-m",
+                "ping",
+                "-F",
+                "-B",
+                "-C",
+                "host1.com",
+                "host2.com",
+            ],
+        ):
             args = handle_options()
             self.assertEqual(args.timeout, 3)
             self.assertEqual(args.count, 5)

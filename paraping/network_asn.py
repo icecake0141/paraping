@@ -29,16 +29,16 @@ import socket
 def parse_asn_response(response):
     """
     Parse ASN from Team Cymru whois response.
-    
+
     This is a pure function that takes raw response text and extracts the ASN.
     It can be unit-tested without any network I/O.
-    
+
     Args:
         response: String containing the whois response
-        
+
     Returns:
         ASN string (e.g., "AS15133") if successful, None if parsing fails
-        
+
     Examples:
         >>> parse_asn_response("AS      | IP               | BGP Prefix\\n15133   | 8.8.8.8          | 8.8.8.0/24")
         'AS15133'
@@ -62,16 +62,16 @@ def parse_asn_response(response):
 def fetch_asn_via_whois(ip_address, timeout=3.0, max_bytes=65536, host="whois.cymru.com", port=43):
     """
     Fetch raw ASN response from Team Cymru whois service via socket.
-    
+
     This function handles network I/O and can be mocked in tests.
-    
+
     Args:
         ip_address: IP address string to lookup
         timeout: Socket timeout in seconds
         max_bytes: Maximum bytes to read from socket
         host: Whois server hostname
         port: Whois server port
-        
+
     Returns:
         Raw response string if successful, None if network error occurs
     """
@@ -93,21 +93,21 @@ def fetch_asn_via_whois(ip_address, timeout=3.0, max_bytes=65536, host="whois.cy
                 total_read += len(chunk)
     except (socket.timeout, OSError):
         return None
-    
+
     return b"".join(chunks).decode("utf-8", errors="ignore")
 
 
 def resolve_asn(ip_address, timeout=3.0, max_bytes=65536):
     """
     Resolve ASN for an IP address via Team Cymru whois service.
-    
+
     This is the high-level function that combines network fetch and parsing.
-    
+
     Args:
         ip_address: IP address string to lookup
         timeout: Socket timeout in seconds
         max_bytes: Maximum bytes to read from socket
-        
+
     Returns:
         ASN string (e.g., "AS15133") if successful, None if lookup fails
     """
@@ -120,7 +120,7 @@ def resolve_asn(ip_address, timeout=3.0, max_bytes=65536):
 def asn_worker(request_queue, result_queue, stop_event, timeout):
     """
     Worker thread for processing ASN requests.
-    
+
     Args:
         request_queue: Queue of (host, ip_address) tuples to process
         result_queue: Queue for results as (host, asn_result) tuples
@@ -143,13 +143,13 @@ def asn_worker(request_queue, result_queue, stop_event, timeout):
 def should_retry_asn(ip_address, asn_cache, now, failure_ttl):
     """
     Determine if an ASN lookup should be retried.
-    
+
     Args:
         ip_address: IP address to check
         asn_cache: Dictionary of cached ASN results
         now: Current timestamp
         failure_ttl: Time-to-live for failed lookups
-        
+
     Returns:
         True if lookup should be retried, False otherwise
     """

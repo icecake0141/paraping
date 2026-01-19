@@ -21,7 +21,6 @@ and navigating through time to review past ping results.
 import copy
 from collections import deque
 
-
 # Constants for history feature
 HISTORY_DURATION_MINUTES = 30  # Store up to 30 minutes of history
 SNAPSHOT_INTERVAL_SECONDS = 1.0  # Take snapshot every second
@@ -43,26 +42,13 @@ def create_state_snapshot(buffers, stats, timestamp):
     buffers_copy = {}
     for host_id, host_buffers in buffers.items():
         buffers_copy[host_id] = {
-            "timeline": deque(
-                host_buffers["timeline"],
-                maxlen=host_buffers["timeline"].maxlen
-            ),
-            "rtt_history": deque(
-                host_buffers["rtt_history"],
-                maxlen=host_buffers["rtt_history"].maxlen
-            ),
-            "time_history": deque(
-                host_buffers["time_history"],
-                maxlen=host_buffers["time_history"].maxlen
-            ),
-            "ttl_history": deque(
-                host_buffers["ttl_history"],
-                maxlen=host_buffers["ttl_history"].maxlen
-            ),
+            "timeline": deque(host_buffers["timeline"], maxlen=host_buffers["timeline"].maxlen),
+            "rtt_history": deque(host_buffers["rtt_history"], maxlen=host_buffers["rtt_history"].maxlen),
+            "time_history": deque(host_buffers["time_history"], maxlen=host_buffers["time_history"].maxlen),
+            "ttl_history": deque(host_buffers["ttl_history"], maxlen=host_buffers["ttl_history"].maxlen),
             "categories": {
-                status: deque(cat_deque, maxlen=cat_deque.maxlen)
-                for status, cat_deque in host_buffers["categories"].items()
-            }
+                status: deque(cat_deque, maxlen=cat_deque.maxlen) for status, cat_deque in host_buffers["categories"].items()
+            },
         }
 
     # Deep copy stats
@@ -85,7 +71,7 @@ def update_history_buffer(
 ):
     """
     Update history buffer with periodic snapshots.
-    
+
     Args:
         history_buffer: Deque holding historical snapshots
         buffers: Current buffer state
@@ -93,7 +79,7 @@ def update_history_buffer(
         now: Current timestamp
         last_snapshot_time: Last time a snapshot was taken
         history_offset: Current history navigation offset
-        
+
     Returns:
         Tuple of (last_snapshot_time, history_offset) - updated values
     """
@@ -111,14 +97,14 @@ def update_history_buffer(
 def resolve_render_state(history_offset, history_buffer, buffers, stats, paused):
     """
     Resolve which buffers/stats to use for rendering based on history offset.
-    
+
     Args:
         history_offset: Current history navigation offset (0 = live)
         history_buffer: Deque of historical snapshots
         buffers: Current live buffers
         stats: Current live statistics
         paused: Whether display is paused
-        
+
     Returns:
         Tuple of (render_buffers, render_stats, render_paused)
     """
@@ -144,10 +130,10 @@ def compute_history_page_step(
 ):
     """
     Compute the page step size for history navigation.
-    
+
     This determines how many timeline columns to skip when navigating
     backward/forward in history with arrow keys.
-    
+
     Args:
         host_infos: List of host information dictionaries
         buffers: Current buffer state
@@ -161,29 +147,29 @@ def compute_history_page_step(
         show_asn: Whether to show ASN information
         asn_width: Width for ASN display
         header_lines: Number of header lines
-        
+
     Returns:
         Page step size (int)
     """
     # Import here to avoid circular dependency
     from ui_render import (
-        get_terminal_size, should_show_asn, build_display_names,
-        compute_panel_sizes, build_display_entries, compute_main_layout
+        build_display_entries,
+        build_display_names,
+        compute_main_layout,
+        compute_panel_sizes,
+        get_terminal_size,
+        should_show_asn,
     )
-    
+
     term_size = get_terminal_size(fallback=(80, 24))
     term_width = term_size.columns
     term_height = term_size.lines
     status_box_height = 3 if term_height >= 4 and term_width >= 2 else 1
     panel_height = max(1, term_height - status_box_height)
 
-    include_asn = should_show_asn(
-        host_infos, mode_label, show_asn, term_width, asn_width=asn_width
-    )
+    include_asn = should_show_asn(host_infos, mode_label, show_asn, term_width, asn_width=asn_width)
     display_names = build_display_names(host_infos, mode_label, include_asn, asn_width)
-    main_width, main_height, _, _, _ = compute_panel_sizes(
-        term_width, panel_height, panel_position
-    )
+    main_width, main_height, _, _, _ = compute_panel_sizes(term_width, panel_height, panel_position)
     display_entries = build_display_entries(
         host_infos,
         display_names,
@@ -197,9 +183,7 @@ def compute_history_page_step(
     host_labels = [entry[1] for entry in display_entries]
     if not host_labels:
         host_labels = [info["alias"] for info in host_infos]
-    _, _, timeline_width, _ = compute_main_layout(
-        host_labels, main_width, main_height, header_lines
-    )
+    _, _, timeline_width, _ = compute_main_layout(host_labels, main_width, main_height, header_lines)
     return max(1, timeline_width)
 
 
@@ -241,7 +225,7 @@ def get_cached_page_step(
         tuple: (page_step, new_cached_page_step, new_last_term_size)
     """
     from main import get_terminal_size
-    
+
     def should_recalculate_page_step(cached_value, last_size, current_size):
         """Check if page step needs recalculation due to cache miss or terminal resize"""
         if cached_value is None or last_size is None:

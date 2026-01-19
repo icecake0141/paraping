@@ -14,22 +14,22 @@
 Unit tests for layout computation and terminal size handling
 """
 
-import unittest
-from unittest.mock import patch, MagicMock
 import os
 import sys
+import unittest
 from collections import deque
 from datetime import datetime, timezone
+from unittest.mock import MagicMock, patch
 
 # Add parent directory to path to import main
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from main import (
+from main import (  # noqa: E402
+    build_display_lines,
     compute_main_layout,
     compute_panel_sizes,
-    build_display_lines,
     get_terminal_size,
-)  # noqa: E402
+)
 
 
 class TestLayoutComputation(unittest.TestCase):
@@ -38,9 +38,7 @@ class TestLayoutComputation(unittest.TestCase):
     def test_compute_main_layout_basic(self):
         """Test basic main layout computation"""
         host_labels = ["host1.com", "host2.com", "host3.com"]
-        width, label_width, timeline_width, visible_hosts = compute_main_layout(
-            host_labels, 80, 24, header_lines=2
-        )
+        width, label_width, timeline_width, visible_hosts = compute_main_layout(host_labels, 80, 24, header_lines=2)
         self.assertEqual(width, 80)
         self.assertGreater(label_width, 0)
         self.assertGreater(timeline_width, 0)
@@ -49,9 +47,7 @@ class TestLayoutComputation(unittest.TestCase):
     def test_compute_main_layout_with_long_hostnames(self):
         """Test layout with very long hostnames"""
         host_labels = ["very-long-hostname-that-exceeds-normal-length.example.com"]
-        width, label_width, timeline_width, visible_hosts = compute_main_layout(
-            host_labels, 80, 24
-        )
+        width, label_width, timeline_width, visible_hosts = compute_main_layout(host_labels, 80, 24)
         self.assertLessEqual(label_width, 80 // 3)  # Should be capped
         self.assertGreater(timeline_width, 0)
 
@@ -78,7 +74,7 @@ class TestLayoutComputation(unittest.TestCase):
         main_w, main_h, summ_w, summ_h, pos = compute_panel_sizes(10, 5, "right")
         self.assertEqual(pos, "none")
 
-    @patch("ui_render.get_terminal_size")
+    @patch("paraping.ui_render.get_terminal_size")
     def test_bottom_panel_uses_extra_space(self, mock_term_size):
         """Bottom panel expands when main view needs fewer rows."""
         mock_term_size.return_value = os.terminal_size((80, 23))
@@ -141,9 +137,7 @@ class TestLayoutComputation(unittest.TestCase):
             now_utc=datetime(2026, 1, 12, 8, 15, 20, tzinfo=timezone.utc),
         )
 
-        summary_line_index = next(
-            index for index, line in enumerate(lines) if "Summary (" in line
-        )
+        summary_line_index = next(index for index, line in enumerate(lines) if "Summary (" in line)
         self.assertEqual(summary_line_index, 12)
         self.assertEqual(len(lines), 23)
 
@@ -153,9 +147,7 @@ class TestTerminalSize(unittest.TestCase):
 
     @patch("paraping.cli.os.get_terminal_size")
     @patch("paraping.cli.sys.stdout")
-    def test_get_terminal_size_from_stdout(
-        self, mock_stdout, mock_os_get_size
-    ):
+    def test_get_terminal_size_from_stdout(self, mock_stdout, mock_os_get_size):
         """Test getting terminal size from stdout"""
         mock_stdout.isatty.return_value = True
         mock_stdout.fileno.return_value = 1
@@ -170,9 +162,7 @@ class TestTerminalSize(unittest.TestCase):
     @patch("paraping.cli.os.get_terminal_size")
     @patch("paraping.cli.sys.stdout")
     @patch("paraping.cli.sys.stderr")
-    def test_get_terminal_size_fallback_to_stderr(
-        self, mock_stderr, mock_stdout, mock_os_get_size
-    ):
+    def test_get_terminal_size_fallback_to_stderr(self, mock_stderr, mock_stdout, mock_os_get_size):
         """Test fallback to stderr when stdout fails"""
         mock_stdout.isatty.return_value = False
         mock_stderr.isatty.return_value = True
@@ -188,9 +178,7 @@ class TestTerminalSize(unittest.TestCase):
     @patch("paraping.cli.sys.stdout")
     @patch("paraping.cli.sys.stderr")
     @patch("paraping.cli.sys.stdin")
-    def test_get_terminal_size_fallback_to_default(
-        self, mock_stdin, mock_stderr, mock_stdout, mock_os_get_size
-    ):
+    def test_get_terminal_size_fallback_to_default(self, mock_stdin, mock_stderr, mock_stdout, mock_os_get_size):
         """Test fallback to default size when no tty available"""
         mock_stdout.isatty.return_value = False
         mock_stderr.isatty.return_value = False
@@ -203,9 +191,7 @@ class TestTerminalSize(unittest.TestCase):
 
     @patch("paraping.cli.os.get_terminal_size")
     @patch("paraping.cli.sys.stdout")
-    def test_get_terminal_size_handles_os_error(
-        self, mock_stdout, mock_os_get_size
-    ):
+    def test_get_terminal_size_handles_os_error(self, mock_stdout, mock_os_get_size):
         """Test handling of OSError when querying terminal size"""
         mock_stdout.isatty.return_value = True
         mock_stdout.fileno.return_value = 1

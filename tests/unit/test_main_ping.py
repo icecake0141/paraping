@@ -14,21 +14,21 @@
 Unit tests for ping host functionality and main function
 """
 
-import unittest
-from unittest.mock import patch, MagicMock
 import argparse
 import os
 import queue
 import sys
+import unittest
+from unittest.mock import MagicMock, patch
 
 # Add parent directory to path to import main
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from main import (
-    ping_host,
-    main,
+from main import (  # noqa: E402
     MAX_HOST_THREADS,
-)  # noqa: E402
+    main,
+    ping_host,
+)
 
 
 class TestPingHost(unittest.TestCase):
@@ -90,9 +90,7 @@ class TestPingHost(unittest.TestCase):
 
     @patch("paraping.pinger.os.path.exists", return_value=True)
     @patch("paraping.pinger.ping_with_helper")
-    def test_ping_host_with_network_error(
-        self, mock_ping_with_helper, mock_path_exists
-    ):
+    def test_ping_host_with_network_error(self, mock_ping_with_helper, mock_path_exists):
         """Test ping with network error"""
         mock_ping_with_helper.side_effect = OSError("Network unreachable")
 
@@ -110,12 +108,10 @@ class TestMain(unittest.TestCase):
 
     @patch("paraping.cli.queue.Queue")
     @patch("paraping.cli.sys.stdin")
-    @patch("ui_render.get_terminal_size")
+    @patch("paraping.ui_render.get_terminal_size")
     @patch("paraping.cli.ThreadPoolExecutor")
     @patch("paraping.cli.threading.Thread")
-    def test_main_with_hosts(
-        self, mock_thread, mock_executor, mock_term_size, mock_stdin, mock_queue
-    ):
+    def test_main_with_hosts(self, mock_thread, mock_executor, mock_term_size, mock_stdin, mock_queue):
         """Test main function with hosts"""
         # Mock terminal properties
         mock_stdin.isatty.return_value = False
@@ -255,15 +251,11 @@ class TestMain(unittest.TestCase):
 
         main(args)
         call_args = [str(call) for call in mock_print.call_args_list]
-        self.assertTrue(
-            any(
-                "exceeds maximum supported threads" in call for call in call_args
-            )
-        )
+        self.assertTrue(any("exceeds maximum supported threads" in call for call in call_args))
 
     @patch("paraping.cli.queue.Queue")
     @patch("paraping.cli.sys.stdin")
-    @patch("ui_render.get_terminal_size")
+    @patch("paraping.ui_render.get_terminal_size")
     @patch("paraping.cli.read_input_file")
     @patch("paraping.cli.ThreadPoolExecutor")
     @patch("paraping.cli.threading.Thread")

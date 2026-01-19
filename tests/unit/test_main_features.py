@@ -14,21 +14,21 @@
 Unit tests for TTL functionality and host selection features
 """
 
-import unittest
-from unittest.mock import patch
 import os
 import sys
+import unittest
 from collections import deque
+from unittest.mock import patch
 
 # Add parent directory to path to import main
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from main import (
+from main import (  # noqa: E402
     latest_ttl_value,
-    render_summary_view,
-    render_host_selection_view,
     render_fullscreen_rtt_graph,
-)  # noqa: E402
+    render_host_selection_view,
+    render_summary_view,
+)
 
 
 class TestTTLFunctionality(unittest.TestCase):
@@ -92,7 +92,7 @@ class TestHostSelectionView(unittest.TestCase):
             ("host3", "192.168.1.3"),
         ]
         lines = render_host_selection_view(display_entries, 0, 60, 10, "ip")
-        
+
         # Status line should contain new key mappings
         status_line = lines[-1]
         self.assertIn("n/p", status_line)
@@ -109,14 +109,12 @@ class TestHostSelectionView(unittest.TestCase):
             ("host2", "192.168.1.2"),
             ("host3", "192.168.1.3"),
         ]
-        
+
         # Test with different selected indices
         for selected_idx in range(len(display_entries)):
-            lines = render_host_selection_view(
-                display_entries, selected_idx, 60, 10, "ip"
-            )
+            lines = render_host_selection_view(display_entries, selected_idx, 60, 10, "ip")
             combined = "\n".join(lines)
-            
+
             # The selected host should have "> " prefix
             selected_host = display_entries[selected_idx][1]
             self.assertIn(f"> {selected_host}", combined)
@@ -126,7 +124,7 @@ class TestHostSelectionView(unittest.TestCase):
         host_label = "test.example.com"
         rtt_values = [0.01, 0.02, 0.015, 0.03]
         time_history = [1.0, 2.0, 3.0, 4.0]
-        
+
         lines = render_fullscreen_rtt_graph(
             host_label,
             rtt_values,
@@ -137,7 +135,7 @@ class TestHostSelectionView(unittest.TestCase):
             False,
             "2025-01-01 00:00:00 (UTC)",
         )
-        
+
         # The fullscreen graph should still have ESC: back
         combined = "\n".join(lines)
         self.assertIn("ESC:", combined)
@@ -150,34 +148,40 @@ class TestHostSelectionKeyBindings(unittest.TestCase):
     def test_p_key_moves_selection_up(self):
         """Test that 'p' key moves selection up (previous)"""
         # Setup mock objects
-        with patch('main.get_terminal_size') as mock_term_size, \
-             patch('main.read_key') as mock_read_key, \
-             patch('main.render_display') as mock_render, \
-             patch('main.ThreadPoolExecutor'):
-            
-            mock_term_size.return_value = type('obj', (object,), {'columns': 80, 'lines': 24})
-            
+        with (
+            patch("main.get_terminal_size") as mock_term_size,
+            patch("main.read_key") as mock_read_key,
+            patch("main.render_display") as mock_render,
+            patch("main.ThreadPoolExecutor"),
+        ):
+
+            mock_term_size.return_value = type("obj", (object,), {"columns": 80, "lines": 24})
+
             # Simulate key sequence: 'g' to enter selection, 'n' to move down, 'p' to move back up
-            mock_read_key.side_effect = ['g', 'n', 'p', 'q']
-            
-            args = type('obj', (object,), {
-                'count': 1,
-                'timeout': 1,
-                'interval': 1.0,
-                'slow_threshold': 0.5,
-                'verbose': False,
-                'input': None,
-                'hosts': ['host1', 'host2', 'host3'],
-                'panel_position': 'right',
-                'pause_mode': 'display',
-                'timezone': None,
-                'snapshot_timezone': 'utc',
-                'flash_on_fail': False,
-                'bell_on_fail': False,
-                'color': False,
-                'ping_helper': './ping_helper',
-            })()
-            
+            mock_read_key.side_effect = ["g", "n", "p", "q"]
+
+            args = type(
+                "obj",
+                (object,),
+                {
+                    "count": 1,
+                    "timeout": 1,
+                    "interval": 1.0,
+                    "slow_threshold": 0.5,
+                    "verbose": False,
+                    "input": None,
+                    "hosts": ["host1", "host2", "host3"],
+                    "panel_position": "right",
+                    "pause_mode": "display",
+                    "timezone": None,
+                    "snapshot_timezone": "utc",
+                    "flash_on_fail": False,
+                    "bell_on_fail": False,
+                    "color": False,
+                    "ping_helper": "./ping_helper",
+                },
+            )()
+
             # Note: Full integration test would require more mocking
             # This test verifies the key is recognized in the code path
 
