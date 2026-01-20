@@ -271,6 +271,9 @@ class TestSummaryData(unittest.TestCase):
         summary_data = [
             {
                 "host": "very-long-hostname-with-asn-info.example.com AS12345",
+                "sent": 22,
+                "received": 21,
+                "lost": 1,
                 "success_rate": 95.5,
                 "loss_rate": 4.5,
                 "streak_type": "success",
@@ -294,6 +297,9 @@ class TestSummaryData(unittest.TestCase):
         summary_data = [
             {
                 "host": "extremely-long-hostname-that-definitely-exceeds-width.example.com AS99999",
+                "sent": 10,
+                "received": 10,
+                "lost": 0,
                 "success_rate": 100.0,
                 "loss_rate": 0.0,
                 "streak_type": "success",
@@ -315,7 +321,7 @@ class TestSummaryData(unittest.TestCase):
 
         # The host info line should contain essential info when width is sufficient
         host_line = lines[2]  # First line is "Summary", second is separator
-        self.assertIn("ok", host_line)
+        self.assertIn("10/10/0", host_line)
         self.assertIn("%", host_line)
 
     def test_render_summary_view_multiple_hosts(self):
@@ -323,6 +329,9 @@ class TestSummaryData(unittest.TestCase):
         summary_data = [
             {
                 "host": "host1.example.com AS1111",
+                "sent": 3,
+                "received": 3,
+                "lost": 0,
                 "success_rate": 100.0,
                 "loss_rate": 0.0,
                 "streak_type": "success",
@@ -333,6 +342,9 @@ class TestSummaryData(unittest.TestCase):
             },
             {
                 "host": "very-long-host2.example.com AS22222",
+                "sent": 10,
+                "received": 9,
+                "lost": 1,
                 "success_rate": 90.0,
                 "loss_rate": 10.0,
                 "streak_type": "fail",
@@ -356,6 +368,9 @@ class TestSummaryData(unittest.TestCase):
         summary_data = [
             {
                 "host": "example.com",
+                "sent": 10,
+                "received": 10,
+                "lost": 0,
                 "success_rate": 100.0,
                 "loss_rate": 0.0,
                 "streak_type": "success",
@@ -373,7 +388,7 @@ class TestSummaryData(unittest.TestCase):
 
         self.assertIn("Summary (All)", lines[0])
         combined = "\n".join(lines)
-        self.assertIn("ok 100.0% loss 0.0%", combined)
+        self.assertIn("10/10/0 loss 0.0%", combined)
         self.assertIn("avg rtt 25.0 ms", combined)
         self.assertIn("jitter 2.5 ms", combined)
         self.assertIn("stddev 3.2 ms", combined)
@@ -385,6 +400,9 @@ class TestSummaryData(unittest.TestCase):
         summary_data = [
             {
                 "host": "example.com",
+                "sent": 10,
+                "received": 10,
+                "lost": 0,
                 "success_rate": 100.0,
                 "loss_rate": 0.0,
                 "streak_type": "success",

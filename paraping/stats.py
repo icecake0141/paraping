@@ -59,6 +59,22 @@ def build_streak_label(entry):
     return streak_label
 
 
+def build_packet_stats_label(entry):
+    """
+    Build packet statistics label in Snt/Rcv/Los format with loss percentage.
+
+    Args:
+        entry: Dictionary with sent, received, lost, and loss_rate
+
+    Returns:
+        Formatted string like "10/9/1 loss 10.0%"
+    """
+    sent = entry.get('sent', 0)
+    received = entry.get('received', 0)
+    lost = entry.get('lost', 0)
+    return f"{sent}/{received}/{lost} loss {entry['loss_rate']:.1f}%"
+
+
 def build_summary_suffix(entry, summary_mode):
     """
     Build the suffix for a summary line based on the summary mode.
@@ -80,7 +96,8 @@ def build_summary_suffix(entry, summary_mode):
         return f": ttl {latest_ttl}" if latest_ttl is not None else ": ttl n/a"
     if summary_mode == "streak":
         return f": streak {build_streak_label(entry)}"
-    return f": ok {entry['success_rate']:.1f}% loss {entry['loss_rate']:.1f}%"
+    # Default mode is 'rates' - show Snt/Rcv/Los and loss percentage
+    return f": {build_packet_stats_label(entry)}"
 
 
 def build_summary_all_suffix(entry):
@@ -100,7 +117,7 @@ def build_summary_all_suffix(entry):
     ttl_value = f"{latest_ttl}" if latest_ttl is not None else "n/a"
     streak_label = build_streak_label(entry)
     parts = [
-        f"ok {entry['success_rate']:.1f}% loss {entry['loss_rate']:.1f}%",
+        build_packet_stats_label(entry),
         f"avg rtt {avg_rtt}",
         f"jitter {jitter}",
         f"stddev {stddev}",
@@ -183,6 +200,9 @@ def compute_summary_data(
         summary.append(
             {
                 "host": display_name,
+                "sent": total,
+                "received": success,
+                "lost": fail,
                 "success_rate": success_rate,
                 "loss_rate": loss_rate,
                 "streak_type": streak_type,

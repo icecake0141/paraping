@@ -57,6 +57,9 @@ class TestTTLFunctionality(unittest.TestCase):
         summary_data = [
             {
                 "host": "example.com",
+                "sent": 5,
+                "received": 5,
+                "lost": 0,
                 "success_rate": 100.0,
                 "loss_rate": 0.0,
                 "streak_type": "success",
