@@ -32,16 +32,16 @@ The ParaPing application is now organized as a Python package (`paraping/`) with
 
 | Module | Lines | Coverage | Status | Responsibilities |
 |--------|-------|----------|--------|------------------|
-| `cli.py` | 474 | 51% | ✅ Active | CLI argument parsing, main application entry point, event loop coordination, host management, user interaction handling |
-| `core.py` | 177 | 95% | ✅ Active | Core functionality, state management, snapshot creation, terminal size handling, host parsing |
-| `ui_render.py` | 652 | 82% | ✅ Active | UI rendering, ANSI utilities, layout computation, timeline/sparkline building, terminal utilities, graph rendering, formatting functions |
-| `stats.py` | 98 | 95% | ✅ Active | Statistics computation, fail streak tracking, TTL/RTT extraction, summary data building, streak labels |
-| `pinger.py` | 65 | 92% | ✅ Active | Ping host functionality, worker ping threads, rDNS resolution integrated |
-| `input_keys.py` | 42 | 98% | ✅ Active | Keyboard input handling, escape sequence parsing, arrow key detection |
-| `network_asn.py` | 57 | 98% | ✅ Active | ASN resolution via Team Cymru whois, ASN worker threads, retry logic |
-| `ping_wrapper.py` | 77 | 79% | ✅ Active | Wrapper for ping_helper binary, result parsing, error handling |
-| `history.py` | 55 | 0% | ⚠️ Not Integrated | History buffer management, snapshot creation, time navigation (functions duplicated in core.py) |
-| `network_rdns.py` | 19 | 0% | ⚠️ Not Integrated | Reverse DNS resolution standalone module (functionality integrated in pinger.py instead) |
+| `cli.py` | 918 | 51% | ✅ Active | CLI argument parsing, main application entry point, event loop coordination, host management, user interaction handling |
+| `core.py` | 431 | 95% | ✅ Active | Core functionality, state management, snapshot creation, terminal size handling, host parsing |
+| `ui_render.py` | 1328 | 82% | ✅ Active | UI rendering, ANSI utilities, layout computation, timeline/sparkline building, terminal utilities, graph rendering, formatting functions |
+| `stats.py` | 246 | 95% | ✅ Active | Statistics computation, fail streak tracking, TTL/RTT extraction, summary data building, streak labels |
+| `pinger.py` | 174 | 92% | ✅ Active | Ping host functionality, worker ping threads, rDNS resolution integrated |
+| `input_keys.py` | 93 | 98% | ✅ Active | Keyboard input handling, escape sequence parsing, arrow key detection |
+| `network_asn.py` | 161 | 98% | ✅ Active | ASN resolution via Team Cymru whois, ASN worker threads, retry logic |
+| `ping_wrapper.py` | 226 | 79% | ✅ Active | Wrapper for ping_helper binary, result parsing, error handling |
+| `history.py` | 259 | 0% | ⚠️ Not Integrated | History buffer management, snapshot creation, time navigation (functions duplicated in core.py) |
+| `network_rdns.py` | 60 | 0% | ⚠️ Not Integrated | Reverse DNS resolution standalone module (functionality integrated in pinger.py instead) |
 
 ### Entry Points
 
