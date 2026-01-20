@@ -59,6 +59,22 @@ def build_streak_label(entry):
     return streak_label
 
 
+def build_packet_stats_label(entry):
+    """
+    Build packet statistics label in Snt/Rcv/Los format with loss percentage.
+
+    Args:
+        entry: Dictionary with sent, received, lost, and loss_rate
+
+    Returns:
+        Formatted string like "10/9/1 loss 10.0%"
+    """
+    sent = entry.get('sent', 0)
+    received = entry.get('received', 0)
+    lost = entry.get('lost', 0)
+    return f"{sent}/{received}/{lost} loss {entry['loss_rate']:.1f}%"
+
+
 def build_summary_suffix(entry, summary_mode):
     """
     Build the suffix for a summary line based on the summary mode.
@@ -81,10 +97,7 @@ def build_summary_suffix(entry, summary_mode):
     if summary_mode == "streak":
         return f": streak {build_streak_label(entry)}"
     # Default mode is 'rates' - show Snt/Rcv/Los and loss percentage
-    sent = entry.get('sent', 0)
-    received = entry.get('received', 0)
-    lost = entry.get('lost', 0)
-    return f": {sent}/{received}/{lost} loss {entry['loss_rate']:.1f}%"
+    return f": {build_packet_stats_label(entry)}"
 
 
 def build_summary_all_suffix(entry):
@@ -103,11 +116,8 @@ def build_summary_all_suffix(entry):
     latest_ttl = entry.get("latest_ttl")
     ttl_value = f"{latest_ttl}" if latest_ttl is not None else "n/a"
     streak_label = build_streak_label(entry)
-    sent = entry.get('sent', 0)
-    received = entry.get('received', 0)
-    lost = entry.get('lost', 0)
     parts = [
-        f"{sent}/{received}/{lost} loss {entry['loss_rate']:.1f}%",
+        build_packet_stats_label(entry),
         f"avg rtt {avg_rtt}",
         f"jitter {jitter}",
         f"stddev {stddev}",
