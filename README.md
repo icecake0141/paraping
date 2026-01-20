@@ -98,43 +98,245 @@ ping_helper <host> <timeout_ms> [icmp_seq]
 
 ## Installation
 
-### Standard Installation (Editable Mode)
+ParaPing supports multiple installation methods to suit different workflows and user preferences. Choose the method that works best for you.
 
-Install ParaPing in editable mode for development or local use:
+### Quick Start (Recommended)
+
+For most users, we recommend the **user-level installation** which installs to `~/.local` and doesn't require sudo:
 
 ```bash
 git clone https://github.com/icecake0141/paraping.git
 cd paraping
 
-# Install the package in editable mode
+# Install for current user (no sudo needed)
+make install-user
+
+# Build the privileged ICMP helper (Linux only)
+make build
+sudo make setcap
+
+# Run paraping
+paraping --help
+```
+
+**PATH Configuration:** If `paraping` command is not found, add `~/.local/bin` to your PATH:
+```bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+### Installation Methods Comparison
+
+| Method | Use Case | Requires sudo | PATH | Dependency Management |
+|--------|----------|--------------|------|----------------------|
+| `make install-user` | **Recommended** for most users | No (except setcap) | `~/.local/bin` | pip handles it |
+| `make install-system` | System-wide, all users | Yes | `/usr/local/bin` | pip handles it |
+| `make install-wrapper` | Minimal, no pip install | Yes | `/usr/local/bin` | Manual PYTHONPATH |
+| `pipx install .` | Isolated environment | No | `~/.local/bin` | pipx handles it |
+| `pip install -e .` | Development/editable | No | Current venv | pip handles it |
+
+### Detailed Installation Instructions
+
+#### 1. User-Level Installation (Recommended)
+
+Installs to `~/.local` for the current user only. No sudo needed, clean uninstall, doesn't affect system Python.
+
+```bash
+git clone https://github.com/icecake0141/paraping.git
+cd paraping
+
+# Install the package for current user
+make install-user
+
+# Build and configure the ICMP helper (Linux only)
+make build
+sudo make setcap
+
+# Verify installation
+paraping --help
+```
+
+**Pros:**
+- No sudo required for Python package installation
+- Clean separation from system Python packages
+- Easy to uninstall with `make uninstall-user`
+- Recommended for most users
+
+**Cons:**
+- Requires `~/.local/bin` in PATH (usually automatic on modern systems)
+- Per-user installation (won't be available for other users)
+
+#### 2. System-Wide Installation
+
+Installs to system-wide Python site-packages. Requires sudo. Available for all users.
+
+```bash
+git clone https://github.com/icecake0141/paraping.git
+cd paraping
+
+# Install the package system-wide (requires sudo)
+make install-system
+
+# Build and configure the ICMP helper (Linux only)
+make build
+sudo make setcap
+
+# Verify installation
+paraping --help
+```
+
+**Pros:**
+- Available for all users on the system
+- Command installed to `/usr/local/bin` (always in PATH)
+
+**Cons:**
+- Requires sudo for installation
+- May conflict with system Python packages
+- Harder to clean up
+
+#### 3. Wrapper Script Installation (Advanced)
+
+Installs a lightweight shell wrapper without pip. Requires manual PYTHONPATH setup.
+
+```bash
+git clone https://github.com/icecake0141/paraping.git
+cd paraping
+
+# Install wrapper script to /usr/local/bin
+make install-wrapper
+
+# Build and configure the ICMP helper (Linux only)
+make build
+sudo make setcap
+
+# The wrapper expects the paraping module to be importable
+# Either install with make install-user/install-system first,
+# or set PYTHONPATH when running:
+export PYTHONPATH=/path/to/paraping:$PYTHONPATH
+paraping --help
+```
+
+**Pros:**
+- Minimal installation footprint
+- No pip dependency tracking
+- Can run from any directory
+
+**Cons:**
+- Requires manual PYTHONPATH management OR prior pip install
+- Not recommended unless you have specific requirements
+
+#### 4. Using pipx (Alternative)
+
+If you use `pipx` for isolated Python CLI tools:
+
+```bash
+git clone https://github.com/icecake0141/paraping.git
+cd paraping
+
+# Install using pipx (installs in isolated environment)
+pipx install .
+
+# Build and configure the ICMP helper (Linux only)
+make build
+sudo make setcap
+
+# Verify installation
+paraping --help
+```
+
+**Pros:**
+- Isolated virtual environment per tool
+- Automatic PATH management
+- Clean uninstall with `pipx uninstall paraping`
+
+**Cons:**
+- Requires pipx to be installed
+- Slightly more complex dependency management
+
+#### 5. Development Installation (Editable Mode)
+
+For development or contributing to ParaPing:
+
+```bash
+git clone https://github.com/icecake0141/paraping.git
+cd paraping
+
+# Install in editable mode (changes reflect immediately)
 pip install -e .
 
 # Build the privileged ICMP helper (Linux only)
 make build
 sudo make setcap
 
-# Now you can run 'paraping' from anywhere
+# Run from anywhere, changes take effect immediately
 paraping --help
 ```
 
-### Legacy Installation (Without Package Installation)
+**Pros:**
+- Changes to code take effect immediately without reinstall
+- Ideal for development and testing
+- Works in virtual environments
 
-If you prefer to run ParaPing without installing it as a package:
+**Cons:**
+- Requires keeping the source directory
+- Not suitable for production use
+
+#### 6. Legacy Installation (Without Package Installation)
+
+Run directly from the repository without installing:
 
 ```bash
 git clone https://github.com/icecake0141/paraping.git
 cd paraping
-python -m pip install -r requirements.txt
+python3 -m pip install -r requirements.txt
 
 # Build the privileged ICMP helper (Linux only)
 make build
 sudo make setcap
 
 # Run directly from the repository
+python3 -m paraping --help
+# Or use the main.py wrapper
 ./main.py --help
 ```
 
-**Note:** When using `pip install -e .`, the `paraping` command becomes available system-wide (in your current Python environment). The native `ping_helper` binary must still be built separately using `make build` and configured with capabilities using `sudo make setcap` (Linux only).
+**Note:** ParaPing has no external Python dependencies (all stdlib), so `requirements.txt` is minimal.
+
+### Uninstalling ParaPing
+
+Depending on how you installed ParaPing:
+
+```bash
+# Uninstall user-level installation
+make uninstall-user
+
+# Uninstall system-wide installation
+make uninstall-system
+
+# Remove wrapper script
+make uninstall-wrapper
+
+# Using pipx
+pipx uninstall paraping
+
+# Using pip directly
+pip uninstall paraping
+```
+
+### Building and Cleaning
+
+```bash
+# Build the Python wheel package
+make build-python
+
+# Clean Python build artifacts
+make clean-python
+
+# Clean all build artifacts (Python + C helper)
+make clean
+```
+
+**Note:** The native `ping_helper` binary must be built separately using `make build` and configured with capabilities using `sudo make setcap` (Linux only) regardless of the Python installation method chosen.
 
 ## Usage
 
