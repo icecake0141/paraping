@@ -39,7 +39,7 @@ Welcome to the ParaPing documentation hub. This directory contains comprehensive
 ## Quick Links
 
 ### For Users
-- [Main README](../README.md) - Project overview and usage instructions (English and Japanese / 英語と日本語)
+- [Main README](../README.md) - Project overview and usage instructions (available in English and Japanese)
 
 ### For Contributors
 - [Contributing Guidelines](CONTRIBUTING.md) - Development guidelines and PR requirements
