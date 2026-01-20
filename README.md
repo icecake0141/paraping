@@ -40,7 +40,7 @@ ParaPing is an interactive, terminal-based ICMP monitor that pings many hosts in
 - The `ping_helper` binary built with `cap_net_raw` (Linux) to run without `sudo`.
 - Root/administrator privileges if you cannot use the helper (non-Linux platforms).
 - Network access for optional ASN lookups.
-- IPv4-only support (hosts must resolve to IPv4 addresses).
+- IPv4-only ping support: IPv6 addresses can be specified in configuration files but will likely fail during ping. When a hostname resolves to both IPv4 and IPv6 addresses, IPv4 is automatically preferred.
 
 ### Linux-Specific: Privileged ICMP Helper (Recommended)
 
@@ -199,7 +199,7 @@ Example (explicit IPv4 addresses only):
 ## Notes
 - ICMP requires elevated privileges (run with `sudo` or Administrator on Windows) unless using the capability-based helper on Linux.
 - ASN lookups use `whois.cymru.com`; blocked networks will show blank ASN values.
-- IPv6 is not supported; use IPv4 addresses or hostnames that resolve to IPv4.
+- IPv6 addresses can be specified but pinging will likely fail (ping_helper only supports IPv4). When hostnames resolve to both IPv4 and IPv6, IPv4 is automatically preferred.
 - The monitor starts one worker thread per host and enforces a hard limit of 128 hosts. It exits with an error if exceeded.
 - When the summary panel is positioned at the top/bottom, it expands to use available empty rows.
 - When the summary panel is positioned at the top/bottom, it shows all summary fields if the width allows.
