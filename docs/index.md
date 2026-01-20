@@ -31,11 +31,6 @@ Welcome to the ParaPing documentation hub. This directory contains comprehensive
 ### API Reference
 - [API Documentation](api/index.md) - Module and API documentation (placeholder)
 
-### Code Reviews & Quality
-- [Code Review Reports](reviews/) - Comprehensive code review artifacts
-  - [CODE_REVIEW.md](reviews/CODE_REVIEW.md) - Full detailed code review report
-  - [REVIEW_SUMMARY.md](reviews/REVIEW_SUMMARY.md) - Executive summary of code review
-
 ### Images & Diagrams
 - [images/](images/) - Screenshots, diagrams, and visual documentation
 
@@ -48,7 +43,6 @@ Welcome to the ParaPing documentation hub. This directory contains comprehensive
 ### For Contributors
 - [Contributing Guidelines](CONTRIBUTING.md) - Development guidelines and PR requirements
 - [Modularization Guide](MODULARIZATION.md) - Module ownership and test organization
-- [Code Review Report](reviews/CODE_REVIEW.md) - Security and quality analysis
 
 ### For Developers
 - [API Documentation](api/index.md) - Module layout and API reference (coming soon)

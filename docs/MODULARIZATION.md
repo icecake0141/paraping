@@ -302,7 +302,6 @@ When extracting code from `main.py` into a new module, follow this checklist:
   - [ ] Update this MODULARIZATION.md with new module
   - [ ] Update README.md if user-facing changes
   - [ ] Add docstrings to public functions
-  - [ ] Update CODE_REVIEW.md if architectural changes
 
 - [ ] **Validate Changes**
   - [ ] Run full test suite: `pytest tests/ -v`

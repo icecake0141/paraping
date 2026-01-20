@@ -98,7 +98,6 @@ main.py
 This API documentation is a work in progress. Detailed function-level documentation will be added incrementally as the codebase evolves.
 
 For now, please refer to:
-- [Code Review Report](../reviews/CODE_REVIEW.md) for architectural overview
 - [Modularization Guide](../MODULARIZATION.md) for module boundaries and ownership
 - Source code docstrings for function-specific documentation
 
