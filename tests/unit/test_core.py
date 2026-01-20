@@ -92,11 +92,14 @@ class TestParseHostFileLine(unittest.TestCase):
             result = parse_host_file_line("999.999.999.999,invalid", 1, "hosts.txt")
         self.assertIsNone(result)
 
-    def test_parse_ipv6_address_unsupported(self):
-        """Test that IPv6 addresses are not supported"""
-        with patch("sys.stderr"):
+    def test_parse_ipv6_address_with_warning(self):
+        """Test that IPv6 addresses are accepted but generate a warning"""
+        with patch("sys.stderr") as mock_stderr:
             result = parse_host_file_line("::1,localhost", 1, "hosts.txt")
-        self.assertIsNone(result)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["host"], "::1")
+        self.assertEqual(result["alias"], "localhost")
+        self.assertEqual(result["ip"], "::1")
 
     def test_parse_empty_ip(self):
         """Test parsing empty IP field returns None"""
@@ -169,10 +172,12 @@ class TestReadInputFile(unittest.TestCase):
 class TestBuildHostInfos(unittest.TestCase):
     """Test cases for build_host_infos function"""
 
-    @patch("socket.gethostbyname")
-    def test_build_from_string_hosts(self, mock_gethostbyname):
+    @patch("socket.getaddrinfo")
+    def test_build_from_string_hosts(self, mock_getaddrinfo):
         """Test building host infos from list of strings"""
-        mock_gethostbyname.return_value = "192.0.2.1"
+        mock_getaddrinfo.return_value = [
+            (socket.AF_INET, socket.SOCK_RAW, 0, '', ('192.0.2.1', 0))
+        ]
 
         hosts = ["example.com", "test.com"]
         host_infos, host_map = build_host_infos(hosts)
@@ -183,10 +188,12 @@ class TestBuildHostInfos(unittest.TestCase):
         self.assertEqual(host_infos[0]["id"], 0)
         self.assertEqual(host_infos[1]["id"], 1)
 
-    @patch("socket.gethostbyname")
-    def test_build_from_dict_hosts(self, mock_gethostbyname):
+    @patch("socket.getaddrinfo")
+    def test_build_from_dict_hosts(self, mock_getaddrinfo):
         """Test building host infos from list of dicts"""
-        mock_gethostbyname.return_value = "192.0.2.1"
+        mock_getaddrinfo.return_value = [
+            (socket.AF_INET, socket.SOCK_RAW, 0, '', ('192.0.2.1', 0))
+        ]
 
         hosts = [
             {"host": "192.0.2.1", "alias": "server1", "ip": "192.0.2.1"},
@@ -199,10 +206,12 @@ class TestBuildHostInfos(unittest.TestCase):
         self.assertEqual(host_infos[0]["ip"], "192.0.2.1")
         self.assertEqual(host_infos[1]["alias"], "server2")
 
-    @patch("socket.gethostbyname")
-    def test_build_initializes_pending_flags(self, mock_gethostbyname):
+    @patch("socket.getaddrinfo")
+    def test_build_initializes_pending_flags(self, mock_getaddrinfo):
         """Test that rdns_pending and asn_pending are initialized"""
-        mock_gethostbyname.return_value = "192.0.2.1"
+        mock_getaddrinfo.return_value = [
+            (socket.AF_INET, socket.SOCK_RAW, 0, '', ('192.0.2.1', 0))
+        ]
 
         hosts = ["example.com"]
         host_infos, _ = build_host_infos(hosts)
@@ -212,10 +221,10 @@ class TestBuildHostInfos(unittest.TestCase):
         self.assertIsNone(host_infos[0]["rdns"])
         self.assertIsNone(host_infos[0]["asn"])
 
-    @patch("socket.gethostbyname")
-    def test_build_handles_dns_failure(self, mock_gethostbyname):
+    @patch("socket.getaddrinfo")
+    def test_build_handles_dns_failure(self, mock_getaddrinfo):
         """Test handling DNS resolution failure"""
-        mock_gethostbyname.side_effect = socket.gaierror("DNS error")
+        mock_getaddrinfo.side_effect = socket.gaierror("DNS error")
 
         hosts = ["invalid.example"]
         host_infos, _ = build_host_infos(hosts)
@@ -223,16 +232,46 @@ class TestBuildHostInfos(unittest.TestCase):
         self.assertEqual(len(host_infos), 1)
         self.assertEqual(host_infos[0]["ip"], "invalid.example")
 
-    @patch("socket.gethostbyname")
-    def test_build_creates_host_map(self, mock_gethostbyname):
+    @patch("socket.getaddrinfo")
+    def test_build_creates_host_map(self, mock_getaddrinfo):
         """Test that host_map is created correctly"""
-        mock_gethostbyname.return_value = "192.0.2.1"
+        mock_getaddrinfo.return_value = [
+            (socket.AF_INET, socket.SOCK_RAW, 0, '', ('192.0.2.1', 0))
+        ]
 
         hosts = ["example.com", "example.com"]  # Duplicate host
         host_infos, host_map = build_host_infos(hosts)
 
         self.assertIn("example.com", host_map)
         self.assertEqual(len(host_map["example.com"]), 2)
+
+    @patch("socket.getaddrinfo")
+    def test_build_prefers_ipv4_over_ipv6(self, mock_getaddrinfo):
+        """Test that IPv4 is preferred when both IPv4 and IPv6 are available"""
+        mock_getaddrinfo.return_value = [
+            (socket.AF_INET6, socket.SOCK_RAW, 0, '', ('2001:db8::1', 0)),
+            (socket.AF_INET, socket.SOCK_RAW, 0, '', ('192.0.2.1', 0)),
+        ]
+
+        hosts = ["dual-stack.example.com"]
+        host_infos, _ = build_host_infos(hosts)
+
+        self.assertEqual(len(host_infos), 1)
+        self.assertEqual(host_infos[0]["ip"], "192.0.2.1")
+
+    @patch("socket.getaddrinfo")
+    def test_build_uses_ipv6_when_only_ipv6_available(self, mock_getaddrinfo):
+        """Test that IPv6 is used when only IPv6 addresses are available"""
+        mock_getaddrinfo.return_value = [
+            (socket.AF_INET6, socket.SOCK_RAW, 0, '', ('2001:db8::1', 0)),
+        ]
+
+        with patch("sys.stderr"):
+            hosts = ["ipv6-only.example.com"]
+            host_infos, _ = build_host_infos(hosts)
+
+        self.assertEqual(len(host_infos), 1)
+        self.assertEqual(host_infos[0]["ip"], "2001:db8::1")
 
 
 class TestCreateStateSnapshot(unittest.TestCase):

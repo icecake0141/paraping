@@ -15,6 +15,7 @@ Unit tests for display formatting and summary data computation
 """
 
 import os
+import socket
 import sys
 import unittest
 from collections import deque
@@ -457,10 +458,12 @@ class TestTimezoneFormatting(unittest.TestCase):
 class TestHostInfoBuilding(unittest.TestCase):
     """Test host info building functions"""
 
-    @patch("paraping.core.socket.gethostbyname")
-    def test_build_host_infos_with_hostname(self, mock_gethostbyname):
+    @patch("paraping.core.socket.getaddrinfo")
+    def test_build_host_infos_with_hostname(self, mock_getaddrinfo):
         """Test building host infos with resolvable hostname"""
-        mock_gethostbyname.return_value = "93.184.216.34"
+        mock_getaddrinfo.return_value = [
+            (socket.AF_INET, socket.SOCK_RAW, 0, '', ('93.184.216.34', 0))
+        ]
 
         host_infos, host_map = build_host_infos(["example.com"])
 
@@ -470,20 +473,24 @@ class TestHostInfoBuilding(unittest.TestCase):
         self.assertEqual(host_infos[0]["alias"], "example.com")
         self.assertIn("example.com", host_map)
 
-    @patch("paraping.core.socket.gethostbyname")
-    def test_build_host_infos_with_ip(self, mock_gethostbyname):
+    @patch("paraping.core.socket.getaddrinfo")
+    def test_build_host_infos_with_ip(self, mock_getaddrinfo):
         """Test building host infos with IP address"""
-        mock_gethostbyname.side_effect = OSError()
+        mock_getaddrinfo.side_effect = OSError()
 
         host_infos, host_map = build_host_infos(["192.168.1.1"])
 
         self.assertEqual(len(host_infos), 1)
         self.assertEqual(host_infos[0]["ip"], "192.168.1.1")
 
-    @patch("paraping.core.socket.gethostbyname")
-    def test_build_host_infos_multiple_hosts(self, mock_gethostbyname):
+    @patch("paraping.core.socket.getaddrinfo")
+    def test_build_host_infos_multiple_hosts(self, mock_getaddrinfo):
         """Test building host infos with multiple hosts"""
-        mock_gethostbyname.side_effect = ["1.1.1.1", "2.2.2.2", "3.3.3.3"]
+        mock_getaddrinfo.side_effect = [
+            [(socket.AF_INET, socket.SOCK_RAW, 0, '', ('1.1.1.1', 0))],
+            [(socket.AF_INET, socket.SOCK_RAW, 0, '', ('2.2.2.2', 0))],
+            [(socket.AF_INET, socket.SOCK_RAW, 0, '', ('3.3.3.3', 0))],
+        ]
 
         host_infos, host_map = build_host_infos(["h1.com", "h2.com", "h3.com"])
 
