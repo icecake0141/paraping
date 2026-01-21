@@ -35,6 +35,10 @@ htmlcov/
 logs/*.txt
 logs/*.log
 
+# DEBUG: Arrow key debugging log files (temporary)
+# Remove this after arrow key issue is resolved
+paraping_debug_keys.log
+
 # Distribution / packaging
 *.egg-info/
 dist/

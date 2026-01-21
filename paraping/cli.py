@@ -198,6 +198,13 @@ def handle_options():
         default="./ping_helper",
         help="Path to ping_helper binary (default: ./ping_helper)",
     )
+    # DEBUG: Add debug-keys flag for arrow key troubleshooting
+    # Remove this after arrow key issue is resolved
+    parser.add_argument(
+        "--debug-keys",
+        action="store_true",
+        help="Enable debug logging for keyboard input (troubleshooting arrow keys)",
+    )
     parser.add_argument("hosts", nargs="*", help="Hosts to ping (IP addresses or hostnames)")
 
     args = parser.parse_args()
@@ -210,6 +217,15 @@ def handle_options():
 
 def run(args):
     """Run the ParaPing monitor with parsed arguments."""
+    # DEBUG: Initialize debug logger if enabled
+    # Remove this after arrow key issue is resolved
+    if args.debug_keys:
+        from paraping.debug_logger import init_debug_logger
+        init_debug_logger()
+        print("Debug mode enabled: Keyboard input will be logged to paraping_debug_keys.log")
+        print("Press arrow keys to test input detection. Logs will capture detailed diagnostics.")
+        print()
+    
     # Validate count parameter - allow 0 for infinite
     if args.count < 0:
         print("Error: Count must be a non-negative number (0 for infinite).")
@@ -402,6 +418,17 @@ def run(args):
                 tty.setcbreak(stdin_fd)
             while running and (not expect_completion or completed_hosts < len(host_infos)):
                 key = read_key()
+                
+                # DEBUG: Update status message with debug prompt if enabled
+                # Remove this after arrow key issue is resolved
+                if args.debug_keys:
+                    from paraping.debug_logger import get_debug_logger
+                    debug_logger = get_debug_logger()
+                    if debug_logger and not debug_logger.is_test_complete():
+                        status_message = debug_logger.get_prompt_message()
+                        force_render = True
+                        updated = True
+                
                 if key:
                     if key in ("q", "Q"):
                         running = False
@@ -898,6 +925,14 @@ def run(args):
                 termios.tcsetattr(stdin_fd, termios.TCSADRAIN, original_term)
 
     prepare_terminal_for_exit()
+    
+    # DEBUG: Shutdown debug logger if enabled
+    # Remove this after arrow key issue is resolved
+    if args.debug_keys:
+        from paraping.debug_logger import shutdown_debug_logger
+        shutdown_debug_logger()
+        print("\nDebug logs written to paraping_debug_keys.log")
+    
     print("\n" + "=" * 60)
     print("SUMMARY")
     print("=" * 60)
