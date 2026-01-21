@@ -162,6 +162,7 @@ class TestQuitHotkey(unittest.TestCase):
             flash_on_fail=False,
             bell_on_fail=False,
             ping_helper="./ping_helper",
+            debug_keys=False,
         )
 
         # Mock executor
@@ -230,6 +231,7 @@ class TestQuitHotkey(unittest.TestCase):
             flash_on_fail=False,
             bell_on_fail=False,
             ping_helper="./ping_helper",
+            debug_keys=False,
         )
 
         # Mock executor
@@ -298,6 +300,7 @@ class TestQuitHotkey(unittest.TestCase):
             flash_on_fail=False,
             bell_on_fail=False,
             ping_helper="./ping_helper",
+            debug_keys=False,
         )
 
         # Mock executor

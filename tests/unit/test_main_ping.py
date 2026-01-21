@@ -145,6 +145,7 @@ class TestMain(unittest.TestCase):
             timezone=None,
             snapshot_timezone="utc",
             ping_helper="./ping_helper",
+            debug_keys=False,
         )
 
         # Mock executor
@@ -178,6 +179,7 @@ class TestMain(unittest.TestCase):
             timezone=None,
             snapshot_timezone="utc",
             ping_helper="./ping_helper",
+            debug_keys=False,
         )
 
         main(args)
@@ -198,6 +200,7 @@ class TestMain(unittest.TestCase):
             timezone=None,
             snapshot_timezone="utc",
             ping_helper="./ping_helper",
+            debug_keys=False,
         )
 
         main(args)
@@ -220,6 +223,7 @@ class TestMain(unittest.TestCase):
             timezone=None,
             snapshot_timezone="utc",
             ping_helper="./ping_helper",
+            debug_keys=False,
         )
 
         main(args)
@@ -243,6 +247,7 @@ class TestMain(unittest.TestCase):
             timezone=None,
             snapshot_timezone="utc",
             ping_helper="./ping_helper",
+            debug_keys=False,
         )
 
         main(args)
@@ -303,6 +308,7 @@ class TestMain(unittest.TestCase):
             timezone=None,
             snapshot_timezone="utc",
             ping_helper="./ping_helper",
+            debug_keys=False,
         )
 
         # Mock executor
@@ -338,6 +344,7 @@ class TestMain(unittest.TestCase):
             timezone=None,
             snapshot_timezone="utc",
             ping_helper="./ping_helper",
+            debug_keys=False,
         )
 
         main(args)
