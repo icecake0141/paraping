@@ -12,6 +12,8 @@ This file was created or modified with the assistance of an AI (Large Language M
 Review required for correctness, security, and licensing.
 -->
 
+## English
+
 # Pull Request Template
 
 ## Description
@@ -213,3 +215,216 @@ Expected: All hooks pass
 ---
 
 **Human Review Required:** This PR includes LLM-generated code. Human review is mandatory before merging to verify correctness, security, and licensing compatibility.
+
+---
+
+## 日本語
+
+# プルリクエストテンプレート
+
+## 説明
+
+<!-- 変更内容の明確で簡潔な説明を提供してください -->
+
+### 関連Issue
+<!-- 関連するissueへのリンク、例：Fixes #123、Relates to #456 -->
+
+### 変更内容の要約
+<!-- 何が変更され、なぜ変更されたかの簡潔な要約 -->
+
+### 理由
+<!-- これらの変更が行われた理由を説明してください -->
+
+### 追加されたテスト
+<!-- 変更を検証するために追加された新しいテストを説明してください -->
+
+### 更新されたドキュメント
+<!-- 更新されたドキュメントをリストしてください（README、docs/など） -->
+
+### 後方互換性/移行に関する注意事項
+<!-- 破壊的変更や必要な移行手順があれば記載してください -->
+
+## LLM貢献の開示
+
+**LLMの関与：**
+<!-- LLMの支援により作成/変更されたファイルをリストしてください -->
+- LLMの支援により作成/変更されたファイル：
+  - `<ファイル1>`
+  - `<ファイル2>`
+  - ...
+
+**人間によるレビュー：**
+<!-- 実施された人間によるレビューについての簡単な注記 -->
+- 実施された人間によるレビュー：[レビュー範囲を記述]
+
+## 検証コマンド
+
+### リンティング
+
+**Flake8（厳格 - 合格必須）：**
+```bash
+flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+```
+期待値：0エラー
+
+**Flake8（スタイル - 情報提供のみ）：**
+```bash
+flake8 . --count --max-complexity=10 --max-line-length=127 --statistics
+```
+期待値：情報出力（違反は報告されますがブロックしません）
+
+**Pylint（合格必須 - スコア >= 9.0/10）：**
+```bash
+pylint . --fail-under=9.0
+```
+期待値：スコア >= 9.0/10
+
+**Ruff（オプション - モダンなリンター）：**
+```bash
+ruff check . && ruff format . --check
+```
+期待値：エラーなし
+
+### テスト
+
+**カバレッジ付きですべてのテストを実行：**
+```bash
+pytest tests/ -v --cov=. --cov-report=term-missing
+```
+期待値：すべてのテストが合格
+
+**特定のテストスイートを実行：**
+```bash
+pytest tests/unit/ -v
+pytest tests/contract/ -v
+pytest tests/integration/ -v
+```
+期待値：すべてのテストが合格
+
+### 型チェック（該当する場合）
+
+**MyPy（オプション）：**
+```bash
+mypy .
+```
+
+### フォーマット
+
+**Black：**
+```bash
+black . --check
+```
+期待値：すべてのファイルが正しくフォーマットされている
+
+**isort：**
+```bash
+isort . --check-only
+```
+期待値：すべてのインポートが正しくソートされている
+
+### ビルド検証（該当する場合）
+
+**ネイティブビルド：**
+```bash
+make native 2>&1 | tee native_build.txt
+```
+
+**ヘルパーバイナリ：**
+```bash
+make build
+```
+
+### プリコミットフック
+
+**すべてのプリコミットフックを実行：**
+```bash
+pre-commit run --all-files
+```
+期待値：すべてのフックが合格
+
+## PRチェックリスト
+
+### ライセンスと帰属
+
+- [ ] 新しいファイルにライセンスヘッダー（Apache-2.0 SPDX）を追加
+- [ ] リポジトリにトップレベルのLICENSEファイルが存在する
+- [ ] 変更/生成されたファイルにLLM帰属を追加
+- [ ] 上記のPR説明にLLM変更ファイルを明示的にリスト
+- [ ] PR説明に人間によるレビューの注記を含む
+
+### コード品質
+
+- [ ] リンティング完了 — Flake8厳格：0エラー（コマンド：`flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics`）
+- [ ] リンティング完了 — Pylintスコア：___/10（コマンド：`pylint . --fail-under=9.0`）
+- [ ] テストがローカルで合格（コマンド：`pytest tests/ -v --cov=. --cov-report=term-missing`）
+- [ ] 静的解析/型チェックが合格（該当する場合）
+- [ ] フォーマット適用（コマンド：`black . --check && isort . --check-only`）
+- [ ] プリコミットフックが合格（コマンド：`pre-commit run --all-files`）
+
+### CI/CD
+
+- [ ] CIビルドが合格
+- [ ] ベースブランチとのマージコンフリクトなし
+- [ ] ブランチがベースブランチと最新の状態
+
+### ドキュメント
+
+- [ ] 変更履歴/バージョニングを更新（該当する場合）
+- [ ] README.mdを更新（機能が変更された場合）
+- [ ] docs/のドキュメントを更新（該当する場合）
+- [ ] APIドキュメントを更新（該当する場合）
+- [ ] 例/クイックスタートを更新（該当する場合）
+
+### Git衛生管理
+
+- [ ] コミットメッセージがリポジトリの規約に従っている
+- [ ] コミットがアトミックで適切にスコープされている
+- [ ] 一時ファイル、ビルド成果物、機密データがコミットされていない
+
+### PR説明の品質
+
+- [ ] PRタイトルが明確、説明的で、命令形を使用している
+- [ ] PR説明に含まれる内容：issueリンク、要約、理由、テスト、ドキュメント、移行に関する注記
+- [ ] PR説明にLLM変更ファイルと人間によるレビューの注記を明示的にリスト
+- [ ] 使用した正確なコマンドとともに検証コマンドをリスト
+
+### レビュー準備完了
+
+- [ ] 変更は最小限でissueに焦点を当てている
+- [ ] 無関係な変更や修正は含まれていない
+- [ ] コードは人間によるレビューの準備ができている
+- [ ] スクリーンショット/ログを添付（UIまたは開発者UXに影響がある場合）
+
+## 追加の注記
+
+<!-- レビュアーのための追加のコンテキスト、スクリーンショット、ログ、または情報 -->
+
+## 検証ログ
+
+<details>
+<summary>Flake8厳格出力</summary>
+
+```
+<!-- ここに出力を貼り付けてください -->
+```
+</details>
+
+<details>
+<summary>Pylint出力</summary>
+
+```
+<!-- ここに出力を貼り付けてください -->
+```
+</details>
+
+<details>
+<summary>テスト出力</summary>
+
+```
+<!-- ここに出力を貼り付けてください -->
+```
+</details>
+
+---
+
+**人間によるレビューが必要：** このPRにはLLM生成コードが含まれています。正確性、セキュリティ、ライセンスの互換性を検証するために、マージ前に人間によるレビューが必須です。
