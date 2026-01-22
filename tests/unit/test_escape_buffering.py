@@ -26,7 +26,7 @@ from unittest.mock import patch
 # Add parent directory to path to import escape_buffering
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from paraping.escape_buffering import (
+from paraping.escape_buffering import (  # noqa: E402
     ESC,
     looks_like_complete_sequence,
     read_sequence_after_esc,

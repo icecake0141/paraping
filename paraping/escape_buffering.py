@@ -122,6 +122,10 @@ def read_sequence_after_esc(first_byte: bytes, stdin_fd: int) -> Tuple[bytes, Di
             break
 
         # Record timing for each byte in the chunk
+        # Note: All bytes in a chunk share the same timestamp since they arrived
+        # in a single read() call. This is a limitation but acceptable for debugging.
+        # If more precise per-byte timing is needed, would require byte-by-byte reads
+        # which would significantly impact performance.
         ts_m = monotonic()
         ts_utc = time()
         buf.extend(chunk)
@@ -144,6 +148,8 @@ def read_sequence_after_esc(first_byte: bytes, stdin_fd: int) -> Tuple[bytes, Di
 
     # Log diagnostic information to stderr in JSONL format
     # This helps with debugging split sequence issues in production
+    # Note: In high-frequency input scenarios, consider rate-limiting this logging
+    # For now, logging is minimal and only happens on ESC sequences (rare in normal use)
     try:
         log_entry = {
             "event": "esc_sequence_buffering",
@@ -157,7 +163,9 @@ def read_sequence_after_esc(first_byte: bytes, stdin_fd: int) -> Tuple[bytes, Di
                 else []
             ),
         }
-        print(json.dumps(log_entry), file=sys.stderr, flush=True)
+        # Only log if escape sequence debugging is needed
+        # Uncomment the next line to enable diagnostic logging:
+        # print(json.dumps(log_entry), file=sys.stderr, flush=True)
     except Exception:
         # Don't let logging errors affect input processing
         pass
