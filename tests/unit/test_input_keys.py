@@ -97,98 +97,84 @@ class TestParseEscapeSequence(unittest.TestCase):
 class TestReadKey(unittest.TestCase):
     """Test read_key function for cross-platform arrow key reading."""
 
+    @patch("paraping.input_keys.read_sequence_after_esc")
     @patch("paraping.input_keys.select.select")
     @patch("paraping.input_keys.sys.stdin")
-    def test_read_arrow_up_standard(self, mock_stdin, mock_select):
+    def test_read_arrow_up_standard(self, mock_stdin, mock_select, mock_read_seq):
         """Test reading standard up arrow key sequence."""
         mock_stdin.isatty.return_value = True
-        # First select for initial char, second for escape sequence chars
-        mock_select.side_effect = [
-            ([mock_stdin], [], []),  # ESC ready
-            ([mock_stdin], [], []),  # '[' ready
-            ([mock_stdin], [], []),  # 'A' ready
-        ]
+        # First select for initial char
+        mock_select.return_value = ([mock_stdin], [], [])
         # Simulate ESC [ A sequence
-        mock_stdin.read.side_effect = ["\x1b", "[", "A"]
+        mock_stdin.read.return_value = "\x1b"
+        # Mock the buffering to return the complete sequence
+        mock_read_seq.return_value = (b"\x1b[A", {})
 
         result = read_key()
         self.assertEqual(result, "arrow_up")
 
+    @patch("paraping.input_keys.read_sequence_after_esc")
     @patch("paraping.input_keys.select.select")
     @patch("paraping.input_keys.sys.stdin")
-    def test_read_arrow_down_standard(self, mock_stdin, mock_select):
+    def test_read_arrow_down_standard(self, mock_stdin, mock_select, mock_read_seq):
         """Test reading standard down arrow key sequence."""
         mock_stdin.isatty.return_value = True
-        mock_select.side_effect = [
-            ([mock_stdin], [], []),
-            ([mock_stdin], [], []),
-            ([mock_stdin], [], []),
-        ]
-        mock_stdin.read.side_effect = ["\x1b", "[", "B"]
+        mock_select.return_value = ([mock_stdin], [], [])
+        mock_stdin.read.return_value = "\x1b"
+        mock_read_seq.return_value = (b"\x1b[B", {})
 
         result = read_key()
         self.assertEqual(result, "arrow_down")
 
+    @patch("paraping.input_keys.read_sequence_after_esc")
     @patch("paraping.input_keys.select.select")
     @patch("paraping.input_keys.sys.stdin")
-    def test_read_arrow_left_standard(self, mock_stdin, mock_select):
+    def test_read_arrow_left_standard(self, mock_stdin, mock_select, mock_read_seq):
         """Test reading standard left arrow key sequence."""
         mock_stdin.isatty.return_value = True
-        mock_select.side_effect = [
-            ([mock_stdin], [], []),
-            ([mock_stdin], [], []),
-            ([mock_stdin], [], []),
-        ]
-        mock_stdin.read.side_effect = ["\x1b", "[", "D"]
+        mock_select.return_value = ([mock_stdin], [], [])
+        mock_stdin.read.return_value = "\x1b"
+        mock_read_seq.return_value = (b"\x1b[D", {})
 
         result = read_key()
         self.assertEqual(result, "arrow_left")
 
+    @patch("paraping.input_keys.read_sequence_after_esc")
     @patch("paraping.input_keys.select.select")
     @patch("paraping.input_keys.sys.stdin")
-    def test_read_arrow_right_standard(self, mock_stdin, mock_select):
+    def test_read_arrow_right_standard(self, mock_stdin, mock_select, mock_read_seq):
         """Test reading standard right arrow key sequence."""
         mock_stdin.isatty.return_value = True
-        mock_select.side_effect = [
-            ([mock_stdin], [], []),
-            ([mock_stdin], [], []),
-            ([mock_stdin], [], []),
-        ]
-        mock_stdin.read.side_effect = ["\x1b", "[", "C"]
+        mock_select.return_value = ([mock_stdin], [], [])
+        mock_stdin.read.return_value = "\x1b"
+        mock_read_seq.return_value = (b"\x1b[C", {})
 
         result = read_key()
         self.assertEqual(result, "arrow_right")
 
+    @patch("paraping.input_keys.read_sequence_after_esc")
     @patch("paraping.input_keys.select.select")
     @patch("paraping.input_keys.sys.stdin")
-    def test_read_application_mode_arrow_up(self, mock_stdin, mock_select):
+    def test_read_application_mode_arrow_up(self, mock_stdin, mock_select, mock_read_seq):
         """Test reading application cursor mode up arrow."""
         mock_stdin.isatty.return_value = True
-        mock_select.side_effect = [
-            ([mock_stdin], [], []),
-            ([mock_stdin], [], []),
-            ([mock_stdin], [], []),
-        ]
-        mock_stdin.read.side_effect = ["\x1b", "O", "A"]
+        mock_select.return_value = ([mock_stdin], [], [])
+        mock_stdin.read.return_value = "\x1b"
+        mock_read_seq.return_value = (b"\x1bOA", {})
 
         result = read_key()
         self.assertEqual(result, "arrow_up")
 
+    @patch("paraping.input_keys.read_sequence_after_esc")
     @patch("paraping.input_keys.select.select")
     @patch("paraping.input_keys.sys.stdin")
-    def test_read_modified_arrow_ctrl_up(self, mock_stdin, mock_select):
+    def test_read_modified_arrow_ctrl_up(self, mock_stdin, mock_select, mock_read_seq):
         """Test reading Ctrl+Up arrow sequence."""
         mock_stdin.isatty.return_value = True
-        mock_select.side_effect = [
-            ([mock_stdin], [], []),
-            ([mock_stdin], [], []),
-            ([mock_stdin], [], []),
-            ([mock_stdin], [], []),
-            ([mock_stdin], [], []),
-            ([mock_stdin], [], []),
-        ]
+        mock_select.return_value = ([mock_stdin], [], [])
+        mock_stdin.read.return_value = "\x1b"
         # Sequence: ESC [ 1 ; 5 A
-        mock_stdin.read.side_effect = ["\x1b", "[", "1", ";", "5", "A"]
+        mock_read_seq.return_value = (b"\x1b[1;5A", {})
 
         result = read_key()
         self.assertEqual(result, "arrow_up")
@@ -204,17 +190,17 @@ class TestReadKey(unittest.TestCase):
         result = read_key()
         self.assertEqual(result, "q")
 
+    @patch("paraping.input_keys.read_sequence_after_esc")
     @patch("paraping.input_keys.select.select")
     @patch("paraping.input_keys.sys.stdin")
-    def test_read_timeout_on_incomplete_sequence(self, mock_stdin, mock_select):
+    def test_read_timeout_on_incomplete_sequence(self, mock_stdin, mock_select, mock_read_seq):
         """Test behavior when escape sequence times out (incomplete read)."""
         mock_stdin.isatty.return_value = True
-        # First select returns ready for ESC, subsequent ones timeout
-        mock_select.side_effect = [
-            ([mock_stdin], [], []),  # ESC ready
-            ([], [], []),  # Timeout - no more data
-        ]
-        mock_stdin.read.side_effect = ["\x1b"]  # Only ESC read
+        # First select returns ready for ESC
+        mock_select.return_value = ([mock_stdin], [], [])
+        mock_stdin.read.return_value = "\x1b"  # Only ESC read
+        # Buffering returns just ESC (timeout case)
+        mock_read_seq.return_value = (b"\x1b", {})
 
         result = read_key()
         # Should return ESC character when sequence incomplete/times out

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright 2025 icecake0141
+# Copyright 2025, 2026 icecake0141
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,16 +16,21 @@ Keyboard input handling for ParaPing.
 
 This module provides functions for reading keyboard input and parsing
 escape sequences, particularly for arrow key navigation.
+
+Updated to use always-on ESC buffering to handle split escape sequences
+in environments like VSCode→WSL2, SSH with delays, etc.
 """
 
+import os
 import select
 import sys
-import time
+
+from paraping.escape_buffering import read_sequence_after_esc
 
 # Constants for arrow key reading
-# Increased from 0.05 to 0.1 seconds to handle slow terminals/remote connections
-# where escape sequence bytes may arrive with delays (e.g., SSH, RDP, VMs)
-ARROW_KEY_READ_TIMEOUT = 0.1  # Timeout for reading arrow key escape sequences
+# Note: Timeout handling is now managed by escape_buffering module
+# with hardcoded timing: T_GAP=30ms, T_TOTAL=500ms
+ARROW_KEY_READ_TIMEOUT = 0.1  # Kept for backward compatibility, but not actively used
 
 
 def parse_escape_sequence(seq):
@@ -67,27 +72,30 @@ def read_key():
     Returns special strings for arrow keys: 'arrow_left', 'arrow_right',
     'arrow_up', 'arrow_down'. Returns the character for normal keys,
     or None if no input is available.
+    
+    Uses always-on ESC buffering to handle split escape sequences in
+    environments with inter-byte delays (VSCode→WSL2, SSH, etc.).
     """
     if not sys.stdin.isatty():
         return None
     ready, _, _ = select.select([sys.stdin], [], [], 0)
     if not ready:
         return None
+    
+    # Read first character
     char = sys.stdin.read(1)
+    
     # Check for escape sequence (arrow keys start with ESC)
     if char == "\x1b":
-        seq = ""
-        deadline = time.monotonic() + ARROW_KEY_READ_TIMEOUT
-        while time.monotonic() < deadline:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                break
-            ready, _, _ = select.select([sys.stdin], [], [], remaining)
-            if not ready:
-                break
-            seq += sys.stdin.read(1)
-            if seq and seq[-1] in ("A", "B", "C", "D"):
-                break
+        # Use always-on buffering to reconstruct potentially split sequences
+        stdin_fd = sys.stdin.fileno()
+        seq_bytes, meta = read_sequence_after_esc(b"\x1b", stdin_fd)
+        
+        # Convert bytes back to string for parsing (skip the ESC byte)
+        seq = seq_bytes[1:].decode('utf-8', errors='replace')
+        
+        # Parse the escape sequence
         parsed = parse_escape_sequence(seq)
         return parsed if parsed is not None else char
+    
     return char
