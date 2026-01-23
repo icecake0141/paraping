@@ -102,34 +102,42 @@ ParaPing supports multiple installation methods to suit different workflows and 
 
 ### Quick Start (Recommended)
 
-For most users, we recommend the **user-level installation** which installs to `~/.local` and doesn't require sudo:
+For most users, we recommend the **simple make approach** which creates a local virtual environment:
 
 ```bash
 git clone https://github.com/icecake0141/paraping.git
 cd paraping
 
-# Install for current user (no sudo needed)
-make install-user
+# Setup user environment (creates .venv and builds ping_helper)
+make
 
-# Build the privileged ICMP helper (Linux only)
-make build
+# On Linux: Configure ICMP helper capabilities (requires sudo)
 sudo make setcap
 
 # Run paraping
-paraping --help
+make run ARGS='--help'
+# Or run directly
+python3 paraping.py --help
 ```
 
-**PATH Configuration:** If `paraping` command is not found, add `~/.local/bin` to your PATH:
+This approach:
+- Creates a `.venv` virtual environment in the repository
+- Builds the `ping_helper` binary for ICMP operations
+- Provides a `paraping.py` executable at the repository root
+- No installation to system or user site-packages required
+- Works on Linux, macOS, and Windows (setcap is Linux-only)
+
+**To see all available commands:**
 ```bash
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
+make help
 ```
 
 ### Installation Methods Comparison
 
 | Method | Use Case | Requires sudo | PATH | Dependency Management |
 |--------|----------|--------------|------|----------------------|
-| `make install-user` | **Recommended** for most users | No (except setcap) | `~/.local/bin` | pip handles it |
+| `make` (default) | **Quickest start** - local venv | No (except setcap) | Not needed | venv isolated |
+| `make install-user` | Install as command | No (except setcap) | `~/.local/bin` | pip handles it |
 | `make install-system` | System-wide, all users | Yes | `/usr/local/bin` | pip handles it |
 | `make install-wrapper` | Minimal, no pip install | Yes | `/usr/local/bin` | Manual PYTHONPATH |
 | `pipx install .` | Isolated environment | No | `~/.local/bin` | pipx handles it |
@@ -137,9 +145,42 @@ source ~/.bashrc
 
 ### Detailed Installation Instructions
 
-#### 1. User-Level Installation (Recommended)
+#### 0. Quick Setup with Virtual Environment (Fastest)
 
-Installs to `~/.local` for the current user only. No sudo needed, clean uninstall, doesn't affect system Python.
+Creates a local `.venv` and runs from the repository without installing:
+
+```bash
+git clone https://github.com/icecake0141/paraping.git
+cd paraping
+
+# One command setup (creates .venv and builds ping_helper)
+make
+
+# On Linux: Configure ICMP helper (requires sudo)
+sudo make setcap
+
+# Run the tool
+make run ARGS='8.8.8.8 1.1.1.1'
+# Or activate venv and run directly
+source .venv/bin/activate
+python paraping.py --help
+```
+
+**Pros:**
+- Fastest setup - no pip installation needed
+- Isolated environment in `.venv`
+- Run with `make run ARGS='...'` or `python3 paraping.py`
+- No PATH configuration required
+- Easy cleanup with `make clean`
+- **Recommended for quick testing or casual use**
+
+**Cons:**
+- Must run from repository directory
+- `paraping` command not globally available
+
+#### 1. User-Level Installation
+
+Installs to `~/.local` for the current user only. No sudo needed, clean uninstall, doesn't affect system Python. **Recommended if you want the `paraping` command available globally.**
 
 ```bash
 git clone https://github.com/icecake0141/paraping.git
@@ -154,6 +195,12 @@ sudo make setcap
 
 # Verify installation
 paraping --help
+```
+
+**PATH Configuration:** If `paraping` command is not found, add `~/.local/bin` to your PATH:
+```bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
 ```
 
 **Pros:**
@@ -443,6 +490,29 @@ For information about the codebase modularization, module ownership boundaries, 
 
 This section provides exact commands for validating your changes locally before submitting a pull request. These commands match the CI pipeline configuration and must pass for PRs to be merged.
 
+### Setting Up Development Environment
+
+**Quick setup using the Makefile (Recommended):**
+```bash
+# Setup development environment with all dev tools
+make dev
+```
+
+This command creates a `.venv`, installs all development dependencies (pytest, flake8, pylint, black, ruff, isort), installs pre-commit hooks, and builds the `ping_helper` binary.
+
+**Activate the development environment:**
+```bash
+source .venv/bin/activate
+```
+
+**Alternative manual setup:**
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-dev.txt
+make build
+```
+
 ### Building the Project
 
 **Build the ICMP helper binary:**
@@ -463,6 +533,13 @@ sudo make setcap
 ### Linting
 
 The CI pipeline enforces strict linting standards. Run these commands locally before submitting a PR:
+
+**Using the Makefile (runs all linters):**
+```bash
+make lint
+```
+
+**Manual linting commands:**
 
 **1. Flake8 (strict - MUST PASS):**
 ```bash
@@ -489,7 +566,23 @@ flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statist
 pylint . --fail-under=9.0
 ```
 
+### Code Formatting
+
+**Format code using the Makefile:**
+```bash
+make format
+```
+
+This runs `black` and `isort` to automatically format your code according to project standards.
+
 ### Testing
+
+**Run tests using the Makefile:**
+```bash
+make test
+```
+
+**Manual testing commands:**
 
 **Run all tests with coverage (matches CI):**
 ```bash
@@ -519,7 +612,22 @@ pytest tests/ --cov=. --cov-report=term --cov-fail-under=80
 
 All tests must pass before submitting a PR. Add tests for new functionality.
 
+### Makefile Development Workflow
+
+The Makefile provides convenient targets for common development tasks:
+
+```bash
+make help        # Show all available targets
+make dev         # Setup development environment
+make test        # Run test suite
+make lint        # Run all linters
+make format      # Format code with black and isort
+make run         # Run paraping with ARGS='...'
+make clean       # Clean all build artifacts
+```
+
 ### Pre-PR Validation Checklist
+
 
 Before opening a pull request, ensure you:
 1. ✅ Build the project: `make build` (Linux) or verify the helper compiles
