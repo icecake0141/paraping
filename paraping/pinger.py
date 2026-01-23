@@ -14,6 +14,9 @@
 Ping functionality for ParaPing.
 
 This module contains functions for pinging hosts and managing ping worker threads.
+A new optional parameter `emit_pending` allows the caller to receive a short-lived
+"sent" event immediately when a ping is dispatched so that the UI can reserve a
+time-slot (pending marker) and avoid timeline drift when replies are delayed.
 """
 
 import os
@@ -34,6 +37,7 @@ def ping_host(
     stop_event=None,
     interval=1.0,
     helper_path="./ping_helper",
+    emit_pending: bool = False,
 ):
     """
     Ping a single host with the specified parameters.
@@ -42,14 +46,17 @@ def ping_host(
         host: The hostname or IP address to ping
         timeout: Timeout in seconds for each ping
         count: Number of ping attempts (0 for infinite)
+        slow_threshold: RTT threshold (seconds) to classify as 'slow'
         verbose: Whether to show detailed output
         pause_event: Event to pause pinging
         stop_event: Event to stop pinging and exit
         interval: Interval in seconds between pings
         helper_path: Path to ping_helper binary
+        emit_pending: If True, yield a 'sent' event before attempting the ping
+                      so the caller can create a pending timeline slot.
 
     Yields:
-        A dict with host, sequence, status, and rtt
+        A dict with host, sequence, status, and rtt/ttl (rtt is seconds) or None
     """
     if verbose:
         print(f"\n--- Pinging {host} ---")
@@ -80,6 +87,21 @@ def ping_host(
                 if stop_event is not None and stop_event.is_set():
                     return
                 time.sleep(0.05)
+
+        # Emit a short-lived 'sent' event before performing the blocking ping.
+        # This allows the UI to append a pending marker synchronously with the
+        # send time and keep timeline columns aligned across hosts.
+        if emit_pending:
+            sent_time = time.time()
+            yield {
+                "host": host,
+                "sequence": i + 1,
+                "status": "sent",
+                "rtt": None,
+                "ttl": None,
+                "sent_time": sent_time,
+            }
+
         try:
             rtt_ms, ttl = ping_with_helper(host, timeout_ms=int(timeout * 1000), helper_path=helper_path)
             if rtt_ms is not None:
@@ -146,6 +168,7 @@ def worker_ping(
         stop_event,
         interval,
         helper_path,
+        emit_pending=True,  # Emit pending events when running as a worker
     ):
         result_queue.put({**result, "host_id": host_info["id"]})
     result_queue.put({"host_id": host_info["id"], "status": "done"})

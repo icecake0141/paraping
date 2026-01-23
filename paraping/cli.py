@@ -259,7 +259,7 @@ def run(args):
     panel_toggle_default = args.panel_position if args.panel_position != "none" else "right"
     last_panel_position = panel_position if panel_position != "none" else None
 
-    symbols = {"success": ".", "fail": "x", "slow": "!"}
+    symbols = {"success": ".", "fail": "x", "slow": "!", "pending": "-"}
     initial_term_size = get_terminal_size(fallback=(80, 24))
     host_infos, host_info_map = build_host_infos(all_hosts)
     host_labels = [info["alias"] for info in host_infos]
@@ -746,11 +746,47 @@ def run(args):
                         continue
 
                     status = result["status"]
-                    buffers[host_id]["timeline"].append(symbols[status])
-                    buffers[host_id]["rtt_history"].append(result.get("rtt"))
-                    buffers[host_id]["time_history"].append(time.time())
-                    buffers[host_id]["ttl_history"].append(result.get("ttl"))
-                    buffers[host_id]["categories"][status].append(result["sequence"])
+                    host_buf = buffers[host_id]
+
+                    # Handle 'sent' pending event: append a pending slot so timelines stay aligned
+                    if status == "sent":
+                        host_buf["timeline"].append(symbols["pending"])
+                        host_buf["rtt_history"].append(None)
+                        host_buf["time_history"].append(result.get("sent_time", time.time()))
+                        host_buf["ttl_history"].append(None)
+                        host_buf["categories"]["pending"].append(result["sequence"])
+                        # Do not update stats yet
+                        if not paused:
+                            updated = True
+                        continue
+
+                    # For final statuses (success/slow/fail), prefer to finalize the last pending slot when possible
+                    try:
+                        last_symbol = host_buf["timeline"][-1]
+                    except IndexError:
+                        last_symbol = None
+
+                    if last_symbol == symbols.get("pending"):
+                        # Overwrite the pending slot with final symbol
+                        host_buf["timeline"][-1] = symbols[status]
+                        host_buf["rtt_history"][-1] = result.get("rtt")
+                        host_buf["time_history"][-1] = time.time()
+                        host_buf["ttl_history"][-1] = result.get("ttl")
+                        # Move sequence from pending category to concrete status category if possible
+                        try:
+                            buffers[host_id]["categories"]["pending"].pop()
+                        except IndexError:
+                            pass
+                        host_buf["categories"][status].append(result["sequence"])
+                    else:
+                        # No pending slot to finalize — append as before
+                        host_buf["timeline"].append(symbols[status])
+                        host_buf["rtt_history"].append(result.get("rtt"))
+                        host_buf["time_history"].append(time.time())
+                        host_buf["ttl_history"].append(result.get("ttl"))
+                        host_buf["categories"][status].append(result["sequence"])
+
+                    # Update stats for final statuses
                     stats[host_id][status] += 1
                     stats[host_id]["total"] += 1
                     if result.get("rtt") is not None:
