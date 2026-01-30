@@ -580,6 +580,7 @@ def run(args):
                             False,
                             host_scroll_offset,
                             summary_fullscreen,
+                            interval_seconds=args.interval,
                         )
                         with open(snapshot_name, "w", encoding="utf-8") as snapshot_file:
                             snapshot_file.write("\n".join(snapshot_lines) + "\n")
@@ -914,6 +915,7 @@ def run(args):
                         host_scroll_offset,
                         summary_fullscreen,
                         override_lines=override_lines,
+                        interval_seconds=args.interval,
                     )
                     last_render = now
                     updated = False
