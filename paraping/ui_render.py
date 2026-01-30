@@ -603,6 +603,60 @@ def format_summary_line(entry, width, summary_mode, prefer_all=False):
     return full_line[:width]
 
 
+def build_time_axis(timeline_width, label_width, interval_seconds=1.0, label_period_seconds=10.0):
+    """
+    Build a time axis string for the timeline/sparkline view.
+
+    The axis shows time labels (e.g., "10", "20", "30") at regular intervals,
+    representing seconds from the leftmost (oldest) to rightmost (newest) column.
+
+    Args:
+        timeline_width: Width of the timeline area in characters
+        label_width: Width of the label column (for alignment with timeline)
+        interval_seconds: Ping interval in seconds (time per column)
+        label_period_seconds: Time between axis labels in seconds
+
+    Returns:
+        Formatted axis string with padding and labels
+    """
+    if timeline_width <= 0:
+        return ""
+
+    # Build the axis from left to right with increasing time values
+    # The leftmost column represents the oldest time, rightmost is newest (now)
+    axis_chars = [" "] * timeline_width
+
+    # Place labels at regular intervals, checking for overlaps
+    for i in range(timeline_width):
+        # Time from left (for label purposes)
+        time_from_left = i * interval_seconds
+
+        # Check if this position should have a label
+        # We want labels at 0, label_period, 2*label_period, etc. from the left
+        if i > 0 and abs(time_from_left % label_period_seconds) < interval_seconds:
+            label_value = int(time_from_left)
+            label_str = str(label_value)
+
+            # Check if label fits and doesn't overlap with existing labels
+            if i + len(label_str) <= timeline_width:
+                # Check for overlap: ensure all positions are empty (spaces)
+                overlap = False
+                for j in range(len(label_str)):
+                    if i + j < timeline_width and axis_chars[i + j] != " ":
+                        overlap = True
+                        break
+
+                # Place label only if no overlap
+                if not overlap:
+                    for j, char in enumerate(label_str):
+                        if i + j < timeline_width:
+                            axis_chars[i + j] = char
+
+    axis_timeline = "".join(axis_chars)
+    # Add label padding and separator to match timeline format
+    return f"{' ' * label_width} | {axis_timeline}"
+
+
 def format_status_line(host, timeline, label_width):
     """Format a status line with host and timeline."""
     return f"{pad_visible(host, label_width)} | {timeline}"
@@ -664,6 +718,7 @@ def render_timeline_view(
     scroll_offset=0,
     header_lines=2,
     boxed=False,
+    interval_seconds=1.0,
 ):
     """Render the timeline view."""
     if width <= 0 or height <= 0:
@@ -671,8 +726,10 @@ def render_timeline_view(
 
     render_width, render_height, can_box = resolve_boxed_dimensions(width, height, boxed)
     host_labels = [entry[1] for entry in display_entries]
+    # Account for time axis line when calculating visible hosts
+    # header_lines + 1 for the time axis line
     render_width, label_width, timeline_width, visible_hosts = compute_main_layout(
-        host_labels, render_width, render_height, header_lines
+        host_labels, render_width, render_height, header_lines + 1
     )
     max_offset = max(0, len(display_entries) - visible_hosts)
     scroll_offset = min(max(scroll_offset, 0), max_offset)
@@ -690,6 +747,10 @@ def render_timeline_view(
         status = latest_status_from_timeline(timeline_symbols, symbols)
         colored_label = colorize_text(label, status, use_color)
         lines.append(format_status_line(colored_label, timeline, label_width))
+
+    # Add time axis at the bottom of the timeline area
+    time_axis = build_time_axis(timeline_width, label_width, interval_seconds=interval_seconds)
+    lines.append(time_axis)
 
     if len(display_entries) > len(truncated_entries) and len(lines) < height:
         remaining = len(display_entries) - len(truncated_entries)
@@ -711,6 +772,7 @@ def render_sparkline_view(
     scroll_offset=0,
     header_lines=2,
     boxed=False,
+    interval_seconds=1.0,
 ):
     """Render the sparkline view."""
     if width <= 0 or height <= 0:
@@ -718,8 +780,10 @@ def render_sparkline_view(
 
     render_width, render_height, can_box = resolve_boxed_dimensions(width, height, boxed)
     host_labels = [entry[1] for entry in display_entries]
+    # Account for time axis line when calculating visible hosts
+    # header_lines + 1 for the time axis line
     render_width, label_width, timeline_width, visible_hosts = compute_main_layout(
-        host_labels, render_width, render_height, header_lines
+        host_labels, render_width, render_height, header_lines + 1
     )
     max_offset = max(0, len(display_entries) - visible_hosts)
     scroll_offset = min(max(scroll_offset, 0), max_offset)
@@ -739,6 +803,10 @@ def render_sparkline_view(
         status = latest_status_from_timeline(status_symbols, symbols)
         colored_label = colorize_text(label, status, use_color)
         lines.append(format_status_line(colored_label, sparkline, label_width))
+
+    # Add time axis at the bottom of the sparkline area
+    time_axis = build_time_axis(timeline_width, label_width, interval_seconds=interval_seconds)
+    lines.append(time_axis)
 
     if len(display_entries) > len(truncated_entries) and len(lines) < height:
         remaining = len(display_entries) - len(truncated_entries)
@@ -837,6 +905,7 @@ def render_main_view(
     scroll_offset=0,
     header_lines=2,
     boxed=False,
+    interval_seconds=1.0,
 ):
     """Render the main view (timeline, sparkline, or square)."""
     pause_label = "PAUSED" if paused else "LIVE"
@@ -862,6 +931,7 @@ def render_main_view(
             scroll_offset,
             header_lines,
             boxed,
+            interval_seconds,
         )
     if display_mode == "square":
         return render_square_view(
@@ -887,6 +957,7 @@ def render_main_view(
         scroll_offset,
         header_lines,
         boxed,
+        interval_seconds,
     )
 
 
@@ -1116,6 +1187,7 @@ def build_display_lines(
     summary_fullscreen=False,
     asn_width=8,
     header_lines=2,
+    interval_seconds=1.0,
 ):
     """Build all display lines for the current state."""
     term_size = get_terminal_size(fallback=(80, 24))
@@ -1191,6 +1263,7 @@ def build_display_lines(
             host_scroll_offset,
             header_lines,
             boxed=use_panel_boxes,
+            interval_seconds=interval_seconds,
         )
         summary_all = resolved_position in (
             "top",
@@ -1269,6 +1342,7 @@ def render_display(
     asn_width=8,
     header_lines=2,
     override_lines=None,
+    interval_seconds=1.0,
 ):
     """Render the complete display to the terminal."""
     global LAST_RENDER_LINES
@@ -1299,6 +1373,7 @@ def render_display(
             summary_fullscreen,
             asn_width,
             header_lines,
+            interval_seconds,
         )
     if not combined_lines:
         return
