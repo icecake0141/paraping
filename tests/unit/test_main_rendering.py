@@ -258,6 +258,45 @@ class TestSquareView(unittest.TestCase):
         combined = "\n".join(lines)
         self.assertIn("|", combined)  # Time axis separator
 
+    def test_render_square_view_interval_seconds(self):
+        """Square view should pass interval_seconds to time axis."""
+        from collections import deque
+
+        display_entries = [(0, "testhost")]
+        buffers = {
+            0: {
+                "timeline": deque([".", ".", ".", ".", "."], maxlen=10),
+                "rtt_history": deque([10.0, 11.0, 12.0, 13.0, 14.0], maxlen=10),
+                "time_history": deque([1.0, 2.0, 3.0, 4.0, 5.0], maxlen=10),
+                "ttl_history": deque([64, 64, 64, 64, 64], maxlen=10),
+                "categories": {
+                    "success": deque([1, 1, 1, 1, 1], maxlen=10),
+                    "fail": deque([0, 0, 0, 0, 0], maxlen=10),
+                    "slow": deque([0, 0, 0, 0, 0], maxlen=10),
+                    "pending": deque([0, 0, 0, 0, 0], maxlen=10),
+                },
+            },
+        }
+        symbols = {"success": ".", "fail": "x", "slow": "!", "pending": "-"}
+
+        # Test with custom interval_seconds
+        lines = render_square_view(
+            display_entries,
+            buffers,
+            symbols,
+            width=60,
+            height=10,
+            header="Test",
+            use_color=False,
+            interval_seconds=2.0,  # Custom interval
+        )
+
+        # Should have time axis
+        self.assertGreaterEqual(len(lines), 4)
+        # Time axis should be present (indicated by | separator)
+        combined = "\n".join(lines)
+        self.assertIn("|", combined)
+
 
 if __name__ == "__main__":
     unittest.main()

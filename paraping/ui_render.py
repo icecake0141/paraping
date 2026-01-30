@@ -819,7 +819,10 @@ def render_sparkline_view(
 
 def build_colored_square_timeline(timeline_symbols, symbols, use_color):
     """Build a colored timeline of squares from status symbols."""
-    # ANSI color codes for green (not in STATUS_COLORS as success is white there)
+    # Square view uses different colors than timeline view:
+    # - Square view: green for OK (success/slow), red for fail, gray for pending
+    # - Timeline view: white for success, yellow for slow, red for fail
+    # Green is not in STATUS_COLORS because timeline uses white for success
     green_color = "\x1b[32m"  # Green for OK status
     gray_color = "\x1b[37m"  # Gray for pending/unknown
 
