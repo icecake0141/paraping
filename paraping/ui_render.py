@@ -622,11 +622,11 @@ def build_time_axis(timeline_width, label_width, interval_seconds=1.0, label_per
     if timeline_width <= 0:
         return ""
 
-    # Build the axis from left to right
-    # The rightmost column is "now" (time 0), so we work backwards
+    # Build the axis from left to right with increasing time values
+    # The leftmost column represents the oldest time, rightmost is newest (now)
     axis_chars = [" "] * timeline_width
 
-    # Place labels at regular intervals
+    # Place labels at regular intervals, checking for overlaps
     for i in range(timeline_width):
         # Time from left (for label purposes)
         time_from_left = i * interval_seconds
@@ -637,11 +637,20 @@ def build_time_axis(timeline_width, label_width, interval_seconds=1.0, label_per
             label_value = int(time_from_left)
             label_str = str(label_value)
 
-            # Place label if it fits
+            # Check if label fits and doesn't overlap with existing labels
             if i + len(label_str) <= timeline_width:
-                for j, char in enumerate(label_str):
-                    if i + j < timeline_width:
-                        axis_chars[i + j] = char
+                # Check for overlap: ensure all positions are empty (spaces)
+                overlap = False
+                for j in range(len(label_str)):
+                    if i + j < timeline_width and axis_chars[i + j] != " ":
+                        overlap = True
+                        break
+
+                # Place label only if no overlap
+                if not overlap:
+                    for j, char in enumerate(label_str):
+                        if i + j < timeline_width:
+                            axis_chars[i + j] = char
 
     axis_timeline = "".join(axis_chars)
     # Add label padding and separator to match timeline format
@@ -717,8 +726,10 @@ def render_timeline_view(
 
     render_width, render_height, can_box = resolve_boxed_dimensions(width, height, boxed)
     host_labels = [entry[1] for entry in display_entries]
+    # Account for time axis line when calculating visible hosts
+    # header_lines + 1 for the time axis line
     render_width, label_width, timeline_width, visible_hosts = compute_main_layout(
-        host_labels, render_width, render_height, header_lines
+        host_labels, render_width, render_height, header_lines + 1
     )
     max_offset = max(0, len(display_entries) - visible_hosts)
     scroll_offset = min(max(scroll_offset, 0), max_offset)
@@ -769,8 +780,10 @@ def render_sparkline_view(
 
     render_width, render_height, can_box = resolve_boxed_dimensions(width, height, boxed)
     host_labels = [entry[1] for entry in display_entries]
+    # Account for time axis line when calculating visible hosts
+    # header_lines + 1 for the time axis line
     render_width, label_width, timeline_width, visible_hosts = compute_main_layout(
-        host_labels, render_width, render_height, header_lines
+        host_labels, render_width, render_height, header_lines + 1
     )
     max_offset = max(0, len(display_entries) - visible_hosts)
     scroll_offset = min(max(scroll_offset, 0), max_offset)
