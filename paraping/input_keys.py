@@ -12,15 +12,24 @@
 # Review required for correctness, security, and licensing.
 
 """
-Keyboard input handling for ParaPing.
+Keyboard input handling for ParaPing using the readchar library.
 
 This module provides functions for reading keyboard input and parsing
-escape sequences, particularly for arrow key navigation.
+escape sequences, particularly for arrow key navigation. It uses the
+readchar library for improved cross-platform compatibility and reliability.
 """
 
 import select
 import sys
-import time
+
+try:
+    import readchar
+    import readchar.key
+
+    READCHAR_AVAILABLE = True
+except ImportError:
+    READCHAR_AVAILABLE = False
+
 
 # Constants for arrow key reading
 # Increased from 0.05 to 0.1 seconds to handle slow terminals/remote connections
@@ -60,6 +69,44 @@ def parse_escape_sequence(seq):
     return None
 
 
+def _map_readchar_key(key_value):
+    """
+    Map readchar key constants to ParaPing arrow key names.
+
+    Args:
+        key_value: The key string returned by readchar.readkey()
+
+    Returns:
+        String identifier for arrow keys ('arrow_up', 'arrow_down', etc.)
+        or the original key value if not an arrow key
+    """
+    if not READCHAR_AVAILABLE:
+        return key_value
+
+    # Map readchar arrow key constants to our naming convention
+    key_map = {
+        readchar.key.UP: "arrow_up",
+        readchar.key.DOWN: "arrow_down",
+        readchar.key.LEFT: "arrow_left",
+        readchar.key.RIGHT: "arrow_right",
+    }
+
+    # First check if it's a standard readchar constant
+    if key_value in key_map:
+        return key_map[key_value]
+
+    # For non-standard sequences, try to parse as escape sequence
+    # readchar returns full escape sequences like "\x1b[A", "\x1bOA", "\x1b[1;5A", etc.
+    if key_value and key_value[0] == "\x1b" and len(key_value) > 1:
+        # Strip the ESC prefix and parse the rest
+        seq = key_value[1:]
+        parsed = parse_escape_sequence(seq)
+        if parsed:
+            return parsed
+
+    return key_value
+
+
 def read_key():
     """
     Read a key from stdin, handling multi-byte sequences like arrow keys.
@@ -67,27 +114,26 @@ def read_key():
     Returns special strings for arrow keys: 'arrow_left', 'arrow_right',
     'arrow_up', 'arrow_down'. Returns the character for normal keys,
     or None if no input is available.
+
+    This function uses readchar library for improved cross-platform support
+    while maintaining non-blocking behavior through select() with timeout.
     """
     if not sys.stdin.isatty():
         return None
+
+    # Use select to check if input is available (non-blocking)
     ready, _, _ = select.select([sys.stdin], [], [], 0)
     if not ready:
         return None
-    char = sys.stdin.read(1)
-    # Check for escape sequence (arrow keys start with ESC)
-    if char == "\x1b":
-        seq = ""
-        deadline = time.monotonic() + ARROW_KEY_READ_TIMEOUT
-        while time.monotonic() < deadline:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                break
-            ready, _, _ = select.select([sys.stdin], [], [], remaining)
-            if not ready:
-                break
-            seq += sys.stdin.read(1)
-            if seq and seq[-1] in ("A", "B", "C", "D"):
-                break
-        parsed = parse_escape_sequence(seq)
-        return parsed if parsed is not None else char
-    return char
+
+    # Input is available, use readchar to read it if available
+    if READCHAR_AVAILABLE:
+        try:
+            key = readchar.readkey()
+            return _map_readchar_key(key)
+        except Exception:
+            # Fallback to None if readchar fails
+            return None
+    else:
+        # Fallback to basic single character read if readchar not available
+        return sys.stdin.read(1)

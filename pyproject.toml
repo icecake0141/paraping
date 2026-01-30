@@ -39,8 +39,10 @@ classifiers = [
     "Topic :: System :: Networking :: Monitoring",
 ]
 
-# No external Python dependencies required - all stdlib
-dependencies = []
+# Runtime dependencies
+dependencies = [
+    "readchar>=4.2.1",
+]
 
 [project.optional-dependencies]
 dev = [

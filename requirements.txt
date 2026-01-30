@@ -11,4 +11,4 @@
 # Review required for correctness, security, and licensing.
 
 # Runtime dependencies for ParaPing.
-# (No external Python packages required.)
+readchar>=4.2.1
