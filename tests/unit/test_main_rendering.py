@@ -97,8 +97,30 @@ class TestSquareView(unittest.TestCase):
 
         display_entries = [(0, "host1"), (1, "host2")]
         buffers = {
-            0: {"timeline": deque(["."], maxlen=5)},
-            1: {"timeline": deque(["x"], maxlen=5)},
+            0: {
+                "timeline": deque(["."], maxlen=5),
+                "rtt_history": deque([10.5], maxlen=5),
+                "time_history": deque([1.0], maxlen=5),
+                "ttl_history": deque([64], maxlen=5),
+                "categories": {
+                    "success": deque([1], maxlen=5),
+                    "fail": deque([0], maxlen=5),
+                    "slow": deque([0], maxlen=5),
+                    "pending": deque([0], maxlen=5),
+                },
+            },
+            1: {
+                "timeline": deque(["x"], maxlen=5),
+                "rtt_history": deque([None], maxlen=5),
+                "time_history": deque([1.0], maxlen=5),
+                "ttl_history": deque([None], maxlen=5),
+                "categories": {
+                    "success": deque([0], maxlen=5),
+                    "fail": deque([1], maxlen=5),
+                    "slow": deque([0], maxlen=5),
+                    "pending": deque([0], maxlen=5),
+                },
+            },
         }
         symbols = {"success": ".", "fail": "x", "slow": "!", "pending": "-"}
 
@@ -115,8 +137,8 @@ class TestSquareView(unittest.TestCase):
             boxed=False,
         )
 
-        # Should have header, separator, and entries
-        self.assertGreaterEqual(len(lines), 4)
+        # Should have header, separator, entries, and time axis
+        self.assertGreaterEqual(len(lines), 5)
         self.assertIn("Test Header", lines[0])
         # Check that square symbol is present in the output
         combined = "\n".join(lines)
@@ -128,7 +150,18 @@ class TestSquareView(unittest.TestCase):
 
         display_entries = [(0, "host1")]
         buffers = {
-            0: {"timeline": deque([".", ".", "."], maxlen=5)},
+            0: {
+                "timeline": deque([".", ".", "."], maxlen=5),
+                "rtt_history": deque([10.0, 11.0, 12.0], maxlen=5),
+                "time_history": deque([1.0, 2.0, 3.0], maxlen=5),
+                "ttl_history": deque([64, 64, 64], maxlen=5),
+                "categories": {
+                    "success": deque([1, 1, 1], maxlen=5),
+                    "fail": deque([0, 0, 0], maxlen=5),
+                    "slow": deque([0, 0, 0], maxlen=5),
+                    "pending": deque([0, 0, 0], maxlen=5),
+                },
+            },
         }
         symbols = {"success": ".", "fail": "x", "slow": "!", "pending": "-"}
 
@@ -153,7 +186,18 @@ class TestSquareView(unittest.TestCase):
 
         display_entries = [(0, "host1")]
         buffers = {
-            0: {"timeline": deque(["x", "x", "x"], maxlen=5)},
+            0: {
+                "timeline": deque(["x", "x", "x"], maxlen=5),
+                "rtt_history": deque([None, None, None], maxlen=5),
+                "time_history": deque([1.0, 2.0, 3.0], maxlen=5),
+                "ttl_history": deque([None, None, None], maxlen=5),
+                "categories": {
+                    "success": deque([0, 0, 0], maxlen=5),
+                    "fail": deque([1, 1, 1], maxlen=5),
+                    "slow": deque([0, 0, 0], maxlen=5),
+                    "pending": deque([0, 0, 0], maxlen=5),
+                },
+            },
         }
         symbols = {"success": ".", "fail": "x", "slow": "!", "pending": "-"}
 
@@ -171,6 +215,87 @@ class TestSquareView(unittest.TestCase):
         self.assertGreater(len(lines), 0)
         combined = "\n".join(lines)
         self.assertIn("■", combined)
+
+    def test_render_square_view_time_series(self):
+        """Square view should show multiple squares as a time-series."""
+        from collections import deque
+
+        display_entries = [(0, "testhost")]
+        # Create a buffer with a mix of success and fail symbols
+        buffers = {
+            0: {
+                "timeline": deque([".", "x", ".", ".", "x"], maxlen=10),
+                "rtt_history": deque([10.0, None, 11.0, 12.0, None], maxlen=10),
+                "time_history": deque([1.0, 2.0, 3.0, 4.0, 5.0], maxlen=10),
+                "ttl_history": deque([64, None, 64, 64, None], maxlen=10),
+                "categories": {
+                    "success": deque([1, 0, 1, 1, 0], maxlen=10),
+                    "fail": deque([0, 1, 0, 0, 1], maxlen=10),
+                    "slow": deque([0, 0, 0, 0, 0], maxlen=10),
+                    "pending": deque([0, 0, 0, 0, 0], maxlen=10),
+                },
+            },
+        }
+        symbols = {"success": ".", "fail": "x", "slow": "!", "pending": "-"}
+
+        lines = render_square_view(
+            display_entries,
+            buffers,
+            symbols,
+            width=50,
+            height=10,
+            header="Test Time Series",
+            use_color=False,
+        )
+
+        # Should have header, separator, host line with squares, and time axis
+        self.assertGreaterEqual(len(lines), 4)
+        # The host line should contain multiple squares (5 in the timeline)
+        host_line = lines[2]  # After header and separator
+        square_count = host_line.count("■")
+        self.assertGreaterEqual(square_count, 5, "Should render multiple squares for time-series")
+        # Should have a time axis
+        combined = "\n".join(lines)
+        self.assertIn("|", combined)  # Time axis separator
+
+    def test_render_square_view_interval_seconds(self):
+        """Square view should pass interval_seconds to time axis."""
+        from collections import deque
+
+        display_entries = [(0, "testhost")]
+        buffers = {
+            0: {
+                "timeline": deque([".", ".", ".", ".", "."], maxlen=10),
+                "rtt_history": deque([10.0, 11.0, 12.0, 13.0, 14.0], maxlen=10),
+                "time_history": deque([1.0, 2.0, 3.0, 4.0, 5.0], maxlen=10),
+                "ttl_history": deque([64, 64, 64, 64, 64], maxlen=10),
+                "categories": {
+                    "success": deque([1, 1, 1, 1, 1], maxlen=10),
+                    "fail": deque([0, 0, 0, 0, 0], maxlen=10),
+                    "slow": deque([0, 0, 0, 0, 0], maxlen=10),
+                    "pending": deque([0, 0, 0, 0, 0], maxlen=10),
+                },
+            },
+        }
+        symbols = {"success": ".", "fail": "x", "slow": "!", "pending": "-"}
+
+        # Test with custom interval_seconds
+        lines = render_square_view(
+            display_entries,
+            buffers,
+            symbols,
+            width=60,
+            height=10,
+            header="Test",
+            use_color=False,
+            interval_seconds=2.0,  # Custom interval
+        )
+
+        # Should have time axis
+        self.assertGreaterEqual(len(lines), 4)
+        # Time axis should be present (indicated by | separator)
+        combined = "\n".join(lines)
+        self.assertIn("|", combined)
 
 
 if __name__ == "__main__":

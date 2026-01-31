@@ -817,6 +817,45 @@ def render_sparkline_view(
     return pad_lines(lines, width, height)
 
 
+def build_colored_square_timeline(timeline_symbols, symbols, use_color):
+    """Build a colored timeline of squares from status symbols."""
+    # Square view uses different colors than timeline view:
+    # - Square view: green for OK (success/slow), red for fail, gray for pending
+    # - Timeline view: white for success, yellow for slow, red for fail
+    # Green is not in STATUS_COLORS because timeline uses white for success
+    green_color = "\x1b[32m"  # Green for OK status
+    gray_color = "\x1b[37m"  # Gray for pending/unknown
+
+    squares = []
+    for symbol in timeline_symbols:
+        status = status_from_symbol(symbol, symbols)
+        square = "■"
+
+        # Determine square color based on status
+        # OK = success or slow (green), NG = fail (red), pending = pending (gray)
+        if status == "fail":
+            if use_color:
+                colored_square = f"{STATUS_COLORS['fail']}{square}{ANSI_RESET}"
+            else:
+                colored_square = square
+        elif status in ("success", "slow"):
+            # success and slow both show green square (OK status)
+            if use_color:
+                colored_square = f"{green_color}{square}{ANSI_RESET}"
+            else:
+                colored_square = square
+        else:
+            # pending or None status - show pending square
+            if use_color:
+                colored_square = f"{gray_color}{square}{ANSI_RESET}"
+            else:
+                colored_square = square
+
+        squares.append(colored_square)
+
+    return "".join(squares)
+
+
 def render_square_view(
     display_entries,
     buffers,
@@ -828,58 +867,42 @@ def render_square_view(
     scroll_offset=0,
     header_lines=2,
     boxed=False,
+    interval_seconds=1.0,
 ):
-    """Render the square view (green/red square for OK/NG status)."""
+    """Render the square view as a time-series (horizontal sequence of colored squares)."""
     if width <= 0 or height <= 0:
         return []
 
     render_width, render_height, can_box = resolve_boxed_dimensions(width, height, boxed)
     host_labels = [entry[1] for entry in display_entries]
-    render_width, label_width, _, visible_hosts = compute_main_layout(host_labels, render_width, render_height, header_lines)
+    # Account for time axis line when calculating visible hosts
+    # header_lines + 1 for the time axis line
+    render_width, label_width, timeline_width, visible_hosts = compute_main_layout(
+        host_labels, render_width, render_height, header_lines + 1
+    )
     max_offset = max(0, len(display_entries) - visible_hosts)
     scroll_offset = min(max(scroll_offset, 0), max_offset)
     truncated_entries = display_entries[scroll_offset : scroll_offset + visible_hosts]
+
+    resize_buffers(buffers, timeline_width, symbols)
 
     lines = []
     lines.append(header)
     lines.append("".join("-" for _ in range(render_width)))
 
-    # ANSI color codes for green (not in STATUS_COLORS as success is white there)
-    green_color = "\x1b[32m"  # Green for OK status
-
     for host, label in truncated_entries:
         timeline_symbols = list(buffers[host]["timeline"])
-        # Get the latest status
+        # Build colored square timeline from all timeline symbols
+        square_timeline = build_colored_square_timeline(timeline_symbols, symbols, use_color)
+        square_timeline = rjust_visible(square_timeline, timeline_width)
+        # Get the latest status for label colorization
         status = latest_status_from_timeline(timeline_symbols, symbols)
+        colored_label = colorize_text(label, status, use_color)
+        lines.append(format_status_line(colored_label, square_timeline, label_width))
 
-        # Determine square symbol and color
-        # OK = success or slow (green), NG = fail (red), pending = pending (gray)
-        if status == "fail":
-            square = "■"  # Red square for fail
-            if use_color:
-                colored_square = f"{STATUS_COLORS['fail']}{square}{ANSI_RESET}"
-            else:
-                colored_square = square
-            colored_label = colorize_text(label, status, use_color)
-        elif status in ("success", "slow"):
-            # success and slow both show green square (OK status)
-            square = "■"  # Green square for OK
-            if use_color:
-                colored_square = f"{green_color}{square}{ANSI_RESET}"
-            else:
-                colored_square = square
-            colored_label = colorize_text(label, status, use_color)
-        else:
-            # pending or None status - show pending square
-            square = "■"  # Gray square for pending/unknown
-            if use_color:
-                colored_square = f"\x1b[37m{square}{ANSI_RESET}"  # Gray
-            else:
-                colored_square = square
-            colored_label = colorize_text(label, status, use_color)
-
-        # Format the line with the label and square
-        lines.append(format_status_line(colored_label, colored_square, label_width))
+    # Add time axis at the bottom of the square timeline area
+    time_axis = build_time_axis(timeline_width, label_width, interval_seconds=interval_seconds)
+    lines.append(time_axis)
 
     if len(display_entries) > len(truncated_entries) and len(lines) < height:
         remaining = len(display_entries) - len(truncated_entries)
@@ -945,6 +968,7 @@ def render_main_view(
             scroll_offset,
             header_lines,
             boxed,
+            interval_seconds,
         )
     return render_timeline_view(
         display_entries,
