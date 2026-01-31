@@ -39,6 +39,7 @@ from paraping.core import (
     read_input_file,
     resolve_render_state,
     update_history_buffer,
+    validate_global_rate_limit,
 )
 from paraping.input_keys import read_key
 from paraping.network_asn import asn_worker, should_retry_asn
@@ -102,7 +103,11 @@ def _compute_initial_timeline_width(host_labels, term_size, panel_position):
 
 def handle_options():
     """Parse and validate command-line arguments."""
-    parser = argparse.ArgumentParser(description="ParaPing - Perform ICMP ping operations to multiple hosts concurrently")
+    parser = argparse.ArgumentParser(
+        description="ParaPing - Perform ICMP ping operations to multiple hosts concurrently",
+        epilog="Note: ParaPing enforces a global rate limit of 50 pings/sec for flood protection. "
+        "The tool will exit with an error if (host_count / interval) > 50.",
+    )
     parser.add_argument(
         "-t",
         "--timeout",
@@ -129,7 +134,8 @@ def handle_options():
         "--interval",
         type=float,
         default=1.0,
-        help="Interval in seconds between pings per host (default: 1.0, range: 0.1-60.0)",
+        help="Interval in seconds between pings per host (default: 1.0, range: 0.1-60.0). "
+        "Note: Global rate limit is 50 pings/sec (host_count / interval <= 50)",
     )
     parser.add_argument(
         "-v",
@@ -247,6 +253,12 @@ def run(args):
             f"({len(all_hosts)} > {MAX_HOST_THREADS}). Reduce the host list."
         )
         return
+
+    # Validate global rate limit before starting
+    is_valid, _computed_rate, error_message = validate_global_rate_limit(len(all_hosts), args.interval)
+    if not is_valid:
+        print(error_message, file=sys.stderr)
+        sys.exit(1)
 
     display_tz = timezone.utc
     if args.timezone:
@@ -367,7 +379,7 @@ def run(args):
     stagger = args.interval / num_hosts if num_hosts > 0 else 0.0
     scheduler = Scheduler(interval=args.interval, stagger=stagger)
     ping_lock = threading.Lock()
-    
+
     # Initialize shared sequence tracker for per-host ICMP sequence management
     # with max 3 outstanding pings per host
     sequence_tracker = SequenceTracker(max_outstanding=3)

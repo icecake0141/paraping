@@ -34,6 +34,7 @@ ParaPing is an interactive, terminal-based ICMP monitor that pings many hosts in
 - Fullscreen ASCII RTT graph per host with axis labels and scale, including X-axis seconds-ago labels (selectable via TUI).
 - Configurable timezone for timestamps and snapshot naming.
 - Input file support for host lists (one per line in `IP,alias` format; comments allowed).
+- **Global rate limit protection**: Enforces a maximum of 50 pings/sec globally (host_count / interval ≤ 50) to prevent network flooding. The tool will exit with an error if this limit is exceeded.
 
 ## Requirements
 - Python 3.9 or newer.
@@ -405,7 +406,7 @@ Example (explicit IPv4 addresses only):
 ### Command-line Options
 - `-t`, `--timeout`: Timeout in seconds for each ping (default: 1).
 - `-c`, `--count`: Number of ping attempts per host (default: 0 for infinite).
-- `-i`, `--interval`: Interval in seconds between pings per host (default: 1.0, range: 0.1-60.0).
+- `-i`, `--interval`: Interval in seconds between pings per host (default: 1.0, range: 0.1-60.0). **Note**: Global rate limit is 50 pings/sec; the tool will fail if (host_count / interval) > 50.
 - `-s`, `--slow-threshold`: RTT threshold (seconds) to mark a ping as slow (default: 0.5).
 - `-v`, `--verbose`: Print raw per-packet output (non-UI).
 - `-f`, `--input`: Read hosts from a file (one per line; format: `IP,alias`; `#` comments supported).

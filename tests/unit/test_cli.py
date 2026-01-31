@@ -228,5 +228,80 @@ class TestCLIMain(unittest.TestCase):
             self.assertEqual(cm.exception.code, 0)
 
 
+class TestCLIRateLimitValidation(unittest.TestCase):
+    """Test rate limit validation in CLI run function"""
+
+    @patch("paraping.cli.sys.stdin.isatty")
+    def test_run_rate_limit_exactly_50_is_ok(self, mock_isatty):
+        """Test that exactly 50 pings/sec is allowed"""
+        mock_isatty.return_value = False  # Not in interactive mode
+
+        # Create args with 50 hosts at 1.0s interval = 50 pings/sec
+        args = MagicMock()
+        args.count = 0
+        args.timeout = 1
+        args.interval = 1.0
+        args.hosts = [f"host{i}.com" for i in range(50)]
+        args.input = None
+        args.timezone = None
+        args.snapshot_timezone = "display"
+        args.ping_helper = "./ping_helper"
+        args.panel_position = "right"
+        args.slow_threshold = 0.5
+
+        # This should NOT raise an exception or exit
+        # We can't fully test the run function without mocking more,
+        # but we can verify the validation function is called correctly
+        from paraping.core import validate_global_rate_limit
+
+        is_valid, rate, error = validate_global_rate_limit(50, 1.0)
+        self.assertTrue(is_valid)
+
+    def test_run_rate_limit_over_50_fails(self):
+        """Test that exceeding 50 pings/sec causes exit"""
+        # Create args with 51 hosts at 1.0s interval = 51 pings/sec
+        args = MagicMock()
+        args.count = 0
+        args.timeout = 1
+        args.interval = 1.0
+        args.hosts = [f"host{i}.com" for i in range(51)]
+        args.input = None
+
+        # Import run function
+        from paraping.cli import run
+
+        # This should call sys.exit(1) due to rate limit
+        with self.assertRaises(SystemExit) as cm:
+            run(args)
+        self.assertEqual(cm.exception.code, 1)
+
+    def test_run_rate_limit_short_interval_fails(self):
+        """Test that short interval with many hosts fails"""
+        # Create args with 50 hosts at 0.5s interval = 100 pings/sec
+        args = MagicMock()
+        args.count = 0
+        args.timeout = 1
+        args.interval = 0.5
+        args.hosts = [f"host{i}.com" for i in range(50)]
+        args.input = None
+
+        # Import run function
+        from paraping.cli import run
+
+        # This should call sys.exit(1) due to rate limit
+        with self.assertRaises(SystemExit) as cm:
+            run(args)
+        self.assertEqual(cm.exception.code, 1)
+
+    def test_run_rate_limit_25_hosts_at_half_second_is_ok(self):
+        """Test that 25 hosts at 0.5s interval is exactly at limit"""
+        # 25 hosts at 0.5s interval = 50 pings/sec
+        from paraping.core import validate_global_rate_limit
+
+        is_valid, rate, error = validate_global_rate_limit(25, 0.5)
+        self.assertTrue(is_valid)
+        self.assertEqual(rate, 50.0)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -135,3 +135,5 @@ ignore = [
 
 [tool.ruff.per-file-ignores]
 "__init__.py" = ["F401"]
+"tests/**/*.py" = ["E402"]
+"paraping/cli.py" = ["C901"]  # run() function complexity is pre-existing

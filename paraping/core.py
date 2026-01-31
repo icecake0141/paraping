@@ -41,6 +41,9 @@ SNAPSHOT_INTERVAL_SECONDS = 1.0  # Take snapshot every second
 MAX_HOST_THREADS = 128  # Hard cap to avoid unbounded thread growth.
 TIMELINE_LABEL_ESTIMATE_WIDTH = 15  # Estimated label column + spacing width.
 
+# Global rate limit for flood protection
+MAX_GLOBAL_PINGS_PER_SECOND = 50  # Maximum allowed ICMP pings per second globally
+
 
 def _build_term_size(columns_value: Any, lines_value: Any) -> Optional[SimpleNamespace]:
     """Build a terminal size namespace from column and line values."""
@@ -321,7 +324,7 @@ def build_host_infos(hosts: List[Union[str, Dict[str, str]]]) -> Tuple[List[Dict
                 # Use getaddrinfo to get all available addresses (IPv4 and IPv6)
                 # Prefer IPv4 addresses when both are available
                 addr_info = socket.getaddrinfo(host, None, socket.AF_UNSPEC, socket.SOCK_RAW)
-                
+
                 # Extract addresses by family
                 # getaddrinfo returns tuples: (family, type, proto, canonname, sockaddr)
                 # sockaddr for IPv4 is (address, port), for IPv6 is (address, port, flow, scope)
@@ -332,7 +335,7 @@ def build_host_infos(hosts: List[Union[str, Dict[str, str]]]) -> Tuple[List[Dict
                         ipv4_addresses.append(sockaddr[0])  # sockaddr[0] is the IP address
                     elif family == socket.AF_INET6:
                         ipv6_addresses.append(sockaddr[0])  # sockaddr[0] is the IP address
-                
+
                 # Prefer IPv4 over IPv6
                 if ipv4_addresses:
                     ip_address = ipv4_addresses[0]
@@ -429,3 +432,42 @@ def resolve_render_state(
         snapshot = history_buffer[-(history_offset + 1)]
         return snapshot["buffers"], snapshot["stats"], True
     return buffers, stats, paused
+
+
+def validate_global_rate_limit(host_count: int, interval: float) -> Tuple[bool, float, str]:
+    """
+    Validate that the requested ping rate does not exceed the global limit.
+
+    Args:
+        host_count: Number of hosts to ping
+        interval: Interval in seconds between pings per host
+
+    Returns:
+        Tuple of (is_valid, computed_rate, error_message)
+        - is_valid: True if rate is within limit, False otherwise
+        - computed_rate: The computed pings per second rate
+        - error_message: Error message if invalid, empty string if valid
+    """
+    if host_count <= 0 or interval <= 0:
+        return False, 0.0, "Invalid parameters: host_count and interval must be positive"
+
+    # Calculate max pings per second: host_count / interval
+    # Each host sends 1 ping every 'interval' seconds
+    # With N hosts, we send N pings every 'interval' seconds
+    # So pings/sec = N / interval
+    computed_rate = host_count / interval
+
+    if computed_rate > MAX_GLOBAL_PINGS_PER_SECOND:
+        error_msg = (
+            f"Error: Global rate limit exceeded.\n"
+            f"  Requested rate: {computed_rate:.2f} pings/sec "
+            f"({host_count} hosts at {interval}s interval)\n"
+            f"  Maximum allowed: {MAX_GLOBAL_PINGS_PER_SECOND} pings/sec\n"
+            f"  To fix: Reduce host count or increase interval.\n"
+            f"  Examples:\n"
+            f"    - Use interval >= {host_count / MAX_GLOBAL_PINGS_PER_SECOND:.2f}s with {host_count} hosts\n"
+            f"    - Use <= {int(MAX_GLOBAL_PINGS_PER_SECOND * interval)} hosts with {interval}s interval"
+        )
+        return False, computed_rate, error_msg
+
+    return True, computed_rate, ""
