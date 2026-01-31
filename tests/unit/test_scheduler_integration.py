@@ -1,0 +1,276 @@
+#!/usr/bin/env python3
+# Copyright 2025 icecake0141
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# This file was created or modified with the assistance of an AI (Large Language Model).
+# Review required for correctness, security, and licensing.
+
+"""
+Integration tests for scheduler-driven ping functionality.
+
+This module tests the integration of the Scheduler with the ping loop,
+verifying real-time timing, staggering, and event handling.
+"""
+
+import os
+import queue
+import sys
+import threading
+import time
+import unittest
+from unittest.mock import patch
+
+# Add parent directory to path to import paraping
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+
+from paraping.pinger import scheduler_driven_worker_ping  # noqa: E402
+from paraping.scheduler import Scheduler  # noqa: E402
+
+
+class TestSchedulerIntegration(unittest.TestCase):
+    """Integration tests for scheduler-driven ping timing"""
+
+    @patch("paraping.pinger.ping_with_helper")
+    @patch("os.path.exists")
+    def test_scheduler_driven_staggering(self, mock_exists, mock_ping):
+        """Test that pings are staggered correctly across multiple hosts"""
+        mock_exists.return_value = True
+        mock_ping.return_value = (50.0, 64)  # 50ms RTT, TTL 64
+
+        # Setup
+        interval = 1.0
+        hosts = [
+            {"host": "192.0.2.1", "id": 0},
+            {"host": "192.0.2.2", "id": 1},
+            {"host": "192.0.2.3", "id": 2},
+        ]
+        N = len(hosts)
+        stagger = interval / N
+
+        scheduler = Scheduler(interval=interval, stagger=stagger)
+        ping_lock = threading.Lock()
+
+        for host_info in hosts:
+            scheduler.add_host(host_info["host"], host_id=host_info["id"])
+
+        result_queue = queue.Queue()
+        stop_event = threading.Event()
+
+        # Start ping workers
+        threads = []
+        for host_info in hosts:
+            thread = threading.Thread(
+                target=scheduler_driven_worker_ping,
+                args=(
+                    host_info,
+                    scheduler,
+                    1.0,  # timeout
+                    1,  # count (just one ping)
+                    0.5,  # slow_threshold
+                    None,  # pause_event
+                    stop_event,
+                    result_queue,
+                    "./ping_helper",
+                    ping_lock,
+                ),
+                daemon=True,
+            )
+            thread.start()
+            threads.append(thread)
+
+        # Collect sent events with timestamps
+        sent_events = []
+        base_time = None
+        timeout = time.time() + 5.0  # 5 second timeout
+
+        while len(sent_events) < N and time.time() < timeout:
+            try:
+                result = result_queue.get(timeout=0.5)
+                if result.get("status") == "sent":
+                    sent_time = result.get("sent_time", time.time())
+                    if base_time is None:
+                        base_time = sent_time
+                    offset = sent_time - base_time
+                    sent_events.append({
+                        "host_id": result["host_id"],
+                        "offset": offset,
+                        "sent_time": sent_time,
+                    })
+            except queue.Empty:
+                continue
+
+        # Wait for threads to complete
+        for thread in threads:
+            thread.join(timeout=2.0)
+
+        stop_event.set()
+
+        # Verify we got all sent events
+        self.assertEqual(len(sent_events), N, "Should receive sent event from all hosts")
+
+        # Sort by host_id to verify staggering
+        sent_events.sort(key=lambda x: x["host_id"])
+
+        # Verify staggering with tolerance of ~0.1s
+        tolerance = 0.15  # Allow 150ms tolerance for system scheduling
+        for i, event in enumerate(sent_events):
+            expected_offset = i * stagger
+            actual_offset = event["offset"]
+            self.assertAlmostEqual(
+                actual_offset,
+                expected_offset,
+                delta=tolerance,
+                msg=f"Host {i} offset {actual_offset:.3f}s should be near {expected_offset:.3f}s (stagger={stagger:.3f}s)",
+            )
+
+    @patch("paraping.pinger.ping_with_helper")
+    @patch("os.path.exists")
+    def test_scheduler_driven_pause_and_stop(self, mock_exists, mock_ping):
+        """Test that pause_event and stop_event work correctly"""
+        mock_exists.return_value = True
+        mock_ping.return_value = (50.0, 64)
+
+        host_info = {"host": "192.0.2.1", "id": 0}
+        scheduler = Scheduler(interval=0.2, stagger=0.0)
+        scheduler.add_host(host_info["host"], host_id=host_info["id"])
+
+        result_queue = queue.Queue()
+        pause_event = threading.Event()
+        stop_event = threading.Event()
+        ping_lock = threading.Lock()
+
+        # Start worker
+        thread = threading.Thread(
+            target=scheduler_driven_worker_ping,
+            args=(
+                host_info,
+                scheduler,
+                1.0,
+                0,  # infinite count
+                0.5,
+                pause_event,
+                stop_event,
+                result_queue,
+                "./ping_helper",
+                ping_lock,
+            ),
+            daemon=True,
+        )
+        thread.start()
+
+        # Wait for first ping
+        time.sleep(0.3)
+
+        # Pause
+        pause_event.set()
+        time.sleep(0.1)
+
+        # Count events before unpause
+        events_before_unpause = 0
+        while not result_queue.empty():
+            result_queue.get_nowait()
+            events_before_unpause += 1
+
+        # Wait while paused - should not get new events
+        time.sleep(0.3)
+        new_events_while_paused = 0
+        while not result_queue.empty():
+            result_queue.get_nowait()
+            new_events_while_paused += 1
+
+        # Verify no new events during pause (or very few due to timing)
+        self.assertLessEqual(new_events_while_paused, 1, "Should not generate many events while paused")
+
+        # Unpause and verify pinging resumes
+        pause_event.clear()
+        time.sleep(0.3)
+
+        events_after_unpause = 0
+        while not result_queue.empty():
+            result_queue.get_nowait()
+            events_after_unpause += 1
+
+        # Should have events after unpause
+        self.assertGreater(events_after_unpause, 0, "Should resume pinging after unpause")
+
+        # Test stop
+        stop_event.set()
+        thread.join(timeout=1.0)
+        self.assertFalse(thread.is_alive(), "Thread should stop when stop_event is set")
+
+    @patch("paraping.pinger.ping_with_helper")
+    @patch("os.path.exists")
+    def test_scheduler_driven_monotonic_timing(self, mock_exists, mock_ping):
+        """Test that timing uses monotonic clock for accuracy"""
+        mock_exists.return_value = True
+        mock_ping.return_value = (50.0, 64)
+
+        host_info = {"host": "192.0.2.1", "id": 0}
+        interval = 0.3
+        scheduler = Scheduler(interval=interval, stagger=0.0)
+        scheduler.add_host(host_info["host"], host_id=host_info["id"])
+
+        result_queue = queue.Queue()
+        stop_event = threading.Event()
+        ping_lock = threading.Lock()
+
+        # Start worker
+        thread = threading.Thread(
+            target=scheduler_driven_worker_ping,
+            args=(
+                host_info,
+                scheduler,
+                1.0,
+                3,  # 3 pings
+                0.5,
+                None,
+                stop_event,
+                result_queue,
+                "./ping_helper",
+                ping_lock,
+            ),
+            daemon=True,
+        )
+
+        thread.start()
+
+        # Collect sent events
+        sent_times_monotonic = []
+        timeout = time.time() + 5.0
+
+        sent_count = 0
+        while sent_count < 3 and time.time() < timeout:
+            try:
+                result = result_queue.get(timeout=1.0)
+                if result.get("status") == "sent":
+                    sent_times_monotonic.append(time.monotonic())
+                    sent_count += 1
+            except queue.Empty:
+                continue
+
+        thread.join(timeout=2.0)
+        stop_event.set()
+
+        # Verify we got 3 pings
+        self.assertEqual(len(sent_times_monotonic), 3, "Should have 3 sent events")
+
+        # Verify intervals are approximately correct (using monotonic time)
+        tolerance = 0.15
+        for i in range(1, len(sent_times_monotonic)):
+            actual_interval = sent_times_monotonic[i] - sent_times_monotonic[i - 1]
+            self.assertAlmostEqual(
+                actual_interval,
+                interval,
+                delta=tolerance,
+                msg=f"Interval {i} should be approximately {interval}s (got {actual_interval:.3f}s)",
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()

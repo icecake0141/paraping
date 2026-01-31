@@ -22,6 +22,7 @@ time-slot (pending marker) and avoid timeline drift when replies are delayed.
 import os
 import queue
 import socket
+import threading
 import time
 
 from paraping.ping_wrapper import ping_with_helper
@@ -195,3 +196,209 @@ def rdns_worker(request_queue, result_queue, stop_event):
         host, ip_address = item
         result_queue.put((host, resolve_rdns(ip_address)))
         request_queue.task_done()
+
+
+def scheduler_driven_ping_host(
+    host_info,
+    scheduler,
+    timeout,
+    count,
+    slow_threshold,
+    pause_event,
+    stop_event,
+    result_queue,
+    helper_path,
+    ping_lock,
+):
+    """
+    Ping a host using scheduler-driven timing with real-time event loop.
+
+    This function uses a monotonic clock and the Scheduler API to send pings
+    at precisely scheduled times without waiting for previous ping responses.
+
+    Args:
+        host_info: Dict with 'host' and 'id' keys
+        scheduler: Scheduler instance managing timing for all hosts
+        timeout: Timeout in seconds for each ping
+        count: Number of pings (0 for infinite)
+        slow_threshold: RTT threshold to classify as 'slow'
+        pause_event: Event to pause pinging
+        stop_event: Event to stop pinging
+        result_queue: Queue to put ping results
+        helper_path: Path to ping_helper binary
+        ping_lock: Lock to synchronize access to scheduler
+    """
+    host = host_info["host"]
+    host_id = host_info["id"]
+
+    if not os.path.exists(helper_path):
+        result_queue.put({
+            "host": host,
+            "host_id": host_id,
+            "sequence": 1,
+            "status": "fail",
+            "rtt": None,
+            "ttl": None,
+        })
+        result_queue.put({"host_id": host_id, "status": "done"})
+        return
+
+    sequence = 0
+
+    while True:
+        # Check stop condition
+        if stop_event is not None and stop_event.is_set():
+            break
+
+        # Check count limit
+        if count > 0 and sequence >= count:
+            break
+
+        # Handle pause
+        if pause_event is not None:
+            while pause_event.is_set():
+                if stop_event is not None and stop_event.is_set():
+                    result_queue.put({"host_id": host_id, "status": "done"})
+                    return
+                time.sleep(0.05)
+
+        # Get next scheduled ping time from scheduler
+        with ping_lock:
+            current_realtime = time.time()
+            next_times = scheduler.get_next_ping_times(current_realtime)
+            next_ping_time = next_times.get(host)
+
+        if next_ping_time is None:
+            # Host not in scheduler, shouldn't happen
+            break
+
+        # Convert to monotonic time for accurate sleep
+        current_monotonic = time.monotonic()
+        current_realtime = time.time()
+        time_until_ping = next_ping_time - current_realtime
+        target_monotonic = current_monotonic + time_until_ping
+
+        # Sleep until scheduled time (with small granularity for responsiveness)
+        while True:
+            if stop_event is not None and stop_event.is_set():
+                result_queue.put({"host_id": host_id, "status": "done"})
+                return
+
+            current_monotonic = time.monotonic()
+            remaining = target_monotonic - current_monotonic
+
+            if remaining <= 0:
+                break
+
+            # Sleep in small increments to remain responsive
+            sleep_time = min(0.01, remaining)
+            time.sleep(sleep_time)
+
+        # Check pause again before sending
+        if pause_event is not None:
+            while pause_event.is_set():
+                if stop_event is not None and stop_event.is_set():
+                    result_queue.put({"host_id": host_id, "status": "done"})
+                    return
+                time.sleep(0.05)
+
+        sequence += 1
+        sent_time = time.time()
+
+        # Emit 'sent' event for UI pending marker
+        result_queue.put({
+            "host": host,
+            "host_id": host_id,
+            "sequence": sequence,
+            "status": "sent",
+            "rtt": None,
+            "ttl": None,
+            "sent_time": sent_time,
+        })
+
+        # Mark ping as sent in scheduler
+        with ping_lock:
+            scheduler.mark_ping_sent(host, sent_time)
+
+        # Perform the actual ping in a background thread to not block scheduling
+        def do_ping():
+            try:
+                rtt_ms, ttl = ping_with_helper(host, timeout_ms=int(timeout * 1000), helper_path=helper_path)
+                if rtt_ms is not None:
+                    rtt = rtt_ms / 1000.0
+                    status = "slow" if rtt >= slow_threshold else "success"
+                    result_queue.put({
+                        "host": host,
+                        "host_id": host_id,
+                        "sequence": sequence,
+                        "status": status,
+                        "rtt": rtt,
+                        "ttl": ttl,
+                    })
+                else:
+                    result_queue.put({
+                        "host": host,
+                        "host_id": host_id,
+                        "sequence": sequence,
+                        "status": "fail",
+                        "rtt": None,
+                        "ttl": None,
+                    })
+            except Exception:  # pylint: disable=broad-exception-caught
+                result_queue.put({
+                    "host": host,
+                    "host_id": host_id,
+                    "sequence": sequence,
+                    "status": "fail",
+                    "rtt": None,
+                    "ttl": None,
+                })
+
+        # Launch ping in background thread
+        ping_thread = threading.Thread(target=do_ping, daemon=True)
+        ping_thread.start()
+
+    result_queue.put({"host_id": host_id, "status": "done"})
+
+
+def scheduler_driven_worker_ping(
+    host_info,
+    scheduler,
+    timeout,
+    count,
+    slow_threshold,
+    pause_event,
+    stop_event,
+    result_queue,
+    helper_path,
+    ping_lock,
+):
+    """
+    Worker wrapper for scheduler-driven ping.
+
+    This is the entry point for threading, calling scheduler_driven_ping_host.
+
+    Args:
+        host_info: Dict with 'host' and 'id' keys
+        scheduler: Scheduler instance managing timing for all hosts
+        timeout: Timeout in seconds for each ping
+        count: Number of pings (0 for infinite)
+        slow_threshold: RTT threshold to classify as 'slow'
+        pause_event: Event to pause pinging
+        stop_event: Event to stop pinging
+        result_queue: Queue to put ping results
+        helper_path: Path to ping_helper binary
+        ping_lock: Lock to synchronize access to scheduler
+    """
+    scheduler_driven_ping_host(
+        host_info,
+        scheduler,
+        timeout,
+        count,
+        slow_threshold,
+        pause_event,
+        stop_event,
+        result_queue,
+        helper_path,
+        ping_lock,
+    )

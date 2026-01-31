@@ -42,7 +42,8 @@ from paraping.core import (
 )
 from paraping.input_keys import read_key
 from paraping.network_asn import asn_worker, should_retry_asn
-from paraping.pinger import rdns_worker, worker_ping
+from paraping.pinger import rdns_worker, scheduler_driven_worker_ping
+from paraping.scheduler import Scheduler
 from paraping.ui_render import (
     build_display_entries,
     build_display_lines,
@@ -360,6 +361,16 @@ def run(args):
         stdin_fd = sys.stdin.fileno()
         original_term = termios.tcgetattr(stdin_fd)
 
+    # Initialize scheduler for real-time event-driven pinging
+    num_hosts = len(host_infos)
+    stagger = args.interval / num_hosts if num_hosts > 0 else 0.0
+    scheduler = Scheduler(interval=args.interval, stagger=stagger)
+    ping_lock = threading.Lock()
+
+    # Add all hosts to the scheduler
+    for info in host_infos:
+        scheduler.add_host(info["host"], host_id=info["id"])
+
     with ThreadPoolExecutor(max_workers=len(all_hosts)) as executor:
         for host, infos in host_info_map.items():
             info = infos[0]
@@ -376,19 +387,21 @@ def run(args):
                 for entry in infos:
                     entry["asn_pending"] = True
                 asn_request_queue.put((host, info["ip"]))
+
+        # Use scheduler-driven worker instead of traditional worker_ping
         for info in host_infos:
             executor.submit(
-                worker_ping,
+                scheduler_driven_worker_ping,
                 info,
+                scheduler,
                 args.timeout,
                 args.count,
                 args.slow_threshold,
-                args.verbose,
                 pause_event,
                 stop_event,
                 result_queue,
-                args.interval,
                 ping_helper_path,
+                ping_lock,
             )
 
         completed_hosts = 0
