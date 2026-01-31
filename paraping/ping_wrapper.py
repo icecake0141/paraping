@@ -42,7 +42,7 @@ class PingHelperError(RuntimeError):
         self.stderr = stderr
 
 
-def ping_with_helper(host, timeout_ms=1000, helper_path="./ping_helper"):
+def ping_with_helper(host, timeout_ms=1000, helper_path="./ping_helper", icmp_seq=None):
     """
     Ping a host using the ping_helper binary.
 
@@ -54,6 +54,7 @@ def ping_with_helper(host, timeout_ms=1000, helper_path="./ping_helper"):
         host: The hostname or IP address to ping
         timeout_ms: Timeout in milliseconds (default: 1000)
         helper_path: Path to the ping_helper binary (default: ./ping_helper)
+        icmp_seq: Optional ICMP sequence number (0-65535). If None, uses default (1)
 
     Returns:
         tuple[float | None, int | None]: (RTT in milliseconds, TTL) on success;
@@ -69,7 +70,7 @@ def ping_with_helper(host, timeout_ms=1000, helper_path="./ping_helper"):
             - Exit 5: Send error
             - Exit 6: Select error
             - Exit 8: Receive error
-        ValueError: If timeout_ms is not positive
+        ValueError: If timeout_ms is not positive or icmp_seq is out of range
 
     Examples:
         Successful ping:
@@ -91,16 +92,25 @@ def ping_with_helper(host, timeout_ms=1000, helper_path="./ping_helper"):
     if timeout_ms <= 0:
         raise ValueError("timeout_ms must be a positive integer in milliseconds.")
 
+    if icmp_seq is not None and (icmp_seq < 0 or icmp_seq > 65535):
+        raise ValueError("icmp_seq must be between 0 and 65535.")
+
     if not os.path.exists(helper_path):
         raise FileNotFoundError(f"ping_helper binary not found at {helper_path}. " f"Please run 'make build' to compile it.")
 
     try:
+        # Build command arguments
+        cmd_args = [helper_path, host, str(timeout_ms)]
+        if icmp_seq is not None:
+            cmd_args.append(str(icmp_seq))
+
         # Run the helper binary
         result = subprocess.run(
-            [helper_path, host, str(timeout_ms)],
+            cmd_args,
             capture_output=True,
             text=True,
             timeout=(timeout_ms / 1000.0) + 1.0,  # Add 1 second buffer
+            check=False,  # We handle non-zero exit codes ourselves
         )
 
         # Success case

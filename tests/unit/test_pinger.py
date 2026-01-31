@@ -622,7 +622,7 @@ class TestSchedulerDrivenPendingEvents(unittest.TestCase):
         self.assertEqual(sent_event["status"], "sent")
         self.assertEqual(sent_event["host"], "192.0.2.1")
         self.assertEqual(sent_event["host_id"], 0)
-        self.assertEqual(sent_event["sequence"], 1)
+        self.assertEqual(sent_event["sequence"], 0)  # ICMP seq starts at 0
         self.assertIsNone(sent_event["rtt"])
         self.assertIsNone(sent_event["ttl"])
         self.assertIn("sent_time", sent_event)
