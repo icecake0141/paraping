@@ -69,9 +69,9 @@ def build_packet_stats_label(entry):
     Returns:
         Formatted string like "10/9/1 loss 10.0%"
     """
-    sent = entry.get('sent', 0)
-    received = entry.get('received', 0)
-    lost = entry.get('lost', 0)
+    sent = entry.get("sent", 0)
+    received = entry.get("received", 0)
+    lost = entry.get("lost", 0)
     return f"{sent}/{received}/{lost} loss {entry['loss_rate']:.1f}%"
 
 

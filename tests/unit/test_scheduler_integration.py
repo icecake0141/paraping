@@ -97,11 +97,13 @@ class TestSchedulerIntegration(unittest.TestCase):
                     if base_time is None:
                         base_time = sent_time
                     offset = sent_time - base_time
-                    sent_events.append({
-                        "host_id": result["host_id"],
-                        "offset": offset,
-                        "sent_time": sent_time,
-                    })
+                    sent_events.append(
+                        {
+                            "host_id": result["host_id"],
+                            "offset": offset,
+                            "sent_time": sent_time,
+                        }
+                    )
             except queue.Empty:
                 continue
 

@@ -23,4 +23,5 @@ This wrapper imports and runs the main CLI entry point from the paraping package
 
 if __name__ == "__main__":
     from paraping.cli import main
+
     main()
