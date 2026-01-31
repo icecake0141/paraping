@@ -44,6 +44,7 @@ from paraping.input_keys import read_key
 from paraping.network_asn import asn_worker, should_retry_asn
 from paraping.pinger import rdns_worker, scheduler_driven_worker_ping
 from paraping.scheduler import Scheduler
+from paraping.sequence_tracker import SequenceTracker
 from paraping.ui_render import (
     build_display_entries,
     build_display_lines,
@@ -366,6 +367,10 @@ def run(args):
     stagger = args.interval / num_hosts if num_hosts > 0 else 0.0
     scheduler = Scheduler(interval=args.interval, stagger=stagger)
     ping_lock = threading.Lock()
+    
+    # Initialize shared sequence tracker for per-host ICMP sequence management
+    # with max 3 outstanding pings per host
+    sequence_tracker = SequenceTracker(max_outstanding=3)
 
     # Add all hosts to the scheduler
     for info in host_infos:
@@ -402,6 +407,7 @@ def run(args):
                 result_queue,
                 ping_helper_path,
                 ping_lock,
+                sequence_tracker,
             )
 
         completed_hosts = 0

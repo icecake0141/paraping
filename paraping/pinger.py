@@ -26,6 +26,7 @@ import threading
 import time
 
 from paraping.ping_wrapper import ping_with_helper
+from paraping.sequence_tracker import SequenceTracker
 
 
 def ping_host(
@@ -209,12 +210,15 @@ def scheduler_driven_ping_host(
     result_queue,
     helper_path,
     ping_lock,
+    sequence_tracker=None,
 ):
     """
     Ping a host using scheduler-driven timing with real-time event loop.
 
     This function uses a monotonic clock and the Scheduler API to send pings
     at precisely scheduled times without waiting for previous ping responses.
+    It uses a SequenceTracker to manage per-host ICMP sequence numbers and
+    enforce a maximum of 3 outstanding pings per host.
 
     Args:
         host_info: Dict with 'host' and 'id' keys
@@ -227,9 +231,15 @@ def scheduler_driven_ping_host(
         result_queue: Queue to put ping results
         helper_path: Path to ping_helper binary
         ping_lock: Lock to synchronize access to scheduler
+        sequence_tracker: Optional SequenceTracker instance for managing sequences
+                         and outstanding pings (creates new if None)
     """
     host = host_info["host"]
     host_id = host_info["id"]
+
+    # Create sequence tracker if not provided
+    if sequence_tracker is None:
+        sequence_tracker = SequenceTracker(max_outstanding=3)
 
     if not os.path.exists(helper_path):
         result_queue.put({
@@ -243,7 +253,7 @@ def scheduler_driven_ping_host(
         result_queue.put({"host_id": host_id, "status": "done"})
         return
 
-    sequence = 0
+    ping_count = 0
 
     while True:
         # Check stop condition
@@ -251,7 +261,7 @@ def scheduler_driven_ping_host(
             break
 
         # Check count limit
-        if count > 0 and sequence >= count:
+        if count > 0 and ping_count >= count:
             break
 
         # Handle pause
@@ -304,14 +314,23 @@ def scheduler_driven_ping_host(
                     return
                 time.sleep(0.05)
 
-        sequence += 1
+        # Get next sequence number (enforces max 3 outstanding pings)
+        icmp_seq = sequence_tracker.get_next_sequence(host)
+        if icmp_seq is None:
+            # At max outstanding limit, skip this ping
+            # Mark ping as sent in scheduler to keep timing aligned
+            with ping_lock:
+                scheduler.mark_ping_sent(host, time.time())
+            continue
+
+        ping_count += 1
         sent_time = time.time()
 
         # Emit 'sent' event for UI pending marker
         result_queue.put({
             "host": host,
             "host_id": host_id,
-            "sequence": sequence,
+            "sequence": icmp_seq,
             "status": "sent",
             "rtt": None,
             "ttl": None,
@@ -323,16 +342,24 @@ def scheduler_driven_ping_host(
             scheduler.mark_ping_sent(host, sent_time)
 
         # Perform the actual ping in a background thread to not block scheduling
-        def execute_ping_async():
+        def execute_ping_async(seq_num):
             try:
-                rtt_ms, ttl = ping_with_helper(host, timeout_ms=int(timeout * 1000), helper_path=helper_path)
+                rtt_ms, ttl = ping_with_helper(
+                    host, 
+                    timeout_ms=int(timeout * 1000), 
+                    helper_path=helper_path,
+                    icmp_seq=seq_num
+                )
+                # Mark as replied regardless of success/failure
+                sequence_tracker.mark_replied(host, seq_num)
+                
                 if rtt_ms is not None:
                     rtt = rtt_ms / 1000.0
                     status = "slow" if rtt >= slow_threshold else "success"
                     result_queue.put({
                         "host": host,
                         "host_id": host_id,
-                        "sequence": sequence,
+                        "sequence": seq_num,
                         "status": status,
                         "rtt": rtt,
                         "ttl": ttl,
@@ -341,23 +368,25 @@ def scheduler_driven_ping_host(
                     result_queue.put({
                         "host": host,
                         "host_id": host_id,
-                        "sequence": sequence,
+                        "sequence": seq_num,
                         "status": "fail",
                         "rtt": None,
                         "ttl": None,
                     })
             except Exception:  # pylint: disable=broad-exception-caught
+                # Mark as replied on exception too
+                sequence_tracker.mark_replied(host, seq_num)
                 result_queue.put({
                     "host": host,
                     "host_id": host_id,
-                    "sequence": sequence,
+                    "sequence": seq_num,
                     "status": "fail",
                     "rtt": None,
                     "ttl": None,
                 })
 
         # Launch ping in background thread
-        ping_thread = threading.Thread(target=execute_ping_async, daemon=True)
+        ping_thread = threading.Thread(target=execute_ping_async, args=(icmp_seq,), daemon=True)
         ping_thread.start()
 
     result_queue.put({"host_id": host_id, "status": "done"})
@@ -374,6 +403,7 @@ def scheduler_driven_worker_ping(
     result_queue,
     helper_path,
     ping_lock,
+    sequence_tracker=None,
 ):
     """
     Worker wrapper for scheduler-driven ping.
@@ -391,6 +421,7 @@ def scheduler_driven_worker_ping(
         result_queue: Queue to put ping results
         helper_path: Path to ping_helper binary
         ping_lock: Lock to synchronize access to scheduler
+        sequence_tracker: Optional shared SequenceTracker instance
     """
     scheduler_driven_ping_host(
         host_info,
@@ -403,4 +434,5 @@ def scheduler_driven_worker_ping(
         result_queue,
         helper_path,
         ping_lock,
+        sequence_tracker,
     )
