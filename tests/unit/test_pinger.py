@@ -29,7 +29,14 @@ from unittest.mock import patch
 # Add parent directory to path to import paraping
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from paraping.pinger import ping_host, rdns_worker, resolve_rdns, worker_ping
+from paraping.pinger import (  # noqa: E402  # pylint: disable=wrong-import-position
+    ping_host,
+    rdns_worker,
+    resolve_rdns,
+    scheduler_driven_ping_host,
+    worker_ping,
+)
+from paraping.scheduler import Scheduler  # noqa: E402  # pylint: disable=wrong-import-position
 
 
 class TestPingHost(unittest.TestCase):
@@ -425,6 +432,280 @@ class TestPingHostIntegration(unittest.TestCase):
                 break
 
         self.assertEqual(len(results), 5)
+
+
+class TestEmitPendingMarker(unittest.TestCase):
+    """Test cases for emit_pending marker functionality"""
+
+    @patch("paraping.pinger.ping_with_helper")
+    @patch("os.path.exists")
+    def test_ping_host_emit_pending_single_ping(self, mock_exists, mock_ping):
+        """Test that emit_pending yields a 'sent' event before ping"""
+        mock_exists.return_value = True
+        mock_ping.return_value = (10.0, 64)  # RTT in ms, TTL
+
+        results = list(
+            ping_host(
+                "192.0.2.1",
+                timeout=1,
+                count=1,
+                slow_threshold=0.5,
+                verbose=False,
+                emit_pending=True,
+            )
+        )
+
+        # Should have 2 results: 'sent' event and actual ping result
+        self.assertEqual(len(results), 2)
+
+        # First result should be the 'sent' event
+        sent_event = results[0]
+        self.assertEqual(sent_event["status"], "sent")
+        self.assertEqual(sent_event["host"], "192.0.2.1")
+        self.assertEqual(sent_event["sequence"], 1)
+        self.assertIsNone(sent_event["rtt"])
+        self.assertIsNone(sent_event["ttl"])
+        self.assertIn("sent_time", sent_event)
+        self.assertIsInstance(sent_event["sent_time"], float)
+
+        # Second result should be the actual ping result
+        ping_result = results[1]
+        self.assertEqual(ping_result["status"], "success")
+        self.assertAlmostEqual(ping_result["rtt"], 0.01, places=2)
+
+    @patch("paraping.pinger.ping_with_helper")
+    @patch("os.path.exists")
+    def test_ping_host_emit_pending_multiple_pings(self, mock_exists, mock_ping):
+        """Test that emit_pending yields 'sent' events for multiple pings"""
+        mock_exists.return_value = True
+        mock_ping.side_effect = [
+            (10.0, 64),
+            (15.0, 64),
+            (20.0, 64),
+        ]
+
+        results = list(
+            ping_host(
+                "192.0.2.1",
+                timeout=1,
+                count=3,
+                slow_threshold=0.5,
+                verbose=False,
+                emit_pending=True,
+                interval=0.01,  # Small interval for testing
+            )
+        )
+
+        # Should have 6 results: 3 'sent' events and 3 ping results
+        self.assertEqual(len(results), 6)
+
+        # Check that results alternate: sent, success, sent, success, sent, success
+        for i in range(3):
+            sent_event = results[i * 2]
+            ping_result = results[i * 2 + 1]
+
+            # Verify sent event
+            self.assertEqual(sent_event["status"], "sent")
+            self.assertEqual(sent_event["sequence"], i + 1)
+            self.assertIn("sent_time", sent_event)
+
+            # Verify ping result
+            self.assertEqual(ping_result["status"], "success")
+            self.assertEqual(ping_result["sequence"], i + 1)
+
+    @patch("paraping.pinger.ping_with_helper")
+    @patch("os.path.exists")
+    def test_ping_host_emit_pending_with_failure(self, mock_exists, mock_ping):
+        """Test that emit_pending yields 'sent' event even when ping fails"""
+        mock_exists.return_value = True
+        mock_ping.return_value = (None, None)  # Ping failure
+
+        results = list(
+            ping_host(
+                "192.0.2.1",
+                timeout=1,
+                count=1,
+                slow_threshold=0.5,
+                verbose=False,
+                emit_pending=True,
+            )
+        )
+
+        # Should have 2 results: 'sent' event and failed ping result
+        self.assertEqual(len(results), 2)
+
+        # First result should be the 'sent' event
+        sent_event = results[0]
+        self.assertEqual(sent_event["status"], "sent")
+
+        # Second result should be the failed ping
+        ping_result = results[1]
+        self.assertEqual(ping_result["status"], "fail")
+
+    @patch("paraping.pinger.ping_with_helper")
+    @patch("os.path.exists")
+    def test_ping_host_without_emit_pending(self, mock_exists, mock_ping):
+        """Test that without emit_pending, no 'sent' event is yielded"""
+        mock_exists.return_value = True
+        mock_ping.return_value = (10.0, 64)
+
+        results = list(
+            ping_host(
+                "192.0.2.1",
+                timeout=1,
+                count=1,
+                slow_threshold=0.5,
+                verbose=False,
+                emit_pending=False,  # Explicitly disable
+            )
+        )
+
+        # Should have only 1 result: the ping result
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["status"], "success")
+
+
+class TestSchedulerDrivenPendingEvents(unittest.TestCase):
+    """Test cases for scheduler-driven ping pending events"""
+
+    @patch("paraping.pinger.ping_with_helper")
+    @patch("os.path.exists")
+    def test_scheduler_driven_ping_emits_sent_event(self, mock_exists, mock_ping):
+        """Test that scheduler_driven_ping_host emits 'sent' event at send time"""
+        mock_exists.return_value = True
+        # Simulate a slow ping response to verify 'sent' event is emitted first
+        mock_ping.return_value = (10.0, 64)
+
+        scheduler = Scheduler(interval=1.0, stagger=0.0)
+        host_info = {"id": 0, "host": "192.0.2.1"}
+        scheduler.add_host("192.0.2.1")
+
+        result_queue = queue.Queue()
+        stop_event = threading.Event()
+        pause_event = threading.Event()
+        ping_lock = threading.Lock()
+
+        # Run scheduler_driven_ping_host in a thread
+        ping_thread = threading.Thread(
+            target=scheduler_driven_ping_host,
+            args=(
+                host_info,
+                scheduler,
+                1,  # timeout
+                1,  # count - only one ping
+                0.5,  # slow_threshold
+                pause_event,
+                stop_event,
+                result_queue,
+                "./ping_helper",
+                ping_lock,
+            ),
+            daemon=True,
+        )
+        ping_thread.start()
+
+        # Wait for events to be queued
+        time.sleep(0.2)
+        stop_event.set()
+        ping_thread.join(timeout=2.0)
+
+        # Collect all results from queue
+        results = []
+        while not result_queue.empty():
+            results.append(result_queue.get())
+
+        # Should have at least 2 events: 'sent' and either 'success' or 'done'
+        self.assertGreaterEqual(len(results), 2)
+
+        # First result should be the 'sent' event
+        sent_event = results[0]
+        self.assertEqual(sent_event["status"], "sent")
+        self.assertEqual(sent_event["host"], "192.0.2.1")
+        self.assertEqual(sent_event["host_id"], 0)
+        self.assertEqual(sent_event["sequence"], 1)
+        self.assertIsNone(sent_event["rtt"])
+        self.assertIsNone(sent_event["ttl"])
+        self.assertIn("sent_time", sent_event)
+        self.assertIsInstance(sent_event["sent_time"], float)
+
+    @patch("paraping.pinger.ping_with_helper")
+    @patch("os.path.exists")
+    def test_scheduler_driven_ping_sent_before_result(self, mock_exists, mock_ping):
+        """Test that 'sent' event is emitted before ping result"""
+        mock_exists.return_value = True
+
+        # Use a longer mock delay to ensure timing
+        def delayed_ping(*args, **kwargs):
+            time.sleep(0.05)  # Small delay to simulate network latency
+            return (10.0, 64)
+
+        mock_ping.side_effect = delayed_ping
+
+        scheduler = Scheduler(interval=1.0, stagger=0.0)
+        host_info = {"id": 0, "host": "192.0.2.1"}
+        scheduler.add_host("192.0.2.1")
+
+        result_queue = queue.Queue()
+        stop_event = threading.Event()
+        pause_event = threading.Event()
+        ping_lock = threading.Lock()
+
+        # Track the order of events
+        event_order = []
+
+        def track_events():
+            start_time = time.time()
+            while time.time() - start_time < 1.0 and not stop_event.is_set():
+                try:
+                    result = result_queue.get(timeout=0.1)
+                    event_order.append((time.time(), result["status"]))
+                except queue.Empty:
+                    continue
+
+        tracker_thread = threading.Thread(target=track_events, daemon=True)
+        tracker_thread.start()
+
+        # Run scheduler_driven_ping_host
+        ping_thread = threading.Thread(
+            target=scheduler_driven_ping_host,
+            args=(
+                host_info,
+                scheduler,
+                1,  # timeout
+                1,  # count
+                0.5,  # slow_threshold
+                pause_event,
+                stop_event,
+                result_queue,
+                "./ping_helper",
+                ping_lock,
+            ),
+            daemon=True,
+        )
+        ping_thread.start()
+
+        # Wait for completion
+        time.sleep(0.3)
+        stop_event.set()
+        ping_thread.join(timeout=2.0)
+        tracker_thread.join(timeout=1.0)
+
+        # Verify that 'sent' event came before the ping result
+        self.assertGreaterEqual(len(event_order), 2)
+        statuses = [status for _, status in event_order]
+
+        # Find the index of 'sent' and 'success'/'fail'
+        sent_idx = None
+        result_idx = None
+        for i, status in enumerate(statuses):
+            if status == "sent" and sent_idx is None:
+                sent_idx = i
+            if status in ["success", "slow", "fail"] and result_idx is None:
+                result_idx = i
+
+        # 'sent' should come before the result
+        if sent_idx is not None and result_idx is not None:
+            self.assertLess(sent_idx, result_idx)
 
 
 if __name__ == "__main__":
