@@ -103,13 +103,14 @@ def ping_with_helper(host, timeout_ms=1000, helper_path="./ping_helper", icmp_se
         cmd_args = [helper_path, host, str(timeout_ms)]
         if icmp_seq is not None:
             cmd_args.append(str(icmp_seq))
-        
+
         # Run the helper binary
         result = subprocess.run(
             cmd_args,
             capture_output=True,
             text=True,
             timeout=(timeout_ms / 1000.0) + 1.0,  # Add 1 second buffer
+            check=False,  # We handle non-zero exit codes ourselves
         )
 
         # Success case

@@ -27,7 +27,7 @@ from typing import Dict, Optional, Set
 class SequenceTracker:
     """
     Tracks ICMP sequence numbers and outstanding pings per host.
-    
+
     This class manages per-host sequence counters and tracks which pings
     are currently in-flight (sent but not yet replied). It enforces a
     maximum of 3 outstanding pings per host to prevent queue buildup.
@@ -36,7 +36,7 @@ class SequenceTracker:
     def __init__(self, max_outstanding: int = 3):
         """
         Initialize the SequenceTracker.
-        
+
         Args:
             max_outstanding: Maximum number of outstanding pings per host (default: 3)
         """
@@ -50,14 +50,14 @@ class SequenceTracker:
     def get_next_sequence(self, host: str) -> Optional[int]:
         """
         Get the next sequence number for a host if under the outstanding limit.
-        
+
         This method checks if the host has fewer than max_outstanding pings
         in flight. If so, it returns the next sequence number and marks it
         as outstanding. Otherwise, it returns None.
-        
+
         Args:
             host: The hostname or IP address
-            
+
         Returns:
             The next sequence number (0-65535) if under limit, None otherwise
         """
@@ -66,50 +66,50 @@ class SequenceTracker:
             if host not in self._sequences:
                 self._sequences[host] = 0
                 self._outstanding[host] = set()
-            
+
             # Check if we're at the outstanding limit
             if len(self._outstanding[host]) >= self.max_outstanding:
                 return None
-            
+
             # Get next sequence number
             seq = self._sequences[host]
-            
+
             # Mark as outstanding
             self._outstanding[host].add(seq)
-            
+
             # Increment counter with uint16 wraparound
             self._sequences[host] = (seq + 1) % 65536
-            
+
             return seq
 
     def mark_replied(self, host: str, sequence: int) -> bool:
         """
         Mark a ping as replied, removing it from outstanding tracking.
-        
+
         Args:
             host: The hostname or IP address
             sequence: The sequence number that was replied to
-            
+
         Returns:
             True if the sequence was in outstanding set, False otherwise
         """
         with self._lock:
             if host not in self._outstanding:
                 return False
-            
+
             if sequence in self._outstanding[host]:
                 self._outstanding[host].remove(sequence)
                 return True
-            
+
             return False
 
     def get_outstanding_count(self, host: str) -> int:
         """
         Get the number of outstanding pings for a host.
-        
+
         Args:
             host: The hostname or IP address
-            
+
         Returns:
             Number of outstanding pings (0 if host not tracked)
         """
@@ -121,10 +121,10 @@ class SequenceTracker:
     def get_outstanding_sequences(self, host: str) -> Set[int]:
         """
         Get the set of outstanding sequence numbers for a host.
-        
+
         Args:
             host: The hostname or IP address
-            
+
         Returns:
             Set of outstanding sequence numbers (empty set if host not tracked)
         """
@@ -136,7 +136,7 @@ class SequenceTracker:
     def reset_host(self, host: str) -> None:
         """
         Reset tracking for a specific host.
-        
+
         Args:
             host: The hostname or IP address to reset
         """
@@ -157,10 +157,10 @@ class SequenceTracker:
     def can_send_ping(self, host: str) -> bool:
         """
         Check if a ping can be sent to a host (under outstanding limit).
-        
+
         Args:
             host: The hostname or IP address
-            
+
         Returns:
             True if the host has fewer than max_outstanding pings in flight
         """

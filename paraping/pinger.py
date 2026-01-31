@@ -242,14 +242,16 @@ def scheduler_driven_ping_host(
         sequence_tracker = SequenceTracker(max_outstanding=3)
 
     if not os.path.exists(helper_path):
-        result_queue.put({
-            "host": host,
-            "host_id": host_id,
-            "sequence": 1,
-            "status": "fail",
-            "rtt": None,
-            "ttl": None,
-        })
+        result_queue.put(
+            {
+                "host": host,
+                "host_id": host_id,
+                "sequence": 1,
+                "status": "fail",
+                "rtt": None,
+                "ttl": None,
+            }
+        )
         result_queue.put({"host_id": host_id, "status": "done"})
         return
 
@@ -327,15 +329,17 @@ def scheduler_driven_ping_host(
         sent_time = time.time()
 
         # Emit 'sent' event for UI pending marker
-        result_queue.put({
-            "host": host,
-            "host_id": host_id,
-            "sequence": icmp_seq,
-            "status": "sent",
-            "rtt": None,
-            "ttl": None,
-            "sent_time": sent_time,
-        })
+        result_queue.put(
+            {
+                "host": host,
+                "host_id": host_id,
+                "sequence": icmp_seq,
+                "status": "sent",
+                "rtt": None,
+                "ttl": None,
+                "sent_time": sent_time,
+            }
+        )
 
         # Mark ping as sent in scheduler
         with ping_lock:
@@ -344,46 +348,47 @@ def scheduler_driven_ping_host(
         # Perform the actual ping in a background thread to not block scheduling
         def execute_ping_async(seq_num):
             try:
-                rtt_ms, ttl = ping_with_helper(
-                    host, 
-                    timeout_ms=int(timeout * 1000), 
-                    helper_path=helper_path,
-                    icmp_seq=seq_num
-                )
+                rtt_ms, ttl = ping_with_helper(host, timeout_ms=int(timeout * 1000), helper_path=helper_path, icmp_seq=seq_num)
                 # Mark as replied regardless of success/failure
                 sequence_tracker.mark_replied(host, seq_num)
-                
+
                 if rtt_ms is not None:
                     rtt = rtt_ms / 1000.0
                     status = "slow" if rtt >= slow_threshold else "success"
-                    result_queue.put({
-                        "host": host,
-                        "host_id": host_id,
-                        "sequence": seq_num,
-                        "status": status,
-                        "rtt": rtt,
-                        "ttl": ttl,
-                    })
+                    result_queue.put(
+                        {
+                            "host": host,
+                            "host_id": host_id,
+                            "sequence": seq_num,
+                            "status": status,
+                            "rtt": rtt,
+                            "ttl": ttl,
+                        }
+                    )
                 else:
-                    result_queue.put({
+                    result_queue.put(
+                        {
+                            "host": host,
+                            "host_id": host_id,
+                            "sequence": seq_num,
+                            "status": "fail",
+                            "rtt": None,
+                            "ttl": None,
+                        }
+                    )
+            except Exception:  # pylint: disable=broad-exception-caught
+                # Mark as replied on exception too
+                sequence_tracker.mark_replied(host, seq_num)
+                result_queue.put(
+                    {
                         "host": host,
                         "host_id": host_id,
                         "sequence": seq_num,
                         "status": "fail",
                         "rtt": None,
                         "ttl": None,
-                    })
-            except Exception:  # pylint: disable=broad-exception-caught
-                # Mark as replied on exception too
-                sequence_tracker.mark_replied(host, seq_num)
-                result_queue.put({
-                    "host": host,
-                    "host_id": host_id,
-                    "sequence": seq_num,
-                    "status": "fail",
-                    "rtt": None,
-                    "ttl": None,
-                })
+                    }
+                )
 
         # Launch ping in background thread
         ping_thread = threading.Thread(target=execute_ping_async, args=(icmp_seq,), daemon=True)
