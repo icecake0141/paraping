@@ -84,7 +84,7 @@ class TestSequenceTrackingIntegration(unittest.TestCase):
 
         # Filter for sent events
         sent_events = [r for r in results if r.get("status") == "sent"]
-        
+
         # Should have 3 sent events with sequences 0, 1, 2
         self.assertEqual(len(sent_events), 3)
         sequences = [e["sequence"] for e in sent_events]
@@ -95,15 +95,15 @@ class TestSequenceTrackingIntegration(unittest.TestCase):
     def test_max_three_outstanding_enforced(self, mock_exists, mock_ping):
         """Test that max 3 outstanding pings per host is enforced"""
         mock_exists.return_value = True
-        
+
         # Simulate slow pings that don't complete immediately
         ping_completion_event = threading.Event()
-        
+
         def slow_ping(*args, **kwargs):
             # Block until event is set
             ping_completion_event.wait(timeout=5.0)
             return (10.0, 64)
-        
+
         mock_ping.side_effect = slow_ping
 
         scheduler = Scheduler(interval=0.1, stagger=0.0)  # Fast interval
@@ -138,24 +138,24 @@ class TestSequenceTrackingIntegration(unittest.TestCase):
 
         # Wait for some pings to be sent
         time.sleep(0.5)
-        
+
         # Check outstanding count - should be capped at 3
         outstanding = sequence_tracker.get_outstanding_count("192.0.2.1")
         self.assertLessEqual(outstanding, 3)
-        
+
         # Collect sent events
         sent_events = []
         while not result_queue.empty():
             result = result_queue.get()
             if result.get("status") == "sent":
                 sent_events.append(result)
-        
+
         # Should have sent exactly 3 pings (max outstanding limit)
         self.assertEqual(len(sent_events), 3)
-        
+
         # Release the ping completions
         ping_completion_event.set()
-        
+
         # Stop the thread
         stop_event.set()
         ping_thread.join(timeout=2.0)
@@ -165,23 +165,23 @@ class TestSequenceTrackingIntegration(unittest.TestCase):
     def test_reply_frees_outstanding_slot(self, mock_exists, mock_ping):
         """Test that receiving a reply frees up an outstanding slot"""
         mock_exists.return_value = True
-        
+
         ping_call_count = [0]
         ping_locks = {}
-        
+
         def controlled_ping(*args, **kwargs):
             # Extract icmp_seq from kwargs
             icmp_seq = kwargs.get("icmp_seq", 0)
             ping_call_count[0] += 1
-            
+
             # Create a lock for this sequence if it doesn't exist
             if icmp_seq not in ping_locks:
                 ping_locks[icmp_seq] = threading.Event()
-            
+
             # Wait for the lock to be released
             ping_locks[icmp_seq].wait(timeout=5.0)
             return (10.0, 64)
-        
+
         mock_ping.side_effect = controlled_ping
 
         scheduler = Scheduler(interval=0.05, stagger=0.0)  # Very fast interval
@@ -216,43 +216,43 @@ class TestSequenceTrackingIntegration(unittest.TestCase):
 
         # Wait for first 3 pings to be sent
         time.sleep(0.3)
-        
+
         # Should be at max outstanding
         self.assertEqual(sequence_tracker.get_outstanding_count("192.0.2.1"), 3)
-        
+
         # Release sequence 0 to complete
         if 0 in ping_locks:
             ping_locks[0].set()
         time.sleep(0.2)
-        
+
         # Should now have sent a 4th ping (sequence 3)
         # and have 3 outstanding (1, 2, 3)
         self.assertEqual(sequence_tracker.get_outstanding_count("192.0.2.1"), 3)
-        
+
         # Release sequences 1 and 2
         if 1 in ping_locks:
             ping_locks[1].set()
         if 2 in ping_locks:
             ping_locks[2].set()
         time.sleep(0.2)
-        
+
         # Should now have sent pings 4 and 5, with 3 outstanding (3, 4, 5)
         self.assertEqual(sequence_tracker.get_outstanding_count("192.0.2.1"), 3)
-        
+
         # Release all remaining
         for lock in ping_locks.values():
             lock.set()
-        
+
         stop_event.set()
         ping_thread.join(timeout=2.0)
-        
+
         # Verify all 6 pings were sent
         sent_events = []
         while not result_queue.empty():
             result = result_queue.get()
             if result.get("status") == "sent":
                 sent_events.append(result)
-        
+
         self.assertEqual(len(sent_events), 6)
         sequences = [e["sequence"] for e in sent_events]
         self.assertEqual(sequences, [0, 1, 2, 3, 4, 5])
@@ -266,7 +266,7 @@ class TestSequenceTrackingIntegration(unittest.TestCase):
 
         scheduler = Scheduler(interval=1.0, stagger=0.0)
         sequence_tracker = SequenceTracker(max_outstanding=3)
-        
+
         hosts = ["192.0.2.1", "192.0.2.2", "192.0.2.3"]
         for i, host in enumerate(hosts):
             scheduler.add_host(host, host_id=i)
@@ -327,21 +327,21 @@ class TestSequenceTrackingIntegration(unittest.TestCase):
 
         sequence_tracker = SequenceTracker(max_outstanding=3)
         host = "192.0.2.1"
-        
+
         # Manually set the sequence counter to near wraparound
         sequence_tracker._sequences[host] = 65534
         sequence_tracker._outstanding[host] = set()
-        
+
         # Get sequences around wraparound
         seq1 = sequence_tracker.get_next_sequence(host)
         sequence_tracker.mark_replied(host, seq1)
-        
+
         seq2 = sequence_tracker.get_next_sequence(host)
         sequence_tracker.mark_replied(host, seq2)
-        
+
         seq3 = sequence_tracker.get_next_sequence(host)
         sequence_tracker.mark_replied(host, seq3)
-        
+
         # Verify wraparound
         self.assertEqual(seq1, 65534)
         self.assertEqual(seq2, 65535)

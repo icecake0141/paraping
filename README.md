@@ -20,7 +20,9 @@ ParaPing is an interactive, terminal-based ICMP monitor that pings many hosts in
 
 ## Features
 - Concurrent ICMP ping to multiple hosts (capability-based helper binary).
-- Live timeline or sparkline visualization with success/slow/fail markers.
+- Live timeline or sparkline visualization with success/slow/fail/pending markers.
+- **Real-time pending markers**: Visual indicator (`-`) shows pings in-flight before results arrive, keeping timeline columns synchronized across hosts for easier comparison.
+- **Time-driven scheduler**: Precise wall-clock-based scheduling eliminates timeline drift, ensuring columns stay aligned even with varying network latency.
 - Animated activity indicator (Knight Rider-style) while pings are running.
 - Summary panel with host statistics, RTT jitter/standard deviation, aggregate counts, and TTL display.
 - Boxed panel layout for ping results, summaries, and the status line.
@@ -35,6 +37,7 @@ ParaPing is an interactive, terminal-based ICMP monitor that pings many hosts in
 - Configurable timezone for timestamps and snapshot naming.
 - Input file support for host lists (one per line in `IP,alias` format; comments allowed).
 - **Global rate limit protection**: Enforces a maximum of 50 pings/sec globally (host_count / interval ≤ 50) to prevent network flooding. The tool will exit with an error if this limit is exceeded.
+- **Per-host outstanding ping window**: Maximum of 3 concurrent pings per host prevents queue buildup and resource exhaustion when monitoring slow or unresponsive hosts.
 
 ## Requirements
 - Python 3.9 or newer.
@@ -444,7 +447,8 @@ Example (explicit IPv4 addresses only):
 - `.` success
 - `!` slow (RTT >= `--slow-threshold`)
 - `x` failure/timeout
-- When `--color` is enabled: white=success, yellow=slow, red=failure.
+- `-` pending (ping sent but response not yet received)
+- When `--color` is enabled: white=success, yellow=slow, red=failure, dark gray=pending.
 
 ## Notes
 - ICMP requires elevated privileges (run with `sudo` or Administrator on Windows) unless using the capability-based helper on Linux.
@@ -453,6 +457,88 @@ Example (explicit IPv4 addresses only):
 - The monitor starts one worker thread per host and enforces a hard limit of 128 hosts. It exits with an error if exceeded.
 - When the summary panel is positioned at the top/bottom, it expands to use available empty rows.
 - When the summary panel is positioned at the top/bottom, it shows all summary fields if the width allows.
+
+### Safety Features & Rate Limiting
+
+#### Global Rate Limit (50 pings/sec)
+ParaPing enforces a **maximum of 50 pings per second** globally to prevent network flooding and system overload. The rate is calculated as:
+
+```
+rate = host_count / interval
+```
+
+For example:
+- ✅ **Valid**: 50 hosts at 1.0s interval = 50 pings/sec (at limit)
+- ✅ **Valid**: 25 hosts at 0.5s interval = 50 pings/sec (at limit)
+- ✅ **Valid**: 100 hosts at 2.0s interval = 50 pings/sec (at limit)
+- ❌ **Invalid**: 100 hosts at 1.0s interval = 100 pings/sec (exceeds limit)
+- ❌ **Invalid**: 51 hosts at 1.0s interval = 51 pings/sec (exceeds limit)
+
+If you exceed the limit, ParaPing will exit with an error message suggesting:
+- Increase the `--interval` value
+- Reduce the number of hosts
+- Split monitoring across multiple instances
+
+**Why this limit?** The 50 pings/sec limit protects against:
+- Overwhelming network devices or firewalls
+- Triggering rate-limiting or IDS alerts
+- Consuming excessive system resources (CPU, file descriptors, kernel buffers)
+
+#### Per-Host Outstanding Ping Window (3 concurrent pings max)
+ParaPing limits each host to a maximum of **3 outstanding pings** (sent but not yet replied) to prevent resource exhaustion when monitoring slow or unresponsive hosts.
+
+**Benefits:**
+- Prevents queue buildup from hosts with high latency or packet loss
+- Avoids consuming excessive file descriptors and memory
+- Ensures responsive behavior even when some hosts are slow
+
+**Behavior:** If a host already has 3 pings in-flight, ParaPing will skip sending additional pings until at least one completes or times out.
+
+#### Time-Driven Scheduler
+ParaPing uses a **wall-clock-based scheduler** rather than sleep-based timing to eliminate timeline drift:
+
+**Traditional approach (accumulates drift):**
+```python
+while True:
+    send_ping()
+    sleep(interval)  # Actual delay = interval + ping_time + processing
+```
+
+**ParaPing approach (eliminates drift):**
+```python
+next_ping_time = start_time + (ping_count * interval)
+wait_until(next_ping_time)
+send_ping()
+```
+
+**Benefits:**
+- Timeline columns stay perfectly aligned across all hosts
+- Visual comparison is easier when columns represent the same time offset
+- No drift accumulation even with varying network latency
+
+**Stagger timing:** Optional `stagger` parameter spreads pings across hosts to avoid bursts (e.g., with 0.1s stagger, host 1 pings at t=0.0s, host 2 at t=0.1s, host 3 at t=0.2s, etc.).
+
+#### Pending Markers & Timeline Synchronization
+ParaPing displays **real-time pending markers** (`-`) to show pings in-flight:
+
+**Flow:**
+1. Scheduler determines it's time to ping a host
+2. Pending marker `-` is immediately appended to the timeline
+3. Ping is sent (may take up to timeout duration)
+4. When response arrives, pending marker is replaced with final status (`.`, `!`, or `x`)
+
+**Benefits:**
+- Immediate visual feedback that pings are being sent
+- Timeline columns stay synchronized even with varying network latency
+- Easier to distinguish between "no ping sent yet" and "ping sent but waiting for response"
+
+**Example timeline progression:**
+```
+Time 0.0s: -         (ping sent, waiting)
+Time 0.5s: .         (response received, replaced - with .)
+Time 1.0s: -.        (next ping sent)
+Time 1.1s: ..        (response received)
+```
 
 ## Performance and Scalability
 
