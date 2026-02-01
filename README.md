@@ -733,6 +733,10 @@ ASN lookups via Team Cymru whois service use the following mechanisms to ensure 
 - **Retry with TTL**: Failed lookups are retried after a 5-minute delay, preventing excessive requests
 - **Thread Management**: A single worker thread processes requests sequentially, avoiding service overload
 
+## Supplement: rDNS Result Caching Behavior
+
+Reverse DNS (rDNS) results for IP addresses are cached at the first attempt: if name resolution succeeds, the hostname is stored and always reused; if it fails, None is stored and reused. There is no automatic retry or repeated lookup once the initial resolution is complete.
+
 ## License
 Apache License 2.0. See [LICENSE](LICENSE).
 
@@ -1247,6 +1251,10 @@ Team Cymru の whois サービスを介した ASN ルックアップは、効率
 - **キャッシング**: 成功したルックアップはプログラムセッション中キャッシュされ、同一 IP への冗長なクエリを排除します
 - **TTL によるリトライ**: 失敗したルックアップは 5 分後に再試行され、過剰なリクエストを防ぎます
 - **スレッド管理**: 単一のワーカースレッドがリクエストを順次処理し、サービスの過負荷を回避します
+
+## 補足: rDNS 結果のキャッシング動作
+
+IP アドレスの逆引き DNS（rDNS）結果は最初の試行時にキャッシュされます：名前解決が成功した場合、ホスト名が保存され常に再利用されます；失敗した場合、None が保存され再利用されます。初回の解決が完了すると、自動的な再試行や再ルックアップは行われません。
 
 ### ライセンス
 Apache License 2.0 — 詳細は [LICENSE](LICENSE) を参照してください。
