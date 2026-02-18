@@ -125,6 +125,16 @@ class TestTimeAxis(unittest.TestCase):
         # At 5s per column, label every 10s means label every 2 columns
         self.assertTrue(len(timeline_part) > 0)
 
+    def test_build_time_axis_interval_three_spacing(self):
+        """Test time axis spacing with a 3s interval"""
+        axis = build_time_axis(timeline_width=80, label_width=10, interval_seconds=3.0, label_period_seconds=10.0)
+
+        timeline_part = axis.split("|")[1] if "|" in axis else axis
+        digit_groups = [group for group in "".join(timeline_part).split() if group.isdigit()]
+
+        # Max label value is 79 * 3 = 237, so labels should not run together
+        self.assertTrue(all(len(group) <= 3 for group in digit_groups))
+
     def test_build_time_axis_no_label_overlap(self):
         """Test that labels don't overlap when placed close together"""
         # Use small label period to stress-test overlap prevention

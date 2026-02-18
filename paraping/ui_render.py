@@ -377,7 +377,7 @@ def box_lines(lines, width, height):
 
 def resize_buffers(buffers, timeline_width, symbols):
     """Resize all buffers to match the timeline width."""
-    for host, host_buffers in buffers.items():
+    for _, host_buffers in buffers.items():
         if host_buffers["timeline"].maxlen != timeline_width:
             host_buffers["timeline"] = deque(host_buffers["timeline"], maxlen=timeline_width)
         if host_buffers["rtt_history"].maxlen != timeline_width:
@@ -643,10 +643,12 @@ def build_time_axis(timeline_width, label_width, interval_seconds=1.0, label_per
 
             # Check if label fits and doesn't overlap with existing labels
             if i + len(label_str) <= timeline_width:
-                # Check for overlap: ensure all positions are empty (spaces)
+                # Check for overlap: ensure all positions (plus a one-char gap) are empty
                 overlap = False
-                for j in range(len(label_str)):
-                    if i + j < timeline_width and axis_chars[i + j] != " ":
+                start_index = max(0, i - 1)
+                end_index = min(timeline_width, i + len(label_str) + 1)
+                for j in range(start_index, end_index):
+                    if axis_chars[j] != " ":
                         overlap = True
                         break
 
@@ -1196,7 +1198,7 @@ def render_status_box(status_line, width):
     return [f"+{border}+", f"|{content}|", f"+{border}+"]
 
 
-def build_display_lines(
+def build_display_lines(  # noqa: C901
     host_infos,
     buffers,
     stats,
