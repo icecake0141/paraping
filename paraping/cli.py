@@ -309,14 +309,14 @@ def run(args):
     )
 
     modes = ["ip", "rdns", "alias"]
-    mode_index = 0
+    mode_index = 2
     show_help = False
     display_modes = ["timeline", "sparkline", "square"]
     display_mode_index = 0
     summary_modes = ["rates", "rtt", "ttl", "streak"]
     summary_mode_index = 0
     summary_fullscreen = False
-    sort_modes = ["failures", "streak", "latency", "host"]
+    sort_modes = ["config", "failures", "streak", "latency", "host"]
     sort_mode_index = 0
     filter_modes = ["failures", "latency", "all"]
     filter_mode_index = 2
