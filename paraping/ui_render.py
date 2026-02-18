@@ -561,7 +561,10 @@ def build_display_entries(
                 }
             )
 
-    if sort_mode == "failures":
+    if sort_mode == "config":
+        # Sort by host_id to maintain configuration file order
+        entries.sort(key=lambda item: item["host_id"])
+    elif sort_mode == "failures":
         entries.sort(key=lambda item: (item["fail_count"], item["label"]), reverse=True)
     elif sort_mode == "streak":
         entries.sort(key=lambda item: (item["fail_streak"], item["label"]), reverse=True)
@@ -834,23 +837,27 @@ def build_colored_square_timeline(timeline_symbols, symbols, use_color):
 
         # Determine square color based on status
         # OK = success or slow (green), NG = fail (red), pending = pending (gray)
+        # In monochrome mode, use different symbols to distinguish statuses:
+        # - fail: blank space (clearly shows failure)
+        # - success/slow: solid square (shows success)
+        # - pending: dash/hyphen (shows pending)
         if status == "fail":
             if use_color:
                 colored_square = f"{STATUS_COLORS['fail']}{square}{ANSI_RESET}"
             else:
-                colored_square = square
+                colored_square = " "  # Blank for failed ping in monochrome
         elif status in ("success", "slow"):
             # success and slow both show green square (OK status)
             if use_color:
                 colored_square = f"{green_color}{square}{ANSI_RESET}"
             else:
-                colored_square = square
+                colored_square = square  # Solid square for success in monochrome
         else:
             # pending or None status - show pending square
             if use_color:
                 colored_square = f"{gray_color}{square}{ANSI_RESET}"
             else:
-                colored_square = square
+                colored_square = "-"  # Dash for pending in monochrome
 
         squares.append(colored_square)
 
