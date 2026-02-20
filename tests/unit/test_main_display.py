@@ -666,6 +666,12 @@ class TestStatusLine(unittest.TestCase):
         result = build_status_line("host", "all", "rates", True, None)
         self.assertIn("PAUSED", result)
 
+    def test_build_status_line_dormant(self):
+        """Test status line when dormant mode is active"""
+        result = build_status_line("host", "all", "rates", True, None, dormant=True)
+        self.assertIn("DORMANT", result)
+        self.assertNotIn("PAUSED", result)
+
     def test_build_status_line_with_message(self):
         """Test status line with custom message"""
         result = build_status_line("failures", "all", "rates", False, "Test message")

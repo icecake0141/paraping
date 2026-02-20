@@ -31,7 +31,7 @@ ParaPing is an interactive, terminal-based ICMP monitor that pings many hosts in
 - Toggle display name mode: IP, reverse DNS, or alias.
 - Optional ASN display (fetched from Team Cymru) with auto-retry.
 - Optional colored output for success/slow/fail states.
-- Pause modes: freeze display only or pause ping + display.
+- Pause modes: freeze display only (`p`) or use Dormant Mode (`P`) to pause ping + display.
 - Snapshot export to a timestamped text file.
 - Fullscreen ASCII RTT graph per host with axis labels and scale, including X-axis seconds-ago labels (selectable via TUI).
 - Configurable timezone for timestamps and snapshot naming.
@@ -439,7 +439,8 @@ Example (explicit IPv4 addresses only):
 - `F`: Toggle summary fullscreen view.
 - `w`: Toggle the summary panel on/off.
 - `W`: Cycle summary panel position (left/right/top/bottom).
-- `p`: Pause/resume (display only or ping + display).
+- `p`: Pause/resume display updates.
+- `P`: Toggle Dormant Mode (pause ping monitoring + display updates).
 - `s`: Save a snapshot to `paraping_snapshot_YYYYMMDD_HHMMSS.txt`.
 - `←` / `→`: Navigate backward/forward in time by one page. History keeps recording while browsing; the view is frozen until you return to live.
 - `↑` / `↓`: Scroll the host list (when not in host-selection mode). In host-selection mode use `n` (next) and `p` (previous) to move the selection; when the selection moves beyond the visible area, the host list scrolls to keep the selection in view.
@@ -1102,7 +1103,8 @@ make clean
 - `F`: サマリのフルスクリーン表示をトグル
 - `w`: サマリーパネルの表示/非表示をトグル
 - `W`: サマリーパネル位置を切替（left / right / top / bottom）
-- `p`: 一時停止 / 再開（表示のみ、または ping も停止）
+- `p`: 一時停止 / 再開（表示更新のみ）
+- `P`: Dormant モードをトグル（ping 監視と表示更新の両方を停止）
 - `s`: スナップショットを `paraping_snapshot_YYYYMMDD_HHMMSS.txt` として保存
 - `←` / `→`: 履歴を1ページ単位で遡る / 進める（履歴は録り続けられ、ライブ表示に戻るまで画面は固定）
 - `↑` / `↓`: ホスト一覧をスクロール（ホスト選択モードでないとき）。ホスト選択モードでは `n`（次） と `p`（前） を使用して選択を移動。選択が表示領域を超えると一覧がスクロールして選択を視界に保ちます
