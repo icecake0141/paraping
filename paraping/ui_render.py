@@ -668,6 +668,43 @@ def format_status_line(host, timeline, label_width):
     return f"{pad_visible(host, label_width)} | {timeline}"
 
 
+def _parse_positive_float(value):
+    """Parse a positive float from a string, returning None if invalid."""
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    if parsed <= 0:
+        return None
+    return parsed
+
+
+def estimate_ping_rate(host_count, interval_seconds):
+    """Estimate the ping rate using environment variables when provided."""
+    rate_env = _parse_positive_float(os.getenv("PARAPING_PING_RATE"))
+    if rate_env is not None:
+        return rate_env
+    interval_env = _parse_positive_float(os.getenv("PARAPING_PING_INTERVAL"))
+    interval_value = interval_env if interval_env is not None else interval_seconds
+    if not interval_value or interval_value <= 0:
+        return 0.0
+    return host_count / interval_value
+
+
+def build_status_metrics(host_infos, stats, interval_seconds=1.0):
+    """Build a status metrics string for hosts, counts, and estimated rate."""
+    host_count = len(host_infos) if host_infos else 0
+    success_count = 0
+    error_count = 0
+    stats_map = stats or {}
+    for info in host_infos or []:
+        entry = stats_map.get(info["id"], {})
+        success_count += entry.get("success", 0) + entry.get("slow", 0)
+        error_count += entry.get("fail", 0)
+    estimated_rate = estimate_ping_rate(host_count, interval_seconds)
+    return f"Hosts: {host_count} | Success: {success_count} | Errors: {error_count} | " f"Rate: {estimated_rate:.1f}/s"
+
+
 def build_status_line(
     sort_mode,
     filter_mode,
@@ -1331,12 +1368,16 @@ def build_display_lines(  # noqa: C901
     else:
         combined_lines = main_lines
 
+    status_metrics = build_status_metrics(host_infos, stats, interval_seconds=interval_seconds)
+    status_details = status_metrics
+    if status_message:
+        status_details = f"{status_metrics} | {status_message}"
     status_line = build_status_line(
         sort_mode,
         filter_mode,
         summary_mode,
         paused,
-        status_message,
+        status_details,
         summary_all=summary_all,
         summary_fullscreen=summary_fullscreen,
     )

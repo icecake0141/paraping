@@ -422,6 +422,10 @@ Example (explicit IPv4 addresses only):
 - `-C`, `--color`: Enable colored output (blue=success, yellow=slow, red=fail).
 - `-H`, `--ping-helper`: Path to the `ping_helper` binary (default: `./ping_helper`).
 
+### Environment Variables
+- `PARAPING_PING_RATE`: Override the estimated global ping send rate shown in the status line (pings/sec).
+- `PARAPING_PING_INTERVAL`: Override the per-host ping interval (seconds) used to estimate the status line rate when `PARAPING_PING_RATE` is unset.
+
 ### Interactive Controls
 - `n`: Cycle display name mode (ip/rdns/alias).
 - `v`: Toggle view (timeline/sparkline).

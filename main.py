@@ -37,15 +37,16 @@ The main logic has been split into separate modules in the paraping/ package.
 # Standard library imports for test compatibility (tests patch these from main module)
 # pylint: disable=unused-import
 # isort: skip_file
-import os
-import queue
-import select
-import socket
-import sys
-import termios
-import threading
-import tty
-from concurrent.futures import ThreadPoolExecutor
+# ruff: noqa: F401
+import os  # noqa: F401
+import queue  # noqa: F401
+import select  # noqa: F401
+import socket  # noqa: F401
+import sys  # noqa: F401
+import termios  # noqa: F401
+import threading  # noqa: F401
+import tty  # noqa: F401
+from concurrent.futures import ThreadPoolExecutor  # noqa: F401
 
 # pylint: enable=unused-import
 
@@ -90,6 +91,7 @@ from paraping.ui_render import (
     build_display_lines,
     build_display_names,
     build_sparkline,
+    build_status_metrics,
     build_status_line,
     can_render_full_summary,
     colorize_text,
@@ -194,6 +196,7 @@ __all__ = [
     "build_activity_indicator",
     "compute_activity_indicator_width",
     "get_terminal_size",
+    "build_status_metrics",
     "compute_main_layout",
     "compute_panel_sizes",
     "resolve_boxed_dimensions",
