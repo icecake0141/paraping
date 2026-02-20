@@ -735,6 +735,7 @@ def build_status_line(
     status_message=None,
     summary_all=False,
     summary_fullscreen=False,
+    dormant=False,
 ):
     """Build the status line showing current modes and settings."""
     sort_labels = {
@@ -760,7 +761,9 @@ def build_status_line(
     status = f"Sort: {sort_label} | Filter: {filter_label} | Summary: {summary_label}"
     if summary_fullscreen:
         status += " | Summary View: Fullscreen"
-    if paused:
+    if dormant:
+        status += " | DORMANT"
+    elif paused:
         status += " | PAUSED"
     if status_message:
         status += f" | {status_message}"
@@ -998,9 +1001,10 @@ def render_main_view(
     header_lines=2,
     boxed=False,
     interval_seconds=1.0,
+    dormant=False,
 ):
     """Render the main view (timeline, sparkline, or square)."""
-    pause_label = "PAUSED" if paused else "LIVE"
+    pause_label = "DORMANT" if dormant else ("PAUSED" if paused else "LIVE")
     header_base = f"ParaPing - {pause_label} results [{mode_label} | {display_mode}] {timestamp}"
     activity_indicator = ""
     if not paused:
@@ -1111,6 +1115,7 @@ def render_help_view(width, height, boxed=False):
         "  F: toggle summary fullscreen view",
         "  w/W: toggle/cycle summary panel (on/off, position)",
         "  p: pause/resume display",
+        "  P: toggle Dormant Mode (pause ping + display)",
         "  s: save snapshot to file",
         "  <- / -> : navigate backward/forward in time (1 page)",
         "  up / down: scroll host list",
@@ -1178,13 +1183,14 @@ def render_fullscreen_rtt_graph(
     display_mode,
     paused,
     timestamp,
+    dormant=False,
 ):
     """Render a fullscreen RTT graph for a selected host."""
     if width <= 0 or height <= 0:
         return []
 
     graph_style = "bar" if display_mode == "sparkline" else "line"
-    pause_label = "PAUSED" if paused else "LIVE"
+    pause_label = "DORMANT" if dormant else ("PAUSED" if paused else "LIVE")
     graph_label = "Bar" if graph_style == "bar" else "Line"
     header = f"ParaPing - {pause_label} RTT Graph " f"[{host_label} | {graph_label}] {timestamp}"
 
@@ -1281,6 +1287,7 @@ def build_display_lines(  # noqa: C901
     asn_width=8,
     header_lines=2,
     interval_seconds=1.0,
+    dormant=False,
 ):
     """Build all display lines for the current state."""
     term_size = get_terminal_size(fallback=(80, 24))
@@ -1357,6 +1364,7 @@ def build_display_lines(  # noqa: C901
             header_lines,
             boxed=use_panel_boxes,
             interval_seconds=interval_seconds,
+            dormant=dormant,
         )
         summary_all = resolved_position in (
             "top",
@@ -1400,6 +1408,7 @@ def build_display_lines(  # noqa: C901
         status_details,
         summary_all=summary_all,
         summary_fullscreen=summary_fullscreen,
+        dormant=dormant,
     )
     if panel_height > 0:
         combined_lines = pad_lines(combined_lines, term_width, panel_height)
@@ -1438,6 +1447,7 @@ def render_display(
     header_lines=2,
     override_lines=None,
     interval_seconds=1.0,
+    dormant=False,
 ):
     """Render the complete display to the terminal."""
     global LAST_RENDER_LINES
@@ -1469,6 +1479,7 @@ def render_display(
             asn_width,
             header_lines,
             interval_seconds,
+            dormant=dormant,
         )
     if not combined_lines:
         return

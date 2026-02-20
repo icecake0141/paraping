@@ -322,6 +322,8 @@ def run(args):
     filter_mode_index = 2
     running = True
     paused = False
+    dormant = False
+    display_paused = False
     pause_mode = args.pause_mode
     pause_event = threading.Event()
     stop_event = threading.Event()
@@ -338,6 +340,15 @@ def run(args):
     host_select_active = False
     host_select_index = 0
     graph_host_id = None
+
+    def sync_pause_state():
+        """Synchronize effective paused flag and ping pause_event from display/dormant state."""
+        nonlocal paused
+        paused = display_paused or dormant
+        if dormant or (pause_mode == "ping" and display_paused):
+            pause_event.set()
+        else:
+            pause_event.clear()
 
     # History navigation state
     # Store snapshots at regular intervals for time navigation
@@ -577,13 +588,15 @@ def run(args):
                         force_render = True
                         updated = True
                     elif key == "p":
-                        paused = not paused
-                        status_message = "Paused" if paused else "Resumed"
-                        if pause_mode == "ping":
-                            if paused:
-                                pause_event.set()
-                            else:
-                                pause_event.clear()
+                        display_paused = not display_paused
+                        sync_pause_state()
+                        status_message = "Display paused" if display_paused else "Display resumed"
+                        force_render = True
+                        updated = True
+                    elif key == "P":
+                        dormant = not dormant
+                        sync_pause_state()
+                        status_message = "Dormant mode enabled" if dormant else "Dormant mode disabled"
                         force_render = True
                         updated = True
                     elif key == "s":
@@ -924,6 +937,7 @@ def run(args):
                             display_modes[display_mode_index],
                             render_paused,
                             display_timestamp,
+                            dormant=dormant,
                         )
                     render_display(
                         host_infos,
@@ -947,6 +961,7 @@ def run(args):
                         summary_fullscreen,
                         override_lines=override_lines,
                         interval_seconds=args.interval,
+                        dormant=dormant,
                     )
                     last_render = now
                     updated = False
