@@ -90,6 +90,7 @@ from paraping.ui_render import (
     build_display_lines,
     build_display_names,
     build_sparkline,
+    build_status_metrics,
     build_status_line,
     can_render_full_summary,
     colorize_text,
@@ -136,6 +137,9 @@ from paraping.ui_render import (
 )
 
 # pylint: enable=unused-import
+
+_TEST_PATCH_REFS = (os, queue, select, socket, sys, termios, threading, tty, ThreadPoolExecutor)
+# Keep references for tests that patch main.<module> symbols.
 
 
 # Explicitly define what's exported for backward compatibility
@@ -194,6 +198,7 @@ __all__ = [
     "build_activity_indicator",
     "compute_activity_indicator_width",
     "get_terminal_size",
+    "build_status_metrics",
     "compute_main_layout",
     "compute_panel_sizes",
     "resolve_boxed_dimensions",

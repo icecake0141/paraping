@@ -34,6 +34,7 @@ from main import (  # noqa: E402
     build_host_infos,
     build_sparkline,
     build_status_line,
+    build_status_metrics,
     compute_summary_data,
     format_display_name,
     format_timestamp,
@@ -680,6 +681,36 @@ class TestStatusLine(unittest.TestCase):
         """Test status line when summary displays all fields"""
         result = build_status_line("latency", "failures", "rates", False, None, summary_all=True)
         self.assertIn("Summary: All", result)
+
+
+class TestStatusMetrics(unittest.TestCase):
+    """Test status metrics computation."""
+
+    def test_build_status_metrics_counts(self):
+        """Status metrics should include host, success, error, and rate values."""
+        host_infos = [{"id": 1}, {"id": 2}]
+        stats = {
+            1: {"success": 2, "slow": 1, "fail": 0},
+            2: {"success": 1, "slow": 0, "fail": 2},
+        }
+        with patch.dict(os.environ, {"PARAPING_PING_RATE": ""}, clear=False):
+            result = build_status_metrics(host_infos, stats, interval_seconds=2.0)
+        self.assertIn("Hosts: 2", result)
+        self.assertIn("Success: 4", result)
+        self.assertIn("Errors: 2", result)
+        self.assertIn("Rate: 1.0/s", result)
+
+    def test_build_status_metrics_rate_override(self):
+        """Status metrics should honor the rate override env var."""
+        host_infos = [{"id": 1}, {"id": 2}, {"id": 3}]
+        stats = {
+            1: {"success": 0, "slow": 0, "fail": 0},
+            2: {"success": 0, "slow": 0, "fail": 0},
+            3: {"success": 0, "slow": 0, "fail": 0},
+        }
+        with patch.dict(os.environ, {"PARAPING_PING_RATE": "12.5"}, clear=False):
+            result = build_status_metrics(host_infos, stats, interval_seconds=1.0)
+        self.assertIn("Rate: 12.5/s", result)
 
 
 if __name__ == "__main__":
