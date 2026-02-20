@@ -15,8 +15,8 @@
 # ==============================================================================
 CC = gcc
 CFLAGS = -Wall -Wextra -O2
-TARGET = ping_helper
-SRC = ping_helper.c
+TARGET = bin/ping_helper
+SRC = src/native/ping_helper.c
 VENV = .venv
 PYTHON = python3
 
@@ -126,6 +126,7 @@ format: $(VENV)
 build: $(TARGET)
 
 $(TARGET): $(SRC)
+	@mkdir -p bin
 	@echo "Building ICMP helper binary..."
 	$(CC) $(CFLAGS) -o $(TARGET) $(SRC)
 	@echo "Build complete: $(TARGET)"
@@ -156,7 +157,7 @@ setcap: $(TARGET)
 .PHONY: clean
 clean: clean-python clean-venv
 	@echo "Removing ICMP helper binary..."
-	rm -f $(TARGET)
+	rm -rf bin/
 	@echo "All build artifacts cleaned."
 
 .PHONY: clean-python
@@ -184,7 +185,7 @@ help:
 	@echo ""
 	@echo "User Targets (End Users):"
 	@echo "  make                  Setup user environment (default)"
-	@echo "  make user-setup       Create .venv and build ping_helper"
+	@echo "  make user-setup       Create .venv and build bin/ping_helper"
 	@echo "  make run [ARGS=...]   Run paraping.py with optional arguments"
 	@echo "                        Example: make run ARGS='--help'"
 	@echo "                        Example: make run ARGS='8.8.8.8 1.1.1.1'"
@@ -196,8 +197,8 @@ help:
 	@echo "  make format           Format code (black, isort)"
 	@echo ""
 	@echo "Build Targets:"
-	@echo "  make build            Build the ping_helper ICMP binary"
-	@echo "  make setcap           Set Linux capabilities on ping_helper (requires sudo)"
+	@echo "  make build            Build the ping_helper ICMP binary (output: bin/ping_helper)"
+	@echo "  make setcap           Set Linux capabilities on bin/ping_helper (requires sudo)"
 	@echo ""
 	@echo "Installation Targets (Alternative):"
 	@echo "  make install-user     Install package to ~/.local (pip --user)"

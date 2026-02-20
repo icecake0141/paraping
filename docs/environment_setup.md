@@ -113,7 +113,7 @@ Once the environment is set up:
 1. **Run tests**: `pytest tests/`
 2. **Run linting**: `flake8 .`
 3. **Run pylint**: `pylint *.py`
-4. **Build the ping helper** (Linux): `make` or `gcc -o ping_helper ping_helper.c`
+4. **Build the ping helper** (Linux): `make build` (outputs to `bin/ping_helper`)
 
 ## Troubleshooting
 
@@ -243,7 +243,7 @@ pylint --version
 1. **テストを実行**：`pytest tests/`
 2. **リンティングを実行**：`flake8 .`
 3. **pylintを実行**：`pylint *.py`
-4. **pingヘルパーをビルド**（Linux）：`make`または`gcc -o ping_helper ping_helper.c`
+4. **pingヘルパーをビルド**（Linux）：`make build`（`bin/ping_helper`に出力）
 
 ## トラブルシューティング
 

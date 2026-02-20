@@ -47,13 +47,13 @@ ping_helper <host> <timeout_ms> [icmp_seq]
 
 ```bash
 # Basic ping with 1 second timeout (default icmp_seq=1)
-./ping_helper google.com 1000
+./bin/ping_helper google.com 1000
 
 # Ping with custom sequence number
-./ping_helper 8.8.8.8 2000 42
+./bin/ping_helper 8.8.8.8 2000 42
 
 # Ping with minimum timeout
-./ping_helper 1.1.1.1 100 1
+./bin/ping_helper 1.1.1.1 100 1
 ```
 
 ## Output Format
@@ -166,18 +166,18 @@ When running multiple ping_helper processes concurrently (e.g., monitoring many 
 **Example: Monitoring multiple hosts in parallel**
 ```bash
 # Different hosts don't need unique sequence numbers (replies are distinguished by source IP)
-./ping_helper 8.8.8.8 1000 &
-./ping_helper 1.1.1.1 1000 &
-./ping_helper 9.9.9.9 1000 &
+./bin/ping_helper 8.8.8.8 1000 &
+./bin/ping_helper 1.1.1.1 1000 &
+./bin/ping_helper 9.9.9.9 1000 &
 wait
 ```
 
 **Example: Concurrent pings to the same host (use different sequence numbers)**
 ```bash
 # Pinging the same host concurrently requires different icmp_seq to avoid confusion
-./ping_helper example.com 1000 1 &
-./ping_helper example.com 1000 2 &
-./ping_helper example.com 1000 3 &
+./bin/ping_helper example.com 1000 1 &
+./bin/ping_helper example.com 1000 2 &
+./bin/ping_helper example.com 1000 3 &
 wait
 ```
 
@@ -185,7 +185,7 @@ wait
 ```bash
 # Useful for scripted monitoring loops
 for i in {1..10}; do
-  ./ping_helper example.com 1000 $i
+  ./bin/ping_helper example.com 1000 $i
   sleep 1
 done
 ```
@@ -210,8 +210,8 @@ make build
 sudo make setcap
 
 # Verify capabilities
-getcap ping_helper
-# Output: ping_helper = cap_net_raw+ep
+getcap bin/ping_helper
+# Output: bin/ping_helper = cap_net_raw+ep
 ```
 
 **Never** grant `cap_net_raw` to Python interpreters or other general-purpose tools.
@@ -245,7 +245,7 @@ While the helper is intentionally minimal, potential future enhancements include
 8. **Shared socket pool**: Reuse raw sockets for multiple pings to reduce overhead
 
 **Performance-oriented extensions:**
-- **Batch mode example**: `./ping_helper --batch hosts.txt` to ping multiple hosts in one process
+- **Batch mode example**: `./bin/ping_helper --batch hosts.txt` to ping multiple hosts in one process
 - **Persistent worker**: Helper accepts commands via stdin for rapid-fire pings without spawn overhead
 - **Output streaming**: JSON-lines format for programmatic consumption
 
@@ -266,7 +266,7 @@ Note: This program requires cap_net_raw capability or root privileges
 **Solutions:**
 1. Verify capabilities are set (Linux):
    ```bash
-   getcap ./ping_helper
+   getcap ./bin/ping_helper
    # Should show: ping_helper = cap_net_raw+ep
    ```
 
@@ -432,13 +432,13 @@ ping_helper <host> <timeout_ms> [icmp_seq]
 
 ```bash
 # 1 秒のタイムアウトで基本的な ping（デフォルト icmp_seq=1）
-./ping_helper google.com 1000
+./bin/ping_helper google.com 1000
 
 # カスタムシーケンス番号で ping
-./ping_helper 8.8.8.8 2000 42
+./bin/ping_helper 8.8.8.8 2000 42
 
 # 最小タイムアウトで ping
-./ping_helper 1.1.1.1 100 1
+./bin/ping_helper 1.1.1.1 100 1
 ```
 
 ## 出力形式
@@ -551,18 +551,18 @@ rtt_ms=12.345 ttl=64
 **例: 複数のホストを並列監視**
 ```bash
 # 異なるホストは一意のシーケンス番号を必要としない（応答は送信元 IP で区別される）
-./ping_helper 8.8.8.8 1000 &
-./ping_helper 1.1.1.1 1000 &
-./ping_helper 9.9.9.9 1000 &
+./bin/ping_helper 8.8.8.8 1000 &
+./bin/ping_helper 1.1.1.1 1000 &
+./bin/ping_helper 9.9.9.9 1000 &
 wait
 ```
 
 **例: 同じホストへの同時 ping（異なるシーケンス番号を使用）**
 ```bash
 # 同じホストに同時に ping する場合、混乱を避けるために異なる icmp_seq が必要
-./ping_helper example.com 1000 1 &
-./ping_helper example.com 1000 2 &
-./ping_helper example.com 1000 3 &
+./bin/ping_helper example.com 1000 1 &
+./bin/ping_helper example.com 1000 2 &
+./bin/ping_helper example.com 1000 3 &
 wait
 ```
 
@@ -570,7 +570,7 @@ wait
 ```bash
 # スクリプト化された監視ループに便利
 for i in {1..10}; do
-  ./ping_helper example.com 1000 $i
+  ./bin/ping_helper example.com 1000 $i
   sleep 1
 done
 ```
@@ -595,8 +595,8 @@ make build
 sudo make setcap
 
 # capabilities を確認
-getcap ping_helper
-# 出力: ping_helper = cap_net_raw+ep
+getcap bin/ping_helper
+# 出力: bin/ping_helper = cap_net_raw+ep
 ```
 
 Python インタプリタや他の汎用ツールに `cap_net_raw` を付与 **しないでください**。
@@ -630,7 +630,7 @@ Python インタプリタや他の汎用ツールに `cap_net_raw` を付与 **�
 8. **共有ソケットプール**: 複数の ping で生ソケットを再利用してオーバーヘッドを削減
 
 **パフォーマンス指向の拡張:**
-- **バッチモード例**: `./ping_helper --batch hosts.txt` で複数のホストを 1 つのプロセスで ping
+- **バッチモード例**: `./bin/ping_helper --batch hosts.txt` で複数のホストを 1 つのプロセスで ping
 - **永続ワーカー**: 生成オーバーヘッドなしで迅速な ping 用に stdin を介してコマンドを受け入れる長寿命のヘルパープロセス
 - **出力ストリーミング**: プログラム的な消費のための JSON-lines 形式
 
@@ -651,7 +651,7 @@ Note: This program requires cap_net_raw capability or root privileges
 **解決策:**
 1. capabilities が設定されているか確認（Linux）:
    ```bash
-   getcap ./ping_helper
+   getcap ./bin/ping_helper
    # 次のように表示されるはず: ping_helper = cap_net_raw+ep
    ```
 

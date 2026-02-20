@@ -245,7 +245,7 @@ class TestCLIRateLimitValidation(unittest.TestCase):
         args.input = None
         args.timezone = None
         args.snapshot_timezone = "display"
-        args.ping_helper = "./ping_helper"
+        args.ping_helper = "./bin/ping_helper"
         args.panel_position = "right"
         args.slow_threshold = 0.5
 

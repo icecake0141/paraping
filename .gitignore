@@ -4,7 +4,7 @@ hosts.txt
 _codeql_detected_source_root
 
 # ICMP helper binary
-ping_helper
+bin/ping_helper
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

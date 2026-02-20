@@ -203,8 +203,8 @@ def handle_options():
         "-H",
         "--ping-helper",
         type=str,
-        default="./ping_helper",
-        help="Path to ping_helper binary (default: ./ping_helper)",
+        default="./bin/ping_helper",
+        help="Path to ping_helper binary (default: ./bin/ping_helper)",
     )
     parser.add_argument("hosts", nargs="*", help="Hosts to ping (IP addresses or hostnames)")
 
