@@ -388,6 +388,63 @@ class TestQuitHotkey(unittest.TestCase):
         pause_event.set.assert_called()
         pause_event.clear.assert_called()
 
+    @patch("paraping.cli.queue.Queue")
+    @patch("paraping.cli.threading.Event")
+    @patch("paraping.cli.sys.stdin")
+    @patch("paraping.ui_render.get_terminal_size")
+    @patch("paraping.cli.ThreadPoolExecutor")
+    @patch("paraping.cli.threading.Thread")
+    @patch("paraping.cli.read_key")
+    def test_capital_p_toggles_dormant_pause_event_with_ping_mode(
+        self, mock_read_key, mock_thread, mock_executor, mock_term_size, mock_stdin, mock_event, mock_queue
+    ):
+        """Dormant mode toggle should set/clear pause_event even when pause_mode='ping'."""
+        mock_stdin.isatty.return_value = True
+        mock_term_size.return_value = os.terminal_size((80, 24))
+        mock_stdin.fileno.return_value = 0
+
+        result_queue = MagicMock()
+        result_queue.get_nowait.side_effect = queue.Empty
+        empty_queue = MagicMock()
+        empty_queue.get_nowait.side_effect = queue.Empty
+        mock_queue.side_effect = [result_queue, MagicMock(), empty_queue, MagicMock(), empty_queue]
+
+        pause_event = MagicMock()
+        mock_event.side_effect = [pause_event, MagicMock(), MagicMock()]
+        mock_read_key.side_effect = ["P", "P", "q"]
+
+        args = argparse.Namespace(
+            timeout=1,
+            count=0,
+            interval=1.0,
+            slow_threshold=0.5,
+            verbose=False,
+            color=False,
+            hosts=["host1.com"],
+            input=None,
+            panel_position="right",
+            pause_mode="ping",
+            timezone=None,
+            snapshot_timezone="utc",
+            flash_on_fail=False,
+            bell_on_fail=False,
+            ping_helper="./ping_helper",
+        )
+
+        mock_executor_instance = MagicMock()
+        mock_executor.return_value.__enter__.return_value = mock_executor_instance
+        mock_executor.return_value.__exit__.return_value = False
+        mock_executor_instance.submit.return_value = MagicMock()
+        mock_thread.return_value = MagicMock()
+
+        with patch("main.termios.tcgetattr", return_value=MagicMock()):
+            with patch("main.termios.tcsetattr"):
+                with patch("main.tty.setcbreak"):
+                    main(args)
+
+        pause_event.set.assert_called()
+        pause_event.clear.assert_called()
+
 
 class TestFlashAndBell(unittest.TestCase):
     """Test flash and bell notification features"""

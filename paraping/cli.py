@@ -341,6 +341,15 @@ def run(args):
     host_select_index = 0
     graph_host_id = None
 
+    def sync_pause_state():
+        """Synchronize effective paused flag and ping pause_event from display/dormant state."""
+        nonlocal paused
+        paused = display_paused or dormant
+        if dormant or (pause_mode == "ping" and display_paused):
+            pause_event.set()
+        else:
+            pause_event.clear()
+
     # History navigation state
     # Store snapshots at regular intervals for time navigation
     max_history_snapshots = int(HISTORY_DURATION_MINUTES * 60 / SNAPSHOT_INTERVAL_SECONDS)
@@ -580,25 +589,14 @@ def run(args):
                         updated = True
                     elif key == "p":
                         display_paused = not display_paused
-                        paused = display_paused or dormant
+                        sync_pause_state()
                         status_message = "Display paused" if display_paused else "Display resumed"
-                        if pause_mode == "ping" and not dormant:
-                            if display_paused:
-                                pause_event.set()
-                            else:
-                                pause_event.clear()
                         force_render = True
                         updated = True
                     elif key == "P":
                         dormant = not dormant
-                        paused = display_paused or dormant
+                        sync_pause_state()
                         status_message = "Dormant mode enabled" if dormant else "Dormant mode disabled"
-                        if dormant:
-                            pause_event.set()
-                        elif pause_mode == "ping" and display_paused:
-                            pause_event.set()
-                        else:
-                            pause_event.clear()
                         force_render = True
                         updated = True
                     elif key == "s":
