@@ -1,0 +1,42 @@
+# Copyright 2024 icecake0141
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# This file was created or modified with the assistance of an AI (Large Language Model).
+# Review required for correctness, security, and licensing.
+#
+# Sample host list file for paraping (-f / --input option).
+# Format: one host per line as  IP,alias
+#   - Lines starting with # are treated as comments and ignored.
+#   - Alias is optional but recommended for readability.
+#
+# Documentation-only IP blocks used below (RFC 5737 / RFC 3849):
+#   192.0.2.0/24   (TEST-NET-1)
+#   198.51.100.0/24 (TEST-NET-2)
+#   203.0.113.0/24  (TEST-NET-3)
+#   2001:db8::/32   (IPv6 documentation prefix, RFC 3849)
+# Private IPv4 ranges (RFC 1918) are also acceptable:
+#   10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
+#
+# Example entries using RFC 5737 documentation addresses:
+192.0.2.1,gw-primary
+192.0.2.2,dns-primary
+192.0.2.10,web-server
+198.51.100.1,router-edge
+198.51.100.50,mail-server
+203.0.113.1,cdn-node-1
+203.0.113.2,cdn-node-2
+
+# Example entries using RFC 1918 private addresses:
+10.0.0.1,lan-gateway
+192.168.1.1,home-router
+
+# Example entries using RFC 2606 documentation domains:
+192.0.2.20,example.com
+198.51.100.20,example.net
+203.0.113.20,example.org
