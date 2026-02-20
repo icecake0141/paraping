@@ -34,7 +34,7 @@ class TestPingHelperContract(unittest.TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.helper_path = os.path.join(os.path.dirname(__file__), "..", "ping_helper")
+        self.helper_path = os.path.join(os.path.dirname(__file__), "..", "..", "bin", "ping_helper")
         if not os.path.exists(self.helper_path):
             self.skipTest("ping_helper binary not found")
 

@@ -42,7 +42,7 @@ class PingHelperError(RuntimeError):
         self.stderr = stderr
 
 
-def ping_with_helper(host, timeout_ms=1000, helper_path="./ping_helper", icmp_seq=None):
+def ping_with_helper(host, timeout_ms=1000, helper_path="./bin/ping_helper", icmp_seq=None):
     """
     Ping a host using the ping_helper binary.
 
@@ -53,7 +53,7 @@ def ping_with_helper(host, timeout_ms=1000, helper_path="./ping_helper", icmp_se
     Args:
         host: The hostname or IP address to ping
         timeout_ms: Timeout in milliseconds (default: 1000)
-        helper_path: Path to the ping_helper binary (default: ./ping_helper)
+        helper_path: Path to the ping_helper binary (default: ./bin/ping_helper)
         icmp_seq: Optional ICMP sequence number (0-65535). If None, uses default (1)
 
     Returns:

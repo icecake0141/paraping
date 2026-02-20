@@ -77,13 +77,12 @@ jobs:
       run: |
         echo "Attempting to build native components..." > logs/native_build.txt
         if [ -f src/native/Makefile ]; then
-          echo "Found src/native/Makefile, attempting build..." >> logs/native_build.txt
-          cd src/native
-          if make build >> ../../logs/native_build.txt 2>&1; then
-            echo "Native build succeeded" >> ../../logs/native_build.txt
+          echo "Found src/native/Makefile, building via root Makefile..." >> logs/native_build.txt
+          if make build >> logs/native_build.txt 2>&1; then
+            echo "Native build succeeded: bin/ping_helper" >> logs/native_build.txt
           else
-            echo "Native build encountered issues (this may be expected on some CI runners)" >> ../../logs/native_build.txt
-            echo "Check logs/native_build.txt artifact for details" >> ../../logs/native_build.txt
+            echo "Native build encountered issues (this may be expected on some CI runners)" >> logs/native_build.txt
+            echo "Check logs/native_build.txt artifact for details" >> logs/native_build.txt
           fi
         else
           echo "No native Makefile found at src/native/Makefile" >> logs/native_build.txt

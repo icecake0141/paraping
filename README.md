@@ -61,14 +61,14 @@ sudo apt-get install gcc libcap2-bin
 
 **Build and configure the helper:**
 ```bash
-# Build the helper binary
+# Build the helper binary (source: src/native/ping_helper.c, output: bin/ping_helper)
 make build
 
 # Set capabilities (requires sudo)
 sudo make setcap
 
 # Test the helper
-python3 ping_wrapper.py google.com
+python3 paraping/ping_wrapper.py google.com
 ```
 
 If `ping_wrapper.py` fails, its JSON output includes an `error` field with details from `ping_helper` (including stderr when available) to aid troubleshooting.
@@ -96,7 +96,7 @@ ping_helper <host> <timeout_ms> [icmp_seq]
 
 **Documentation:** For detailed information about `ping_helper`'s design, CLI contract, validation logic, and limitations, see [docs/ping_helper.md](docs/ping_helper.md).
 
-**Note for macOS/BSD users:** The `setcap` command is Linux-specific and not available on macOS or BSD systems. On these platforms, you would need to use the setuid bit instead (e.g., `sudo chown root:wheel ping_helper && sudo chmod u+s ping_helper`), but this is less secure and not recommended. Follow platform best practices for granting minimal privilege.
+**Note for macOS/BSD users:** The `setcap` command is Linux-specific and not available on macOS or BSD systems. On these platforms, you would need to use the setuid bit instead (e.g., `sudo chown root:wheel bin/ping_helper && sudo chmod u+s bin/ping_helper`), but this is less secure and not recommended. Follow platform best practices for granting minimal privilege.
 
 **Security Note:** Never grant `cap_net_raw` or any capabilities to `/usr/bin/python3` or other general-purpose interpreters. Only grant the minimal required privilege to the specific `ping_helper` binary.
 
@@ -420,7 +420,7 @@ Example (explicit IPv4 addresses only):
 - `-F`, `--flash-on-fail`: Flash screen (invert colors) when a ping fails to draw attention.
 - `-B`, `--bell-on-fail`: Ring terminal bell when a ping fails to draw attention.
 - `-C`, `--color`: Enable colored output (blue=success, yellow=slow, red=fail).
-- `-H`, `--ping-helper`: Path to the `ping_helper` binary (default: `./ping_helper`).
+- `-H`, `--ping-helper`: Path to the `ping_helper` binary (default: `./bin/ping_helper`).
 
 ### Environment Variables
 - `PARAPING_PING_RATE`: Override the estimated global ping send rate shown in the status line (pings/sec).
@@ -619,7 +619,7 @@ sudo make setcap
 
 **Platform notes:**
 - **Linux**: Use `setcap` to grant `cap_net_raw` to the `ping_helper` binary. This is more secure than running Python as root.
-- **macOS/BSD**: The `setcap` command is not available. You can use the setuid bit (`sudo chown root:wheel ping_helper && sudo chmod u+s ping_helper`), but this is not recommended for security reasons.
+- **macOS/BSD**: The `setcap` command is not available. You can use the setuid bit (`sudo chown root:wheel bin/ping_helper && sudo chmod u+s bin/ping_helper`), but this is not recommended for security reasons.
 - **Security**: Never grant `cap_net_raw` or any capabilities to general-purpose interpreters like `/usr/bin/python3`. Only grant the minimal required privilege to the specific `ping_helper` binary.
 
 ### Linting
@@ -785,14 +785,14 @@ sudo apt-get install gcc libcap2-bin
 
 ビルドと設定手順:
 ```bash
-# ヘルパーをビルド
+# ヘルパーをビルド（ソース: src/native/ping_helper.c、出力: bin/ping_helper）
 make build
 
 # ヘルパーに必要な capability を付与（sudo が必要）
 sudo make setcap
 
 # 動作確認（例）
-python3 ping_wrapper.py google.com
+python3 paraping/ping_wrapper.py google.com
 ```
 
 ヘルパーの CLI（引数）:
@@ -1088,7 +1088,7 @@ make clean
 - `-F`, `--flash-on-fail`: 失敗時に画面を反転して注目を促す
 - `-B`, `--bell-on-fail`: 失敗時に端末ベルを鳴らす
 - `-C`, `--color`: 色付き表示を有効化
-- `-H`, `--ping-helper`: `ping_helper` バイナリのパス（デフォルト `./ping_helper`）
+- `-H`, `--ping-helper`: `ping_helper` バイナリのパス（デフォルト `./bin/ping_helper`）
 
 #### インタラクティブ操作
 - `n`: 表示名モードを切替（ip / rdns / alias）
@@ -1177,7 +1177,7 @@ sudo make setcap
 
 **プラットフォーム注記:**
 - **Linux**: `setcap` を使用して `ping_helper` バイナリに `cap_net_raw` を付与します。これは Python を root で実行するよりも安全です。
-- **macOS/BSD**: `setcap` コマンドは利用できません。setuid ビット（`sudo chown root:wheel ping_helper && sudo chmod u+s ping_helper`）を使用できますが、セキュリティ上の理由で推奨されません。
+- **macOS/BSD**: `setcap` コマンドは利用できません。setuid ビット（`sudo chown root:wheel bin/ping_helper && sudo chmod u+s bin/ping_helper`）を使用できますが、セキュリティ上の理由で推奨されません。
 - **セキュリティ**: `/usr/bin/python3` などの汎用インタプリタに `cap_net_raw` や他の capabilities を付与しないでください。特定の `ping_helper` バイナリのみに最小限の必要な権限を付与してください。
 
 #### Linting

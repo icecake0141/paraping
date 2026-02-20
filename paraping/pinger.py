@@ -38,7 +38,7 @@ def ping_host(
     pause_event=None,
     stop_event=None,
     interval=1.0,
-    helper_path="./ping_helper",
+    helper_path="./bin/ping_helper",
     emit_pending: bool = False,
 ):
     """
