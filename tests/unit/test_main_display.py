@@ -703,7 +703,11 @@ class TestStatusMetrics(unittest.TestCase):
     def test_build_status_metrics_rate_override(self):
         """Status metrics should honor the rate override env var."""
         host_infos = [{"id": 1}, {"id": 2}, {"id": 3}]
-        stats = {1: {"success": 0, "slow": 0, "fail": 0}}
+        stats = {
+            1: {"success": 0, "slow": 0, "fail": 0},
+            2: {"success": 0, "slow": 0, "fail": 0},
+            3: {"success": 0, "slow": 0, "fail": 0},
+        }
         with patch.dict(os.environ, {"PARAPING_PING_RATE": "12.5"}, clear=False):
             result = build_status_metrics(host_infos, stats, interval_seconds=1.0)
         self.assertIn("Rate: 12.5/s", result)

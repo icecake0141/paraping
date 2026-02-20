@@ -37,16 +37,15 @@ The main logic has been split into separate modules in the paraping/ package.
 # Standard library imports for test compatibility (tests patch these from main module)
 # pylint: disable=unused-import
 # isort: skip_file
-# ruff: noqa: F401
-import os  # noqa: F401
-import queue  # noqa: F401
-import select  # noqa: F401
-import socket  # noqa: F401
-import sys  # noqa: F401
-import termios  # noqa: F401
-import threading  # noqa: F401
-import tty  # noqa: F401
-from concurrent.futures import ThreadPoolExecutor  # noqa: F401
+import os
+import queue
+import select
+import socket
+import sys
+import termios
+import threading
+import tty
+from concurrent.futures import ThreadPoolExecutor
 
 # pylint: enable=unused-import
 
@@ -138,6 +137,9 @@ from paraping.ui_render import (
 )
 
 # pylint: enable=unused-import
+
+_TEST_PATCH_REFS = (os, queue, select, socket, sys, termios, threading, tty, ThreadPoolExecutor)
+# Keep references for tests that patch main.<module> symbols.
 
 
 # Explicitly define what's exported for backward compatibility

@@ -47,6 +47,10 @@ ACTIVITY_INDICATOR_WIDTH = 10
 ACTIVITY_INDICATOR_EXPANDED_WIDTH = 20
 ACTIVITY_INDICATOR_HEIGHT = 4
 ACTIVITY_INDICATOR_SPEED_HZ = 8
+STATUS_METRICS_SEPARATOR = " | "
+STATUS_METRICS_TEMPLATE = STATUS_METRICS_SEPARATOR.join(
+    ["Hosts: {hosts}", "Success: {success}", "Errors: {errors}", "Rate: {rate}"]
+)
 
 # Global state for rendering
 LAST_RENDER_LINES = None
@@ -669,7 +673,12 @@ def format_status_line(host, timeline, label_width):
 
 
 def _parse_positive_float(value):
-    """Parse a positive float from a string, returning None if invalid."""
+    """Parse a strictly positive float from a string, returning None if invalid.
+
+    Handles None or empty values and invalid string conversions from environment variables.
+    """
+    if not value:
+        return None
     try:
         parsed = float(value)
     except (TypeError, ValueError):
@@ -680,29 +689,42 @@ def _parse_positive_float(value):
 
 
 def estimate_ping_rate(host_count, interval_seconds):
-    """Estimate the ping rate using environment variables when provided."""
+    """Estimate the ping rate using environment variables when provided.
+
+    Returns None when the interval value is invalid.
+    """
     rate_env = _parse_positive_float(os.getenv("PARAPING_PING_RATE"))
     if rate_env is not None:
         return rate_env
+    # Allow PARAPING_PING_INTERVAL to override the provided interval for rate estimation.
     interval_env = _parse_positive_float(os.getenv("PARAPING_PING_INTERVAL"))
     interval_value = interval_env if interval_env is not None else interval_seconds
-    if not interval_value or interval_value <= 0:
-        return 0.0
+    # Defensive guard in case an unexpected non-positive interval is provided.
+    if interval_value <= 0:
+        return None
     return host_count / interval_value
 
 
 def build_status_metrics(host_infos, stats, interval_seconds=1.0):
     """Build a status metrics string for hosts, counts, and estimated rate."""
     host_count = len(host_infos) if host_infos else 0
-    success_count = 0
+    successful_pings = 0
     error_count = 0
     stats_map = stats or {}
     for info in host_infos or []:
-        entry = stats_map.get(info["id"], {})
-        success_count += entry.get("success", 0) + entry.get("slow", 0)
-        error_count += entry.get("fail", 0)
+        stat_entry = stats_map.get(info["id"], {})
+        # Slow pings still represent successful responses for aggregate success counts.
+        total_successful = stat_entry.get("success", 0) + stat_entry.get("slow", 0)
+        successful_pings += total_successful
+        error_count += stat_entry.get("fail", 0)
     estimated_rate = estimate_ping_rate(host_count, interval_seconds)
-    return f"Hosts: {host_count} | Success: {success_count} | Errors: {error_count} | " f"Rate: {estimated_rate:.1f}/s"
+    rate_label = f"{estimated_rate:.1f}/s" if estimated_rate is not None else "n/a"
+    return STATUS_METRICS_TEMPLATE.format(
+        hosts=host_count,
+        success=successful_pings,
+        errors=error_count,
+        rate=rate_label,
+    )
 
 
 def build_status_line(
@@ -1369,9 +1391,7 @@ def build_display_lines(  # noqa: C901
         combined_lines = main_lines
 
     status_metrics = build_status_metrics(host_infos, stats, interval_seconds=interval_seconds)
-    status_details = status_metrics
-    if status_message:
-        status_details = f"{status_metrics} | {status_message}"
+    status_details = f"{status_metrics} | {status_message}" if status_message else status_metrics
     status_line = build_status_line(
         sort_mode,
         filter_mode,
