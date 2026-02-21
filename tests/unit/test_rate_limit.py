@@ -45,8 +45,9 @@ class TestGlobalRateLimit(unittest.TestCase):
         is_valid, rate, error = validate_global_rate_limit(51, 1.0)
         self.assertFalse(is_valid)
         self.assertEqual(rate, 51.0)
-        self.assertIn("Global rate limit exceeded", error)
-        self.assertIn("51.00 pings/sec", error)
+        self.assertIn("Rate limit", error)
+        self.assertIn("would be exceeded", error)
+        self.assertIn("51.0 pings/sec", error)
 
     def test_rate_limit_below_limit_is_ok(self):
         """Test that rates below 50 pings/sec are allowed"""
@@ -62,7 +63,8 @@ class TestGlobalRateLimit(unittest.TestCase):
         is_valid, rate, error = validate_global_rate_limit(50, 0.5)
         self.assertFalse(is_valid)
         self.assertEqual(rate, 100.0)
-        self.assertIn("Global rate limit exceeded", error)
+        self.assertIn("Rate limit", error)
+        self.assertIn("would be exceeded", error)
 
     def test_rate_limit_short_interval_at_limit(self):
         """Test that 25 hosts at 0.5s interval is exactly at limit"""
@@ -121,13 +123,14 @@ class TestGlobalRateLimit(unittest.TestCase):
         self.assertIn("Invalid parameters", error)
 
     def test_rate_limit_error_message_includes_suggestions(self):
-        """Test that error messages include helpful suggestions"""
+        """Test that error messages include numbered actionable suggestions"""
         is_valid, rate, error = validate_global_rate_limit(100, 1.0)
         self.assertFalse(is_valid)
-        # Check that error includes suggested fixes
-        self.assertIn("To fix", error)
-        self.assertIn("Examples", error)
-        self.assertIn("interval", error)
+        # Check that error includes the new actionable suggestion format
+        self.assertIn("Suggestions:", error)
+        self.assertIn("Reduce host count from 100 to", error)
+        self.assertIn("Increase interval from", error)
+        self.assertIn("Run multiple paraping instances with different host subsets", error)
 
     def test_rate_limit_fractional_hosts_at_limit(self):
         """Test boundary with fractional calculation"""
