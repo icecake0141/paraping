@@ -338,7 +338,7 @@ def build_host_infos(hosts: List[Union[str, Dict[str, str]]]) -> Tuple[List[Dict
             if not host_value:
                 entry_keys = ", ".join(sorted(entry.keys()))
                 detail = f"Received keys: {entry_keys}" if entry_keys else "Received empty entry"
-                raise ValueError(f"Invalid host entry: must contain a non-empty 'host' or 'ip' key. {detail}")
+                raise ValueError(f"Invalid host entry: 'host' or 'ip' value must be non-empty. {detail}")
             host = host_value
             alias = entry.get("alias") or host
             ip_address = entry.get("ip")
