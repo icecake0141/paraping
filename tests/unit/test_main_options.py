@@ -36,6 +36,8 @@ class TestHandleOptions(unittest.TestCase):
             self.assertEqual(args.count, 0)
             self.assertEqual(args.interval, 1.0)
             self.assertEqual(args.verbose, False)
+            self.assertEqual(args.log_level, "INFO")
+            self.assertIsNone(args.log_file)
             self.assertEqual(args.hosts, ["example.com"])
 
     def test_custom_timeout(self):
@@ -96,6 +98,10 @@ class TestHandleOptions(unittest.TestCase):
                 "-C",
                 "-H",
                 "/tmp/ping_helper",
+                "--log-level",
+                "warning",
+                "--log-file",
+                "/tmp/paraping.log",
                 "example.com",
             ],
         ):
@@ -109,6 +115,20 @@ class TestHandleOptions(unittest.TestCase):
             self.assertTrue(args.bell_on_fail)
             self.assertTrue(args.color)
             self.assertEqual(args.ping_helper, "/tmp/ping_helper")
+            self.assertEqual(args.log_level, "WARNING")
+            self.assertEqual(args.log_file, "/tmp/paraping.log")
+
+    def test_log_level_flag(self):
+        """Test log level flag"""
+        with patch("sys.argv", ["main.py", "--log-level", "debug", "example.com"]):
+            args = handle_options()
+            self.assertEqual(args.log_level, "DEBUG")
+
+    def test_log_file_flag(self):
+        """Test log file flag"""
+        with patch("sys.argv", ["main.py", "--log-file", "/tmp/para.log", "example.com"]):
+            args = handle_options()
+            self.assertEqual(args.log_file, "/tmp/para.log")
 
     def test_interval_out_of_range(self):
         """Test interval range enforcement."""

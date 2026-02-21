@@ -14,4 +14,8 @@
 ParaPing package - Interactive terminal-based ICMP ping monitor.
 """
 
+import logging
+
+logging.getLogger(__name__).addHandler(logging.NullHandler())
+
 __version__ = "1.0.0"

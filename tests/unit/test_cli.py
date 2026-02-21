@@ -40,6 +40,8 @@ class TestCLIArgumentParsing(unittest.TestCase):
             self.assertEqual(args.count, 0)
             self.assertEqual(args.interval, 1.0)
             self.assertFalse(args.verbose)
+            self.assertEqual(args.log_level, "INFO")
+            self.assertIsNone(args.log_file)
             self.assertEqual(args.hosts, ["example.com"])
             self.assertEqual(args.panel_position, "right")
             self.assertEqual(args.pause_mode, "display")
@@ -61,6 +63,18 @@ class TestCLIArgumentParsing(unittest.TestCase):
         with patch("sys.argv", ["paraping", "-v", "example.com"]):
             args = handle_options()
             self.assertTrue(args.verbose)
+
+    def test_handle_options_log_level(self):
+        """Test log level option"""
+        with patch("sys.argv", ["paraping", "--log-level", "error", "example.com"]):
+            args = handle_options()
+            self.assertEqual(args.log_level, "ERROR")
+
+    def test_handle_options_log_file(self):
+        """Test log file option"""
+        with patch("sys.argv", ["paraping", "--log-file", "/tmp/paraping.log", "example.com"]):
+            args = handle_options()
+            self.assertEqual(args.log_file, "/tmp/paraping.log")
 
     def test_handle_options_multiple_hosts(self):
         """Test parsing multiple hosts"""
@@ -266,6 +280,8 @@ class TestCLIRateLimitValidation(unittest.TestCase):
         args.interval = 1.0
         args.hosts = [f"host{i}.com" for i in range(51)]
         args.input = None
+        args.log_level = "INFO"
+        args.log_file = None
 
         # Import run function
         from paraping.cli import run
@@ -284,6 +300,8 @@ class TestCLIRateLimitValidation(unittest.TestCase):
         args.interval = 0.5
         args.hosts = [f"host{i}.com" for i in range(50)]
         args.input = None
+        args.log_level = "INFO"
+        args.log_file = None
 
         # Import run function
         from paraping.cli import run
