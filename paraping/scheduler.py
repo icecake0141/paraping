@@ -93,6 +93,16 @@ class Scheduler:
         if current_time is None:
             current_time = time.time()
 
+        # Algorithm overview:
+        # - Pin the schedule to a single start_time so stagger offsets are stable across calls.
+        # - First ping per host uses start_time + (index * stagger).
+        # - Subsequent pings advance strictly by interval from last_ping_time.
+        # Key invariants:
+        # - host_info["next_ping_time"] is always populated for returned hosts.
+        # - start_time is set once and remains constant to avoid drift.
+        # Edge cases:
+        # - Empty host list returns an empty mapping.
+        # - stagger == 0 collapses all first pings to the same start_time.
         if self.start_time is None:
             self.start_time = current_time
 
@@ -161,6 +171,8 @@ class Scheduler:
 
             # Move to next round
             if sorted_hosts:
+                # Advance to the latest scheduled time plus stagger so mock rounds
+                # preserve the intended spacing between host send events.
                 current_time = sorted_hosts[-1][1] + self.stagger
 
         return events

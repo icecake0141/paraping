@@ -474,6 +474,17 @@ def run(args: argparse.Namespace) -> None:
         try:
             if stdin_fd is not None:
                 tty.setcbreak(stdin_fd)
+            # Main event loop/state machine:
+            # - Keyboard input drives modal states (help, host selection, graph view).
+            # - Drain RDNS/ASN queues and ping results to update buffers + stats.
+            # - Maintain history snapshots; history_offset==0 is live, >0 uses snapshots.
+            # - Render on updates or refresh interval to keep UI responsive.
+            # Key invariants:
+            # - host_select_active/graph_host_id consume keys to avoid mode changes.
+            # - history_offset is clamped to history_buffer length and 0 returns to LIVE.
+            # Edge cases:
+            # - count==0 (infinite) means completion never triggers exit; user quits with q.
+            # - Small terminals rely on render_* padding to avoid index errors.
             while running and (not expect_completion or completed_hosts < len(host_infos)):
                 key = read_key()
                 if key:

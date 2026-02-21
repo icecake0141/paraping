@@ -1324,6 +1324,18 @@ def build_display_lines(  # noqa: C901
     dormant: bool = False,
 ) -> List[str]:
     """Build all display lines for the current state."""
+    # Algorithm overview:
+    # - Measure terminal size and derive main/summary panel geometry.
+    # - Build sorted/filtered display entries, then render main + summary views.
+    # - Stitch panels based on position (left/right/top/bottom/none) or help mode.
+    # - Append status metrics and pad to the terminal height.
+    # Key state/invariants:
+    # - Timeline/sparkline columns are right-aligned so newest pings appear on the right.
+    # - ANSI-aware padding keeps colored output aligned with terminal width calculations.
+    # - panel_height excludes the status box; combined_lines are always padded to term_width.
+    # Edge cases:
+    # - Empty host list yields empty display_entries/summary_data but still renders headers.
+    # - Small terminals force status_box_height=1 and may disable summary panels.
     term_size = get_terminal_size(fallback=(80, 24))
     term_width = term_size.columns
     term_height = term_size.lines
