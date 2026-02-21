@@ -218,6 +218,136 @@ If you have questions or run into issues:
 
 Thank you for contributing to ParaPing!
 
+## Architecture Overview
+
+This section helps new contributors understand module relationships, data flow,
+and key design decisions in ParaPing.
+
+### Module Dependency Diagram
+
+```
+cli.py  (entry point)
+ ├─→ config.py            (CLI argument parsing, configuration)
+ ├─→ core.py              (state management, host parsing, history buffer)
+ │    └─→ ui_render.py    (layout helpers used by core for page-step calc)
+ ├─→ scheduler.py         (drift-free ping timing per host)
+ ├─→ pinger.py            (scheduler-driven worker threads)
+ │    ├─→ ping_wrapper.py (subprocess call to ping_helper binary)
+ │    ├─→ scheduler.py    (reads next scheduled ping time)
+ │    └─→ sequence_tracker.py  (per-host ICMP seq numbers & outstanding limit)
+ ├─→ ui_render.py         (all terminal rendering, ANSI output)
+ │    └─→ stats.py        (RTT statistics, summary calculations)
+ ├─→ input_keys.py        (keyboard input handling)
+ ├─→ network_asn.py       (background ASN lookup threads)
+ └─→ network_rdns.py      (background reverse-DNS lookup threads)
+```
+
+The `ping_helper` binary (compiled C, `src/native/`) is called as a subprocess
+by `ping_wrapper.py`. It holds the `cap_net_raw` capability so the Python
+process does not need root privileges.
+
+### Data Flow: Single Ping
+
+```
+user input (hosts.txt)
+  → cli.run()
+  → core.read_input_file() / core.build_host_infos()
+  → Scheduler.add_host()
+  → pinger.scheduler_driven_worker_ping() [per-host thread]
+      → Scheduler.get_next_ping_times()   [sleep until scheduled time]
+      → SequenceTracker.get_next_sequence()
+      → result_queue.put({'status': 'sent', ...})  [pending UI marker]
+      → ping_wrapper.ping_with_helper()   [background thread]
+          → ping_helper binary (ICMP syscall)
+      → result_queue.put({'status': 'success'/'fail'/'slow', ...})
+      → SequenceTracker.mark_replied()
+  → main event loop consumes result_queue
+  → updates buffers / stats dicts
+  → core.update_history_buffer()
+  → ui_render renders updated state to terminal
+```
+
+### Data Flow: Three Key Scenarios
+
+#### 1. Startup
+
+```
+cli.parse_args()
+  → validate host file exists
+  → core.read_input_file()  →  core.build_host_infos()
+  → core.validate_global_rate_limit()   [flood protection check]
+  → Scheduler created; all hosts added with stagger offset
+  → per-host SequenceTracker created (max 3 outstanding pings)
+  → threading.Thread started per host  →  scheduler_driven_worker_ping()
+  → network_rdns / network_asn background threads started
+  → main event loop: poll result_queue + keyboard input + history timer
+  → first ui_render.render() call draws initial terminal frame
+```
+
+#### 2. Ping (per-host thread, repeating)
+
+```
+Scheduler.get_next_ping_times()
+  → compute next_ping_time = last_sent + interval  (or start + stagger*idx)
+  → sleep in 10 ms increments until scheduled time
+SequenceTracker.get_next_sequence(host)
+  → if ≥ 3 outstanding pings: skip this round (scheduler still ticked)
+  → else: allocate seq (uint16, wraps at 65536); add to outstanding set
+emit 'sent' event  →  result_queue  →  UI marks slot as pending (dark gray)
+Scheduler.mark_ping_sent()  →  advance next_ping_time for this host
+execute_ping_async() in daemon thread:
+  → ping_wrapper.ping_with_helper()  →  ping_helper binary
+  → result_queue.put(result)
+  → SequenceTracker.mark_replied()   →  remove from outstanding set
+main loop picks up result  →  buffers[host_id]['timeline'].append(symbol)
+  →  stats updated  →  ui_render.render() redraws terminal
+```
+
+#### 3. Terminal Resize (SIGWINCH)
+
+```
+OS delivers SIGWINCH  →  resize flag set in main event loop
+main loop detects resize flag:
+  → ui_render.get_terminal_size()  →  new (columns, lines)
+  → compare to last_term_size
+  → core.get_cached_page_step() invalidates cached page step
+  → core.compute_history_page_step()
+      → ui_render.compute_panel_sizes()  →  main_width, main_height
+      → ui_render.compute_main_layout()  →  timeline_width
+      → new page_step stored in cache with new term_size key
+  → ui_render.render() called with updated dimensions
+  → all panels reflow: timeline columns, RTT graph, status box
+```
+
+### Key Design Decisions
+
+#### Why separate `Scheduler` from `Pinger`?
+
+`Scheduler` tracks *when* pings should be sent based on a fixed `start_time`
+plus a configurable `interval` and per-host `stagger`.  Separating timing from
+execution means the scheduler clock never drifts even when a ping reply is slow
+or lost — the next send time advances from the *scheduled* send time, not the
+*actual* reply time.  This keeps the timeline columns aligned across all hosts
+in the UI.
+
+#### Why is `SequenceTracker` per-host?
+
+Each host needs an independent uint16 ICMP sequence counter that wraps at
+65,536.  More importantly, `SequenceTracker` enforces a maximum of **3
+outstanding pings per host** — if a reply has not arrived yet the tracker
+returns `None` and the send is skipped, preventing unbounded queue growth when
+a host becomes unreachable.  Keeping this state per-host means one slow host
+cannot starve or corrupt the sequence counters of other hosts.
+
+#### How does the history buffer prevent memory leaks?
+
+`core.update_history_buffer()` stores snapshots in a `collections.deque` with a
+fixed `maxlen` equal to `HISTORY_DURATION_MINUTES * 60` (1,800 entries for
+30 minutes at 1 snapshot/second).  Python's `deque` automatically evicts the
+oldest entry when the buffer is full, so memory is strictly bounded regardless
+of uptime.  Each snapshot is a `copy.deepcopy` of the current `buffers` and
+`stats` dicts so that live updates do not mutate historical data.
+
 ---
 
 ## 日本語
@@ -459,3 +589,131 @@ flake8 厳格チェックと pylint チェックは、プルリクエストを�
 - エラーメッセージと再現手順を含める
 
 ParaPing への貢献ありがとうございます！
+
+## アーキテクチャ概要
+
+このセクションは、新しいコントリビューターが ParaPing のモジュール関係、データフロー、
+および主要な設計判断を理解するのに役立ちます。
+
+### モジュール依存関係図
+
+```
+cli.py  (エントリーポイント)
+ ├─→ config.py            (CLI 引数解析、設定)
+ ├─→ core.py              (状態管理、ホスト解析、履歴バッファ)
+ │    └─→ ui_render.py    (core がページステップ計算に使用するレイアウトヘルパー)
+ ├─→ scheduler.py         (ホストごとのドリフトなしの ping タイミング)
+ ├─→ pinger.py            (スケジューラ駆動のワーカースレッド)
+ │    ├─→ ping_wrapper.py (ping_helper バイナリへのサブプロセス呼び出し)
+ │    ├─→ scheduler.py    (次にスケジュールされた ping 時刻の読み取り)
+ │    └─→ sequence_tracker.py  (ホストごとの ICMP シーケンス番号と未応答制限)
+ ├─→ ui_render.py         (すべてのターミナルレンダリング、ANSI 出力)
+ │    └─→ stats.py        (RTT 統計、サマリー計算)
+ ├─→ input_keys.py        (キーボード入力処理)
+ ├─→ network_asn.py       (バックグラウンド ASN 検索スレッド)
+ └─→ network_rdns.py      (バックグラウンド逆引き DNS 検索スレッド)
+```
+
+`ping_helper` バイナリ（コンパイル済み C、`src/native/`）は `ping_wrapper.py`
+によってサブプロセスとして呼び出されます。このバイナリは `cap_net_raw` 権限を持ち、
+Python プロセスが root 権限を必要とせずに ICMP echo リクエストを送信できます。
+
+### データフロー：単一 ping
+
+```
+ユーザー入力 (hosts.txt)
+  → cli.run()
+  → core.read_input_file() / core.build_host_infos()
+  → Scheduler.add_host()
+  → pinger.scheduler_driven_worker_ping() [ホストごとのスレッド]
+      → Scheduler.get_next_ping_times()   [スケジュール時刻まで sleep]
+      → SequenceTracker.get_next_sequence()
+      → result_queue.put({'status': 'sent', ...})  [保留中 UI マーカー]
+      → ping_wrapper.ping_with_helper()   [バックグラウンドスレッド]
+          → ping_helper バイナリ (ICMP syscall)
+      → result_queue.put({'status': 'success'/'fail'/'slow', ...})
+      → SequenceTracker.mark_replied()
+  → メインイベントループが result_queue を消費
+  → buffers / stats 辞書を更新
+  → core.update_history_buffer()
+  → ui_render がターミナルに更新された状態をレンダリング
+```
+
+### データフロー：3つの主要シナリオ
+
+#### 1. 起動
+
+```
+cli.parse_args()
+  → ホストファイルの存在確認
+  → core.read_input_file()  →  core.build_host_infos()
+  → core.validate_global_rate_limit()   [フラッド保護チェック]
+  → Scheduler 作成；すべてのホストを stagger オフセット付きで追加
+  → ホストごとに SequenceTracker 作成（最大 3 未応答 ping）
+  → ホストごとに threading.Thread 開始  →  scheduler_driven_worker_ping()
+  → network_rdns / network_asn バックグラウンドスレッド開始
+  → メインイベントループ：result_queue + キーボード入力 + 履歴タイマーをポーリング
+  → 最初の ui_render.render() 呼び出しで初期ターミナルフレームを描画
+```
+
+#### 2. Ping（ホストごとのスレッド、繰り返し）
+
+```
+Scheduler.get_next_ping_times()
+  → next_ping_time = last_sent + interval（または start + stagger*idx）を計算
+  → スケジュール時刻まで 10 ms 刻みで sleep
+SequenceTracker.get_next_sequence(host)
+  → 未応答 ping が 3 以上の場合：このラウンドをスキップ（スケジューラは進行）
+  → それ以外：seq を割り当て（uint16、65536 でラップ）；未応答セットに追加
+'sent' イベントを発行  →  result_queue  →  UI がスロットをペンディング（暗いグレー）としてマーク
+Scheduler.mark_ping_sent()  →  このホストの next_ping_time を進める
+デーモンスレッドで execute_ping_async()：
+  → ping_wrapper.ping_with_helper()  →  ping_helper バイナリ
+  → result_queue.put(result)
+  → SequenceTracker.mark_replied()   →  未応答セットから削除
+メインループが結果を取得  →  buffers[host_id]['timeline'].append(symbol)
+  →  stats 更新  →  ui_render.render() がターミナルを再描画
+```
+
+#### 3. ターミナルリサイズ（SIGWINCH）
+
+```
+OS が SIGWINCH を配信  →  メインイベントループでリサイズフラグを設定
+メインループがリサイズフラグを検出：
+  → ui_render.get_terminal_size()  →  新しい (columns, lines)
+  → last_term_size と比較
+  → core.get_cached_page_step() がキャッシュされたページステップを無効化
+  → core.compute_history_page_step()
+      → ui_render.compute_panel_sizes()  →  main_width、main_height
+      → ui_render.compute_main_layout()  →  timeline_width
+      → 新しい page_step を新しい term_size キーでキャッシュに保存
+  → 更新された寸法で ui_render.render() を呼び出し
+  → すべてのパネルがリフロー：タイムライン列、RTT グラフ、ステータスボックス
+```
+
+### 主要な設計判断
+
+#### なぜ `Scheduler` を `Pinger` から分離するのか？
+
+`Scheduler` は、固定の `start_time` に設定可能な `interval` とホストごとの `stagger`
+を加えた、*いつ* ping を送信するかを追跡します。タイミングと実行を分離することで、
+ping の応答が遅くなったり失われたりしても、スケジューラのクロックがドリフトすることがなくなります。
+次の送信時刻は*実際の*応答時刻ではなく、*スケジュールされた*送信時刻から進みます。
+これにより、UI 上のすべてのホストのタイムライン列が揃います。
+
+#### なぜ `SequenceTracker` はホストごとなのか？
+
+各ホストは 65,536 でラップする独立した uint16 ICMP シーケンスカウンタが必要です。
+さらに重要なことに、`SequenceTracker` は**ホストごとに最大 3 つの未応答 ping**
+を強制します。応答がまだ届いていない場合、トラッカーは `None` を返して送信がスキップされ、
+ホストが到達不能になったときの無制限のキュー増大を防ぎます。この状態をホストごとに保持することで、
+1 つの遅いホストが他のホストのシーケンスカウンタを枯渇させたり破損させたりすることがなくなります。
+
+#### 履歴バッファはどのようにしてメモリリークを防ぐのか？
+
+`core.update_history_buffer()` は、`maxlen` が `HISTORY_DURATION_MINUTES * 60`
+（1 秒あたり 1 スナップショットで 30 分分の 1,800 エントリ）に固定された
+`collections.deque` にスナップショットを保存します。Python の `deque` はバッファが
+満杯になると最も古いエントリを自動的に削除するため、稼働時間に関わらずメモリは
+厳密に制限されます。各スナップショットは現在の `buffers` および `stats` 辞書の
+`copy.deepcopy` であるため、ライブ更新によって履歴データが変更されることはありません。
