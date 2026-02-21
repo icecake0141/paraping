@@ -17,6 +17,7 @@ This module contains the main entry point and command-line argument handling.
 """
 
 import argparse
+import logging
 import os
 import queue
 import sys
@@ -103,6 +104,19 @@ def _compute_initial_timeline_width(host_labels: List[str], term_size: Any, pane
         return 1
 
 
+def _configure_logging(log_level: str, log_file: Optional[str]) -> None:
+    """Configure logging handlers for CLI execution."""
+    handlers: List[logging.Handler] = [logging.StreamHandler()]
+    if log_file:
+        handlers.insert(0, logging.FileHandler(os.path.expanduser(log_file), encoding="utf-8"))
+    logging.basicConfig(
+        level=getattr(logging, log_level, logging.INFO),
+        format="%(message)s",
+        handlers=handlers,
+        force=True,
+    )
+
+
 def handle_options() -> argparse.Namespace:
     """Parse and validate command-line arguments."""
     parser = argparse.ArgumentParser(
@@ -144,6 +158,19 @@ def handle_options() -> argparse.Namespace:
         "--verbose",
         action="store_true",
         help="Enable verbose output, showing detailed ping results",
+    )
+    parser.add_argument(
+        "--log-level",
+        type=str.upper,
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="Logging level for verbose and error output (default: INFO)",
+    )
+    parser.add_argument(
+        "--log-file",
+        type=str,
+        default=None,
+        help="Optional log file path for persistent logging",
     )
     parser.add_argument(
         "-f",
@@ -220,6 +247,7 @@ def handle_options() -> argparse.Namespace:
 
 def run(args: argparse.Namespace) -> None:
     """Run the ParaPing monitor with parsed arguments."""
+    _configure_logging(args.log_level, args.log_file)
     # Validate count parameter - allow 0 for infinite
     if args.count < 0:
         print("Error: Count must be a non-negative number (0 for infinite).")

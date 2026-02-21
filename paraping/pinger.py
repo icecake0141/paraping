@@ -19,8 +19,8 @@ A new optional parameter `emit_pending` allows the caller to receive a short-liv
 time-slot (pending marker) and avoid timeline drift when replies are delayed.
 """
 
-import os
 import logging
+import os
 import queue
 import socket
 import threading
@@ -67,12 +67,12 @@ def ping_host(
         A dict with host, sequence, status, and rtt/ttl (rtt is seconds) or None
     """
     if verbose:
-        print(f"\n--- Pinging {host} ---")
+        logger.info("\n--- Pinging %s ---", host)
 
     if not os.path.exists(helper_path):
         message = f"ping_helper binary not found at {helper_path}. " "Please run 'make build' and 'sudo make setcap'."
         if verbose:
-            print(message)
+            logger.info(message)
         yield {
             "host": host,
             "sequence": 1,
@@ -116,7 +116,7 @@ def ping_host(
                 rtt = rtt_ms / 1000.0
                 status = "slow" if rtt >= slow_threshold else "success"
                 if verbose:
-                    print(f"Reply from {host}: seq={i+1} rtt={rtt:.3f}s ttl={ttl}")
+                    logger.info("Reply from %s: seq=%d rtt=%.3fs ttl=%s", host, i + 1, rtt, ttl)
                 yield {
                     "host": host,
                     "sequence": i + 1,
@@ -126,7 +126,7 @@ def ping_host(
                 }
             else:
                 if verbose:
-                    print(f"No reply from {host}: seq={i+1}")
+                    logger.info("No reply from %s: seq=%d", host, i + 1)
                 yield {
                     "host": host,
                     "sequence": i + 1,
@@ -136,7 +136,7 @@ def ping_host(
                 }
         except (OSError, PingHelperError, ValueError) as e:
             if verbose:
-                print(f"Error pinging {host}: {e}")
+                logger.info("Error pinging %s: %s", host, e)
             logger.warning("Error pinging %s (seq=%d): %s", host, i + 1, e)
             yield {
                 "host": host,

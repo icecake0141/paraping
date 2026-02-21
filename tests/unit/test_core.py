@@ -17,6 +17,7 @@ Unit tests for paraping.core module.
 This module tests pure domain logic functions without performing actual network calls.
 """
 
+import logging
 import os
 import socket
 import sys
@@ -76,42 +77,48 @@ class TestParseHostFileLine(unittest.TestCase):
 
     def test_parse_invalid_format_missing_comma(self):
         """Test parsing line without comma returns None"""
-        with patch("sys.stderr"):
+        with logging.captured_logs("paraping.core") as records:
             result = parse_host_file_line("192.0.2.1 webserver", 1, "hosts.txt")
         self.assertIsNone(result)
+        self.assertTrue(records)
 
     def test_parse_invalid_format_too_many_parts(self):
         """Test parsing line with too many parts returns None"""
-        with patch("sys.stderr"):
+        with logging.captured_logs("paraping.core") as records:
             result = parse_host_file_line("192.0.2.1,alias,extra", 1, "hosts.txt")
         self.assertIsNone(result)
+        self.assertTrue(records)
 
     def test_parse_invalid_ip_address(self):
         """Test parsing invalid IP address returns None"""
-        with patch("sys.stderr"):
+        with logging.captured_logs("paraping.core") as records:
             result = parse_host_file_line("999.999.999.999,invalid", 1, "hosts.txt")
         self.assertIsNone(result)
+        self.assertTrue(records)
 
     def test_parse_ipv6_address_with_warning(self):
         """Test that IPv6 addresses are accepted but generate a warning"""
-        with patch("sys.stderr"):
+        with logging.captured_logs("paraping.core") as records:
             result = parse_host_file_line("::1,localhost", 1, "hosts.txt")
         self.assertIsNotNone(result)
         self.assertEqual(result["host"], "::1")
         self.assertEqual(result["alias"], "localhost")
         self.assertEqual(result["ip"], "::1")
+        self.assertTrue(records)
 
     def test_parse_empty_ip(self):
         """Test parsing empty IP field returns None"""
-        with patch("sys.stderr"):
+        with logging.captured_logs("paraping.core") as records:
             result = parse_host_file_line(",alias", 1, "hosts.txt")
         self.assertIsNone(result)
+        self.assertTrue(records)
 
     def test_parse_empty_alias(self):
         """Test parsing empty alias field returns None"""
-        with patch("sys.stderr"):
+        with logging.captured_logs("paraping.core") as records:
             result = parse_host_file_line("192.0.2.1,", 1, "hosts.txt")
         self.assertIsNone(result)
+        self.assertTrue(records)
 
 
 class TestReadInputFile(unittest.TestCase):
@@ -147,26 +154,29 @@ class TestReadInputFile(unittest.TestCase):
     def test_read_nonexistent_file(self):
         """Test reading non-existent file returns empty list"""
         with patch("builtins.open", side_effect=FileNotFoundError()):
-            with patch("sys.stdout"):
+            with logging.captured_logs("paraping.core") as records:
                 result = read_input_file("nonexistent.txt")
 
         self.assertEqual(result, [])
+        self.assertTrue(records)
 
     def test_read_file_permission_error(self):
         """Test handling permission error"""
         with patch("builtins.open", side_effect=PermissionError()):
-            with patch("sys.stdout"):
+            with logging.captured_logs("paraping.core") as records:
                 result = read_input_file("noperm.txt")
 
         self.assertEqual(result, [])
+        self.assertTrue(records)
 
     def test_read_file_generic_exception(self):
         """Test handling generic OS/IO exception"""
         with patch("builtins.open", side_effect=OSError("Generic error")):
-            with patch("sys.stdout"):
+            with logging.captured_logs("paraping.core") as records:
                 result = read_input_file("error.txt")
 
         self.assertEqual(result, [])
+        self.assertTrue(records)
 
 
 class TestBuildHostInfos(unittest.TestCase):
@@ -258,12 +268,13 @@ class TestBuildHostInfos(unittest.TestCase):
             (socket.AF_INET6, socket.SOCK_RAW, 0, "", ("2001:db8::1", 0)),
         ]
 
-        with patch("sys.stderr"):
+        with logging.captured_logs("paraping.core") as records:
             hosts = ["ipv6-only.example.com"]
             host_infos, _ = build_host_infos(hosts)
 
         self.assertEqual(len(host_infos), 1)
         self.assertEqual(host_infos[0]["ip"], "2001:db8::1")
+        self.assertTrue(records)
 
 
 class TestCreateStateSnapshot(unittest.TestCase):

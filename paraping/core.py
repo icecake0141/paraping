@@ -21,7 +21,6 @@ import copy
 import ipaddress
 import logging
 import socket
-import sys
 from collections import deque
 from collections.abc import Sequence
 from types import SimpleNamespace
@@ -154,31 +153,37 @@ def parse_host_file_line(line: str, line_number: int, input_file: str) -> Option
         return None
     parts = [part.strip() for part in stripped.split(",")]
     if len(parts) != 2:
-        print(
-            f"Warning: Invalid host entry at {input_file}:{line_number}. " "Expected format 'IP,alias'.",
-            file=sys.stderr,
+        logger.warning(
+            "Warning: Invalid host entry at %s:%d. Expected format 'IP,alias'.",
+            input_file,
+            line_number,
         )
         return None
     ip_text, alias = parts
     if not ip_text or not alias:
-        print(
-            f"Warning: Invalid host entry at {input_file}:{line_number}. " "IP address and alias are required.",
-            file=sys.stderr,
+        logger.warning(
+            "Warning: Invalid host entry at %s:%d. IP address and alias are required.",
+            input_file,
+            line_number,
         )
         return None
     try:
         ip_obj = ipaddress.ip_address(ip_text)
     except ValueError:
-        print(
-            f"Warning: Invalid IP address at {input_file}:{line_number}: '{ip_text}'.",
-            file=sys.stderr,
+        logger.warning(
+            "Warning: Invalid IP address at %s:%d: '%s'.",
+            input_file,
+            line_number,
+            ip_text,
         )
         return None
     if ip_obj.version != 4:
-        print(
-            f"Warning: IPv6 address at {input_file}:{line_number}: '{ip_text}'. "
-            "IPv6 is not supported by ping_helper; this entry will likely fail during ping.",
-            file=sys.stderr,
+        logger.warning(
+            "Warning: IPv6 address at %s:%d: '%s'. IPv6 is not supported by ping_helper; this entry will likely fail "
+            "during ping.",
+            input_file,
+            line_number,
+            ip_text,
         )
     return {"host": ip_text, "alias": alias, "ip": ip_text}
 
@@ -201,14 +206,13 @@ def read_input_file(input_file: str) -> List[Dict[str, str]]:
                 if entry is not None:
                     host_list.append(entry)
     except FileNotFoundError:
-        print(f"Error: Input file '{input_file}' not found.")
+        logger.error("Error: Input file '%s' not found.", input_file)
         return []
     except PermissionError:
-        print(f"Error: Permission denied reading file '{input_file}'.")
+        logger.error("Error: Permission denied reading file '%s'.", input_file)
         return []
     except (OSError, UnicodeDecodeError) as e:
-        logger.warning("Unexpected error reading input file '%s': %s", input_file, e)
-        print(f"Error reading input file '{input_file}': {e}")
+        logger.warning("Error reading input file '%s': %s", input_file, e)
         return []
 
     return host_list
@@ -368,10 +372,11 @@ def build_host_infos(hosts: List[Union[str, Dict[str, str]]]) -> Tuple[List[Dict
                     ip_address = ipv4_addresses[0]
                 elif ipv6_addresses:
                     ip_address = ipv6_addresses[0]
-                    print(
-                        f"Warning: Host '{host}' resolved to IPv6 address '{ip_address}'. "
-                        "IPv6 is not supported by ping_helper; pinging will likely fail.",
-                        file=sys.stderr,
+                    logger.warning(
+                        "Warning: Host '%s' resolved to IPv6 address '%s'. IPv6 is not supported by ping_helper; "
+                        "pinging will likely fail.",
+                        host,
+                        ip_address,
                     )
                 else:
                     ip_address = host

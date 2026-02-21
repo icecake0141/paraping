@@ -411,7 +411,9 @@ Example (explicit IPv4 addresses only):
 - `-c`, `--count`: Number of ping attempts per host (default: 0 for infinite).
 - `-i`, `--interval`: Interval in seconds between pings per host (default: 1.0, range: 0.1-60.0). **Note**: Global rate limit is 50 pings/sec; the tool will fail if (host_count / interval) > 50.
 - `-s`, `--slow-threshold`: RTT threshold (seconds) to mark a ping as slow (default: 0.5).
-- `-v`, `--verbose`: Print raw per-packet output (non-UI).
+- `-v`, `--verbose`: Emit per-packet output for logging (non-UI).
+- `--log-level`: Logging level (`DEBUG|INFO|WARNING|ERROR`, default: `INFO`).
+- `--log-file`: Optional log file path for persistent logging.
 - `-f`, `--input`: Read hosts from a file (one per line; format: `IP,alias`; `#` comments supported).
 - `-P`, `--panel-position`: Summary panel position (`right|left|top|bottom|none`).
 - `-m`, `--pause-mode`: Pause behavior (`display|ping`).
@@ -1087,7 +1089,9 @@ make clean
 - `-c`, `--count`: 各ホストの ping 回数（デフォルト 0 = 無限）
 - `-i`, `--interval`: ping 間隔（秒、デフォルト 1.0、範囲 0.1–60.0）
 - `-s`, `--slow-threshold`: 遅延判定の RTT 閾値（秒、デフォルト 0.5）
-- `-v`, `--verbose`: 生パケット出力（非 UI）
+- `-v`, `--verbose`: ログ出力向けの詳細 ping 情報（非 UI）
+- `--log-level`: ログレベル（`DEBUG|INFO|WARNING|ERROR`、デフォルト `INFO`）
+- `--log-file`: ログの保存先ファイル（任意）
 - `-f`, `--input`: ホスト一覧ファイル（1 行 `IP,alias`、`#` はコメント）
 - `-P`, `--panel-position`: サマリーパネル位置（`right|left|top|bottom|none`）
 - `-m`, `--pause-mode`: 一時停止モード（`display|ping`）
