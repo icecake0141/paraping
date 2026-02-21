@@ -390,7 +390,7 @@ def _setup_hosts_and_state(args: argparse.Namespace) -> Optional[Dict[str, Any]]
 
 
 def _handle_user_input(key: str, args: argparse.Namespace, state: Dict[str, Any]) -> bool:
-    """Process one keyboard input event and return whether the loop should skip to next iteration."""
+    """Process one keyboard input event and return True when the current loop iteration should be skipped."""
     skip_iteration = False
     if key in ("q", "Q"):
         state["running"] = False

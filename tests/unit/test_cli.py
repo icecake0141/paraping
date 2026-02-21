@@ -329,9 +329,9 @@ class TestCLIInputHandling(unittest.TestCase):
         """Pressing q should request shutdown."""
         state = {"running": True, "stop_event": threading.Event()}
 
-        should_continue = _handle_user_input("q", MagicMock(slow_threshold=0.5), state)
+        skip_iteration = _handle_user_input("q", MagicMock(slow_threshold=0.5), state)
 
-        self.assertFalse(should_continue)
+        self.assertFalse(skip_iteration)
         self.assertFalse(state["running"])
         self.assertTrue(state["stop_event"].is_set())
 
@@ -339,9 +339,9 @@ class TestCLIInputHandling(unittest.TestCase):
         """Any key while help is visible should close help and skip the loop body."""
         state = {"show_help": True, "force_render": False, "updated": False}
 
-        should_continue = _handle_user_input("x", MagicMock(slow_threshold=0.5), state)
+        skip_iteration = _handle_user_input("x", MagicMock(slow_threshold=0.5), state)
 
-        self.assertTrue(should_continue)
+        self.assertTrue(skip_iteration)
         self.assertFalse(state["show_help"])
         self.assertTrue(state["force_render"])
         self.assertTrue(state["updated"])
@@ -362,9 +362,9 @@ class TestCLIInputHandling(unittest.TestCase):
             "paused": False,
         }
 
-        should_continue = _handle_user_input("p", MagicMock(slow_threshold=0.5), state)
+        skip_iteration = _handle_user_input("p", MagicMock(slow_threshold=0.5), state)
 
-        self.assertFalse(should_continue)
+        self.assertFalse(skip_iteration)
         self.assertTrue(state["display_paused"])
         self.assertTrue(state["paused"])
         self.assertTrue(state["pause_event"].is_set())
