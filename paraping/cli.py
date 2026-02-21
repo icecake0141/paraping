@@ -34,6 +34,7 @@ from paraping.core import (
     HISTORY_DURATION_MINUTES,
     MAX_HOST_THREADS,
     SNAPSHOT_INTERVAL_SECONDS,
+    TerminalSizeLike,
     _normalize_term_size,
     build_host_infos,
     get_cached_page_step,
@@ -359,7 +360,7 @@ def run(args: argparse.Namespace) -> None:
     last_snapshot_time = 0.0
     # Cache page step to avoid expensive recalculation on every arrow key press
     cached_page_step: Optional[int] = None
-    last_term_size: Any = None
+    last_term_size: Optional[TerminalSizeLike] = None
     host_scroll_offset = 0
 
     rdns_request_queue: queue.Queue[Optional[Tuple[str, str]]] = queue.Queue()

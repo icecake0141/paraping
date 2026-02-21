@@ -24,7 +24,7 @@ import sys
 from collections import deque
 from collections.abc import Sequence
 from types import SimpleNamespace
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Protocol, Tuple, Union
 
 import paraping.ui_render
 from paraping.ui_render import (
@@ -43,6 +43,16 @@ TIMELINE_LABEL_ESTIMATE_WIDTH = 15  # Estimated label column + spacing width.
 
 # Global rate limit for flood protection
 MAX_GLOBAL_PINGS_PER_SECOND = 50  # Maximum allowed ICMP pings per second globally
+
+
+class TerminalSizeLike(Protocol):
+    """Protocol for terminal size objects with columns/lines attributes."""
+
+    @property
+    def columns(self) -> int: ...
+
+    @property
+    def lines(self) -> int: ...
 
 
 def _build_term_size(columns_value: Any, lines_value: Any) -> Optional[SimpleNamespace]:
@@ -247,7 +257,7 @@ def compute_history_page_step(
 
 def get_cached_page_step(
     cached_page_step: Optional[int],
-    last_term_size: Any,
+    last_term_size: Optional[TerminalSizeLike],
     host_infos: List[Dict[str, Any]],
     buffers: Dict[int, Any],
     stats: Dict[int, Any],
@@ -258,7 +268,7 @@ def get_cached_page_step(
     filter_mode: str,
     slow_threshold: float,
     show_asn: bool,
-) -> Tuple[int, int, Any]:
+) -> Tuple[int, int, TerminalSizeLike]:
     """
     Get the page step for history navigation, using cached value if available.
 
@@ -269,10 +279,8 @@ def get_cached_page_step(
         tuple: (page_step, new_cached_page_step, new_last_term_size)
     """
 
-    def is_terminal_resized(last_size: Any, current_size: Any) -> bool:
+    def is_terminal_resized(last_size: TerminalSizeLike, current_size: TerminalSizeLike) -> bool:
         """Check if the terminal size has changed since the last measurement."""
-        if last_size is None:
-            return True  # First time - need to calculate
         # Normalize last_size to ensure we can access .columns and .lines
         normalized_last = _normalize_term_size(last_size)
         if normalized_last is None:
@@ -286,7 +294,7 @@ def get_cached_page_step(
     current_term_size = paraping.ui_render.get_terminal_size(fallback=(80, 24))
 
     # Check if we need to recalculate
-    if cached_page_step is None or is_terminal_resized(last_term_size, current_term_size):
+    if cached_page_step is None or last_term_size is None or is_terminal_resized(last_term_size, current_term_size):
         # Terminal size changed or first time - recalculate
         page_step = compute_history_page_step(
             host_infos,
@@ -311,7 +319,7 @@ def build_host_infos(hosts: List[Union[str, Dict[str, str]]]) -> Tuple[List[Dict
     host_infos = []
     host_map: Dict[str, List[Dict[str, Any]]] = {}
 
-    def address_from_sockaddr(sockaddr: Any) -> str:
+    def address_from_sockaddr(sockaddr: Tuple[Any, ...]) -> str:
         """Extract a string address from a getaddrinfo sockaddr tuple."""
         address_value = sockaddr[0]
         if isinstance(address_value, str):
