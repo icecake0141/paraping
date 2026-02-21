@@ -24,7 +24,8 @@ import re
 import sys
 import time
 from collections import deque
-from datetime import datetime, timezone
+from datetime import datetime, timezone, tzinfo
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from paraping.stats import (
     build_summary_all_suffix,
@@ -53,7 +54,7 @@ STATUS_METRICS_TEMPLATE = STATUS_METRICS_SEPARATOR.join(
 )
 
 # Global state for rendering
-LAST_RENDER_LINES = None
+LAST_RENDER_LINES: Optional[List[str]] = None
 
 
 # ============================================================================
@@ -61,17 +62,17 @@ LAST_RENDER_LINES = None
 # ============================================================================
 
 
-def strip_ansi(text):
+def strip_ansi(text: str) -> str:
     """Remove ANSI escape sequences from text."""
     return ANSI_ESCAPE_RE.sub("", text)
 
 
-def visible_len(text):
+def visible_len(text: str) -> int:
     """Get the visible length of text (excluding ANSI codes)."""
     return len(strip_ansi(text))
 
 
-def truncate_visible(text, width):
+def truncate_visible(text: str, width: int) -> Tuple[str, int]:
     """
     Truncate text to a visible width, preserving ANSI codes.
 
@@ -97,7 +98,7 @@ def truncate_visible(text, width):
     return truncated, visible_count
 
 
-def pad_visible(text, width):
+def pad_visible(text: str, width: int) -> str:
     """Pad text to a visible width, preserving ANSI codes."""
     truncated, visible_count = truncate_visible(text, width)
     if visible_count < width:
@@ -105,7 +106,7 @@ def pad_visible(text, width):
     return truncated
 
 
-def rjust_visible(text, width):
+def rjust_visible(text: str, width: int) -> str:
     """Right-justify text to a visible width, preserving ANSI codes."""
     padding = width - visible_len(text)
     if padding <= 0:
@@ -113,7 +114,7 @@ def rjust_visible(text, width):
     return f"{' ' * padding}{text}"
 
 
-def colorize_text(text, status, use_color):
+def colorize_text(text: str, status: Optional[str], use_color: bool) -> str:
     """Apply color to text based on status."""
     if not use_color or not status:
         return text
@@ -123,7 +124,7 @@ def colorize_text(text, status, use_color):
     return f"{color}{text}{ANSI_RESET}"
 
 
-def status_from_symbol(symbol, symbols):
+def status_from_symbol(symbol: str, symbols: Dict[str, str]) -> Optional[str]:
     """Get status name from symbol character."""
     for status, status_symbol in symbols.items():
         if symbol == status_symbol:
@@ -131,7 +132,7 @@ def status_from_symbol(symbol, symbols):
     return None
 
 
-def latest_status_from_timeline(timeline, symbols):
+def latest_status_from_timeline(timeline: Sequence[str], symbols: Dict[str, str]) -> Optional[str]:
     """Get the latest status from a timeline."""
     if not timeline:
         return None
@@ -143,12 +144,17 @@ def latest_status_from_timeline(timeline, symbols):
 # ============================================================================
 
 
-def build_colored_timeline(timeline, symbols, use_color):
+def build_colored_timeline(timeline: Sequence[str], symbols: Dict[str, str], use_color: bool) -> str:
     """Build a colored timeline string from symbols."""
     return "".join(colorize_text(symbol, status_from_symbol(symbol, symbols), use_color) for symbol in timeline)
 
 
-def build_colored_sparkline(sparkline, status_symbols, symbols, use_color):
+def build_colored_sparkline(
+    sparkline: str,
+    status_symbols: Sequence[str],
+    symbols: Dict[str, str],
+    use_color: bool,
+) -> str:
     """Build a colored sparkline from characters and status symbols."""
     if not use_color:
         return sparkline
@@ -160,11 +166,11 @@ def build_colored_sparkline(sparkline, status_symbols, symbols, use_color):
 
 
 def build_activity_indicator(
-    now_utc,
-    width=ACTIVITY_INDICATOR_WIDTH,
-    max_height=ACTIVITY_INDICATOR_HEIGHT,
-    speed_hz=ACTIVITY_INDICATOR_SPEED_HZ,
-):
+    now_utc: datetime,
+    width: int = ACTIVITY_INDICATOR_WIDTH,
+    max_height: int = ACTIVITY_INDICATOR_HEIGHT,
+    speed_hz: int = ACTIVITY_INDICATOR_SPEED_HZ,
+) -> str:
     """Build an animated activity indicator sparkline."""
     if width <= 0:
         return ""
@@ -184,11 +190,11 @@ def build_activity_indicator(
 
 
 def compute_activity_indicator_width(
-    panel_width,
-    header_text,
-    default_width=ACTIVITY_INDICATOR_WIDTH,
-    expanded_width=ACTIVITY_INDICATOR_EXPANDED_WIDTH,
-):
+    panel_width: int,
+    header_text: str,
+    default_width: int = ACTIVITY_INDICATOR_WIDTH,
+    expanded_width: int = ACTIVITY_INDICATOR_EXPANDED_WIDTH,
+) -> int:
     """Compute the width for the activity indicator based on available space."""
     if panel_width <= 0:
         return 0
@@ -207,7 +213,7 @@ def compute_activity_indicator_width(
 # ============================================================================
 
 
-def get_terminal_size(fallback=(80, 24)):
+def get_terminal_size(fallback: Tuple[int, int] = (80, 24)) -> os.terminal_size:
     """
     Get the terminal size by directly querying the terminal.
 
@@ -248,7 +254,9 @@ def get_terminal_size(fallback=(80, 24)):
     return os.terminal_size(fallback)
 
 
-def compute_main_layout(host_labels, width, height, header_lines=2):
+def compute_main_layout(
+    host_labels: Sequence[str], width: int, height: int, header_lines: int = 2
+) -> Tuple[int, int, int, int]:
     """Compute the main layout dimensions for the display."""
     max_host_len = max((len(host) for host in host_labels), default=4)
     label_width = min(max_host_len, max(10, width // 3))
@@ -259,15 +267,15 @@ def compute_main_layout(host_labels, width, height, header_lines=2):
 
 
 def compute_panel_sizes(
-    term_width,
-    term_height,
-    panel_position,
-    min_panel_width=30,
-    min_panel_height=5,
-    min_main_width=20,
-    min_main_height=5,
-    gap=1,
-):
+    term_width: int,
+    term_height: int,
+    panel_position: str,
+    min_panel_width: int = 30,
+    min_panel_height: int = 5,
+    min_main_width: int = 20,
+    min_main_height: int = 5,
+    gap: int = 1,
+) -> Tuple[int, int, int, int, str]:
     """Compute the sizes for main and summary panels based on position."""
     if panel_position == "none":
         return term_width, term_height, 0, 0, "none"
@@ -292,14 +300,21 @@ def compute_panel_sizes(
     return term_width, term_height, 0, 0, "none"
 
 
-def resolve_boxed_dimensions(width, height, boxed):
+def resolve_boxed_dimensions(width: int, height: int, boxed: bool) -> Tuple[int, int, bool]:
     """Resolve dimensions for boxed content."""
     if not boxed or width < 2 or height < 3:
         return width, height, False
     return width - 2, height - 2, True
 
 
-def should_show_asn(host_infos, mode, show_asn, term_width, min_timeline_width=10, asn_width=8):
+def should_show_asn(
+    host_infos: Sequence[Dict[str, Any]],
+    mode: str,
+    show_asn: bool,
+    term_width: int,
+    min_timeline_width: int = 10,
+    asn_width: int = 8,
+) -> bool:
     """Determine if ASN should be shown based on available space."""
     if not show_asn:
         return False
@@ -313,19 +328,19 @@ def should_show_asn(host_infos, mode, show_asn, term_width, min_timeline_width=1
 
 
 def compute_host_scroll_bounds(
-    host_infos,
-    buffers,
-    stats,
-    symbols,
-    panel_position,
-    mode_label,
-    sort_mode,
-    filter_mode,
-    slow_threshold,
-    show_asn,
-    asn_width=8,
-    header_lines=2,
-):
+    host_infos: Sequence[Dict[str, Any]],
+    buffers: Dict[int, Dict[str, Any]],
+    stats: Dict[int, Dict[str, Any]],
+    symbols: Dict[str, str],
+    panel_position: str,
+    mode_label: str,
+    sort_mode: str,
+    filter_mode: str,
+    slow_threshold: float,
+    show_asn: bool,
+    asn_width: int = 8,
+    header_lines: int = 2,
+) -> Tuple[int, int, int]:
     """Compute the scroll bounds for the host list."""
     term_size = get_terminal_size(fallback=(80, 24))
     term_width = term_size.columns
@@ -358,7 +373,7 @@ def compute_host_scroll_bounds(
 # ============================================================================
 
 
-def pad_lines(lines, width, height):
+def pad_lines(lines: Sequence[str], width: int, height: int) -> List[str]:
     """Pad lines to fill the specified width and height."""
     padded = [pad_visible(line, width) for line in lines[:height]]
     while len(padded) < height:
@@ -366,7 +381,7 @@ def pad_lines(lines, width, height):
     return padded
 
 
-def box_lines(lines, width, height):
+def box_lines(lines: Sequence[str], width: int, height: int) -> List[str]:
     """Draw a box around lines."""
     inner_width, inner_height, can_box = resolve_boxed_dimensions(width, height, True)
     if not can_box:
@@ -379,7 +394,7 @@ def box_lines(lines, width, height):
     return boxed
 
 
-def resize_buffers(buffers, timeline_width, symbols):
+def resize_buffers(buffers: Dict[int, Dict[str, Any]], timeline_width: int, symbols: Dict[str, str]) -> None:
     """Resize all buffers to match the timeline width."""
     for _, host_buffers in buffers.items():
         if host_buffers["timeline"].maxlen != timeline_width:
@@ -400,7 +415,7 @@ def resize_buffers(buffers, timeline_width, symbols):
 # ============================================================================
 
 
-def build_sparkline(rtt_values, status_symbols, fail_symbol):
+def build_sparkline(rtt_values: Sequence[Optional[float]], status_symbols: Sequence[str], fail_symbol: str) -> str:
     """Build a sparkline from RTT values."""
     spark_chars = "▁▂▃▄▅▆▇█"
     if rtt_values:
@@ -432,7 +447,7 @@ def build_sparkline(rtt_values, status_symbols, fail_symbol):
     return "".join(spark_chars[idx] for idx in indices)
 
 
-def build_ascii_graph(values, width, height, style="line"):
+def build_ascii_graph(values: Sequence[Optional[float]], width: int, height: int, style: str = "line") -> List[str]:
     """Build an ASCII graph from values."""
     if width <= 0 or height <= 0:
         return []
@@ -467,7 +482,7 @@ def build_ascii_graph(values, width, height, style="line"):
     return ["".join(row) for row in grid]
 
 
-def resample_values(values, target_width):
+def resample_values(values: Sequence[Optional[float]], target_width: int) -> List[Optional[float]]:
     """Resample values to fit a target width."""
     if target_width <= 0:
         return []
@@ -489,7 +504,7 @@ def resample_values(values, target_width):
 # ============================================================================
 
 
-def resolve_display_name(host_info, mode):
+def resolve_display_name(host_info: Dict[str, Any], mode: str) -> str:
     """Resolve the display name for a host based on mode."""
     if mode == "ip":
         return host_info["ip"]
@@ -502,7 +517,7 @@ def resolve_display_name(host_info, mode):
     return host_info["ip"]
 
 
-def format_asn_label(host_info, asn_width):
+def format_asn_label(host_info: Dict[str, Any], asn_width: int) -> str:
     """Format the ASN label for display."""
     if host_info.get("asn_pending"):
         label = "resolving..."
@@ -511,7 +526,13 @@ def format_asn_label(host_info, asn_width):
     return f"{label[:asn_width]:<{asn_width}}"
 
 
-def format_display_name(host_info, mode, include_asn, asn_width, base_label_width=0):
+def format_display_name(
+    host_info: Dict[str, Any],
+    mode: str,
+    include_asn: bool,
+    asn_width: int,
+    base_label_width: int = 0,
+) -> str:
     """Format the complete display name including optional ASN."""
     base_label = resolve_display_name(host_info, mode)
     if not include_asn:
@@ -521,7 +542,7 @@ def format_display_name(host_info, mode, include_asn, asn_width, base_label_widt
     return f"{padded_label} {asn_label}"
 
 
-def build_display_names(host_infos, mode, include_asn, asn_width):
+def build_display_names(host_infos: Sequence[Dict[str, Any]], mode: str, include_asn: bool, asn_width: int) -> Dict[int, str]:
     """Build display names for all hosts."""
     base_label_width = 0
     if include_asn:
@@ -530,15 +551,15 @@ def build_display_names(host_infos, mode, include_asn, asn_width):
 
 
 def build_display_entries(
-    host_infos,
-    display_names,
-    buffers,
-    stats,
-    symbols,
-    sort_mode,
-    filter_mode,
-    slow_threshold,
-):
+    host_infos: Sequence[Dict[str, Any]],
+    display_names: Dict[int, str],
+    buffers: Dict[int, Dict[str, Any]],
+    stats: Dict[int, Dict[str, Any]],
+    symbols: Dict[str, str],
+    sort_mode: str,
+    filter_mode: str,
+    slow_threshold: float,
+) -> List[Tuple[int, str]]:
     """Build and sort display entries based on current filter and sort modes."""
     entries = []
     for info in host_infos:
@@ -583,7 +604,7 @@ def build_display_entries(
     return [(entry["host_id"], entry["label"]) for entry in entries]
 
 
-def can_render_full_summary(summary_data, width):
+def can_render_full_summary(summary_data: Sequence[Dict[str, Any]], width: int) -> bool:
     """Check if we can render the full summary with all information."""
     if not summary_data:
         return False
@@ -591,7 +612,7 @@ def can_render_full_summary(summary_data, width):
     return width >= max_suffix_len + 1
 
 
-def format_summary_line(entry, width, summary_mode, prefer_all=False):
+def format_summary_line(entry: Dict[str, Any], width: int, summary_mode: str, prefer_all: bool = False) -> str:
     """Format a single summary line."""
     status_suffix = None
     if prefer_all:
@@ -611,7 +632,12 @@ def format_summary_line(entry, width, summary_mode, prefer_all=False):
     return full_line[:width]
 
 
-def build_time_axis(timeline_width, label_width, interval_seconds=1.0, label_period_seconds=10.0):
+def build_time_axis(
+    timeline_width: int,
+    label_width: int,
+    interval_seconds: float = 1.0,
+    label_period_seconds: float = 10.0,
+) -> str:
     """
     Build a time axis string for the timeline/sparkline view.
 
@@ -667,12 +693,12 @@ def build_time_axis(timeline_width, label_width, interval_seconds=1.0, label_per
     return f"{' ' * label_width} | {axis_timeline}"
 
 
-def format_status_line(host, timeline, label_width):
+def format_status_line(host: str, timeline: str, label_width: int) -> str:
     """Format a status line with host and timeline."""
     return f"{pad_visible(host, label_width)} | {timeline}"
 
 
-def _parse_positive_float(value):
+def _parse_positive_float(value: Optional[str]) -> Optional[float]:
     """Parse a strictly positive float from a string, returning None if invalid.
 
     Handles None or empty values and invalid string conversions from environment variables.
@@ -688,7 +714,7 @@ def _parse_positive_float(value):
     return parsed
 
 
-def estimate_ping_rate(host_count, interval_seconds):
+def estimate_ping_rate(host_count: int, interval_seconds: float) -> Optional[float]:
     """Estimate the ping rate using environment variables when provided.
 
     Returns None when the interval value is invalid.
@@ -705,7 +731,11 @@ def estimate_ping_rate(host_count, interval_seconds):
     return host_count / interval_value
 
 
-def build_status_metrics(host_infos, stats, interval_seconds=1.0):
+def build_status_metrics(
+    host_infos: Optional[Sequence[Dict[str, Any]]],
+    stats: Optional[Dict[int, Dict[str, Any]]],
+    interval_seconds: float = 1.0,
+) -> str:
     """Build a status metrics string for hosts, counts, and estimated rate."""
     host_count = len(host_infos) if host_infos else 0
     successful_pings = 0
@@ -728,15 +758,15 @@ def build_status_metrics(host_infos, stats, interval_seconds=1.0):
 
 
 def build_status_line(
-    sort_mode,
-    filter_mode,
-    summary_mode,
-    paused,
-    status_message=None,
-    summary_all=False,
-    summary_fullscreen=False,
-    dormant=False,
-):
+    sort_mode: str,
+    filter_mode: str,
+    summary_mode: str,
+    paused: bool,
+    status_message: Optional[str] = None,
+    summary_all: bool = False,
+    summary_fullscreen: bool = False,
+    dormant: bool = False,
+) -> str:
     """Build the status line showing current modes and settings."""
     sort_labels = {
         "failures": "Failure Count",
@@ -776,18 +806,18 @@ def build_status_line(
 
 
 def render_timeline_view(
-    display_entries,
-    buffers,
-    symbols,
-    width,
-    height,
-    header,
-    use_color=False,
-    scroll_offset=0,
-    header_lines=2,
-    boxed=False,
-    interval_seconds=1.0,
-):
+    display_entries: Sequence[Tuple[int, str]],
+    buffers: Dict[int, Dict[str, Any]],
+    symbols: Dict[str, str],
+    width: int,
+    height: int,
+    header: str,
+    use_color: bool = False,
+    scroll_offset: int = 0,
+    header_lines: int = 2,
+    boxed: bool = False,
+    interval_seconds: float = 1.0,
+) -> List[str]:
     """Render the timeline view."""
     if width <= 0 or height <= 0:
         return []
@@ -830,18 +860,18 @@ def render_timeline_view(
 
 
 def render_sparkline_view(
-    display_entries,
-    buffers,
-    symbols,
-    width,
-    height,
-    header,
-    use_color=False,
-    scroll_offset=0,
-    header_lines=2,
-    boxed=False,
-    interval_seconds=1.0,
-):
+    display_entries: Sequence[Tuple[int, str]],
+    buffers: Dict[int, Dict[str, Any]],
+    symbols: Dict[str, str],
+    width: int,
+    height: int,
+    header: str,
+    use_color: bool = False,
+    scroll_offset: int = 0,
+    header_lines: int = 2,
+    boxed: bool = False,
+    interval_seconds: float = 1.0,
+) -> List[str]:
     """Render the sparkline view."""
     if width <= 0 or height <= 0:
         return []
@@ -885,7 +915,7 @@ def render_sparkline_view(
     return pad_lines(lines, width, height)
 
 
-def build_colored_square_timeline(timeline_symbols, symbols, use_color):
+def build_colored_square_timeline(timeline_symbols: Sequence[str], symbols: Dict[str, str], use_color: bool) -> str:
     """Build a colored timeline of squares from status symbols."""
     # Square view uses different colors than timeline view:
     # - Square view: green for OK (success/slow), red for fail, gray for pending
@@ -929,18 +959,18 @@ def build_colored_square_timeline(timeline_symbols, symbols, use_color):
 
 
 def render_square_view(
-    display_entries,
-    buffers,
-    symbols,
-    width,
-    height,
-    header,
-    use_color=False,
-    scroll_offset=0,
-    header_lines=2,
-    boxed=False,
-    interval_seconds=1.0,
-):
+    display_entries: Sequence[Tuple[int, str]],
+    buffers: Dict[int, Dict[str, Any]],
+    symbols: Dict[str, str],
+    width: int,
+    height: int,
+    header: str,
+    use_color: bool = False,
+    scroll_offset: int = 0,
+    header_lines: int = 2,
+    boxed: bool = False,
+    interval_seconds: float = 1.0,
+) -> List[str]:
     """Render the square view as a time-series (horizontal sequence of colored squares)."""
     if width <= 0 or height <= 0:
         return []
@@ -986,23 +1016,23 @@ def render_square_view(
 
 
 def render_main_view(
-    display_entries,
-    buffers,
-    symbols,
-    width,
-    height,
-    mode_label,
-    display_mode,
-    paused,
-    timestamp,
-    now_utc,
-    use_color=False,
-    scroll_offset=0,
-    header_lines=2,
-    boxed=False,
-    interval_seconds=1.0,
-    dormant=False,
-):
+    display_entries: Sequence[Tuple[int, str]],
+    buffers: Dict[int, Dict[str, Any]],
+    symbols: Dict[str, str],
+    width: int,
+    height: int,
+    mode_label: str,
+    display_mode: str,
+    paused: bool,
+    timestamp: str,
+    now_utc: datetime,
+    use_color: bool = False,
+    scroll_offset: int = 0,
+    header_lines: int = 2,
+    boxed: bool = False,
+    interval_seconds: float = 1.0,
+    dormant: bool = False,
+) -> List[str]:
     """Render the main view (timeline, sparkline, or square)."""
     pause_label = "DORMANT" if dormant else ("PAUSED" if paused else "LIVE")
     header_base = f"ParaPing - {pause_label} results [{mode_label} | {display_mode}] {timestamp}"
@@ -1059,13 +1089,13 @@ def render_main_view(
 
 
 def render_summary_view(
-    summary_data,
-    width,
-    height,
-    summary_mode,
-    prefer_all=False,
-    boxed=False,
-):
+    summary_data: Sequence[Dict[str, Any]],
+    width: int,
+    height: int,
+    summary_mode: str,
+    prefer_all: bool = False,
+    boxed: bool = False,
+) -> List[str]:
     """Render the summary view."""
     if width <= 0 or height <= 0:
         return []
@@ -1097,7 +1127,7 @@ def render_summary_view(
     return pad_lines(lines, width, height)
 
 
-def render_help_view(width, height, boxed=False):
+def render_help_view(width: int, height: int, boxed: bool = False) -> List[str]:
     """Render the help view."""
     _, _, can_box = resolve_boxed_dimensions(width, height, boxed)
     lines = [
@@ -1129,12 +1159,12 @@ def render_help_view(width, height, boxed=False):
 
 
 def render_host_selection_view(
-    display_entries,
-    selected_index,
-    width,
-    height,
-    mode_label,
-):
+    display_entries: Sequence[Tuple[int, str]],
+    selected_index: int,
+    width: int,
+    height: int,
+    mode_label: str,
+) -> List[str]:
     """Render the host selection view for choosing a host for RTT graph."""
     if width <= 0 or height <= 0:
         return []
@@ -1175,16 +1205,16 @@ def render_host_selection_view(
 
 
 def render_fullscreen_rtt_graph(
-    host_label,
-    rtt_values,
-    time_history,
-    width,
-    height,
-    display_mode,
-    paused,
-    timestamp,
-    dormant=False,
-):
+    host_label: str,
+    rtt_values: Sequence[Optional[float]],
+    time_history: Sequence[Optional[float]],
+    width: int,
+    height: int,
+    display_mode: str,
+    paused: bool,
+    timestamp: str,
+    dormant: bool = False,
+) -> List[str]:
     """Render a fullscreen RTT graph for a selected host."""
     if width <= 0 or height <= 0:
         return []
@@ -1251,7 +1281,7 @@ def render_fullscreen_rtt_graph(
     return lines
 
 
-def render_status_box(status_line, width):
+def render_status_box(status_line: str, width: int) -> List[str]:
     """Render a status box around the status line."""
     if width <= 0:
         return []
@@ -1264,31 +1294,31 @@ def render_status_box(status_line, width):
 
 
 def build_display_lines(  # noqa: C901
-    host_infos,
-    buffers,
-    stats,
-    symbols,
-    panel_position,
-    mode_label,
-    display_mode,
-    summary_mode,
-    sort_mode,
-    filter_mode,
-    slow_threshold,
-    show_help,
-    show_asn,
-    paused,
-    status_message,
-    timestamp,
-    now_utc,
-    use_color=False,
-    host_scroll_offset=0,
-    summary_fullscreen=False,
-    asn_width=8,
-    header_lines=2,
-    interval_seconds=1.0,
-    dormant=False,
-):
+    host_infos: Sequence[Dict[str, Any]],
+    buffers: Dict[int, Dict[str, Any]],
+    stats: Dict[int, Dict[str, Any]],
+    symbols: Dict[str, str],
+    panel_position: str,
+    mode_label: str,
+    display_mode: str,
+    summary_mode: str,
+    sort_mode: str,
+    filter_mode: str,
+    slow_threshold: float,
+    show_help: bool,
+    show_asn: bool,
+    paused: bool,
+    status_message: Optional[str],
+    timestamp: str,
+    now_utc: datetime,
+    use_color: bool = False,
+    host_scroll_offset: int = 0,
+    summary_fullscreen: bool = False,
+    asn_width: int = 8,
+    header_lines: int = 2,
+    interval_seconds: float = 1.0,
+    dormant: bool = False,
+) -> List[str]:
     """Build all display lines for the current state."""
     term_size = get_terminal_size(fallback=(80, 24))
     term_width = term_size.columns
@@ -1424,31 +1454,31 @@ def build_display_lines(  # noqa: C901
 
 
 def render_display(
-    host_infos,
-    buffers,
-    stats,
-    symbols,
-    panel_position,
-    mode_label,
-    display_mode,
-    summary_mode,
-    sort_mode,
-    filter_mode,
-    slow_threshold,
-    show_help,
-    show_asn,
-    paused,
-    status_message,
-    display_tz,
-    use_color=False,
-    host_scroll_offset=0,
-    summary_fullscreen=False,
-    asn_width=8,
-    header_lines=2,
-    override_lines=None,
-    interval_seconds=1.0,
-    dormant=False,
-):
+    host_infos: Sequence[Dict[str, Any]],
+    buffers: Dict[int, Dict[str, Any]],
+    stats: Dict[int, Dict[str, Any]],
+    symbols: Dict[str, str],
+    panel_position: str,
+    mode_label: str,
+    display_mode: str,
+    summary_mode: str,
+    sort_mode: str,
+    filter_mode: str,
+    slow_threshold: float,
+    show_help: bool,
+    show_asn: bool,
+    paused: bool,
+    status_message: Optional[str],
+    display_tz: tzinfo,
+    use_color: bool = False,
+    host_scroll_offset: int = 0,
+    summary_fullscreen: bool = False,
+    asn_width: int = 8,
+    header_lines: int = 2,
+    override_lines: Optional[List[str]] = None,
+    interval_seconds: float = 1.0,
+    dormant: bool = False,
+) -> None:
     """Render the complete display to the terminal."""
     global LAST_RENDER_LINES
     now_utc = datetime.now(timezone.utc)
@@ -1515,7 +1545,7 @@ def render_display(
 # ============================================================================
 
 
-def format_timezone_label(now_utc, display_tz):
+def format_timezone_label(now_utc: datetime, display_tz: tzinfo) -> str:
     """Format the timezone label for display."""
     tzinfo = now_utc.astimezone(display_tz).tzinfo
     tz_name = tzinfo.tzname(now_utc) if tzinfo else None
@@ -1526,7 +1556,7 @@ def format_timezone_label(now_utc, display_tz):
     return "UTC"
 
 
-def format_timestamp(now_utc, display_tz):
+def format_timestamp(now_utc: datetime, display_tz: tzinfo) -> str:
     """Format a timestamp with timezone label."""
     timestamp = now_utc.astimezone(display_tz).strftime("%Y-%m-%d %H:%M:%S")
     tz_label = format_timezone_label(now_utc, display_tz)
@@ -1538,7 +1568,7 @@ def format_timestamp(now_utc, display_tz):
 # ============================================================================
 
 
-def prepare_terminal_for_exit():
+def prepare_terminal_for_exit() -> None:
     """Prepare the terminal for exit by clearing the screen area."""
     if not sys.stdout.isatty():
         return
@@ -1547,7 +1577,7 @@ def prepare_terminal_for_exit():
     sys.stdout.flush()
 
 
-def flash_screen():
+def flash_screen() -> None:
     """Flash the screen with a white background for ~100ms."""
     if not sys.stdout.isatty():
         return
@@ -1569,7 +1599,7 @@ def flash_screen():
     sys.stdout.flush()
 
 
-def ring_bell():
+def ring_bell() -> None:
     """Ring the terminal bell."""
     if not sys.stdout.isatty():
         return
@@ -1577,7 +1607,7 @@ def ring_bell():
     sys.stdout.flush()
 
 
-def should_flash_on_fail(status, flash_on_fail, show_help):
+def should_flash_on_fail(status: str, flash_on_fail: bool, show_help: bool) -> bool:
     """Return True when the failure flash should be displayed."""
     return status == "fail" and flash_on_fail and not show_help
 
@@ -1587,7 +1617,11 @@ def should_flash_on_fail(status, flash_on_fail, show_help):
 # ============================================================================
 
 
-def toggle_panel_visibility(current_position, last_visible_position, default_position="right"):
+def toggle_panel_visibility(
+    current_position: str,
+    last_visible_position: Optional[str],
+    default_position: str = "right",
+) -> Tuple[str, str]:
     """Toggle panel visibility between 'none' and last visible position."""
     if current_position == "none":
         restored_position = last_visible_position or default_position
@@ -1595,7 +1629,7 @@ def toggle_panel_visibility(current_position, last_visible_position, default_pos
     return "none", current_position
 
 
-def cycle_panel_position(current_position, default_position="right"):
+def cycle_panel_position(current_position: str, default_position: str = "right") -> str:
     """Cycle through panel positions (left, right, top, bottom)."""
     positions = ["left", "right", "top", "bottom"]
     if current_position not in positions:

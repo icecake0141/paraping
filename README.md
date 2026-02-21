@@ -590,7 +590,7 @@ This section provides exact commands for validating your changes locally before 
 make dev
 ```
 
-This command creates a `.venv`, installs all development dependencies (pytest, flake8, pylint, black, ruff, isort), installs pre-commit hooks, and builds the `ping_helper` binary.
+This command creates a `.venv`, installs all development dependencies (pytest, flake8, pylint, black, ruff, isort, mypy), installs pre-commit hooks, and builds the `ping_helper` binary.
 
 **Activate the development environment:**
 ```bash
@@ -651,11 +651,18 @@ pylint . --fail-under=9.0
 ```
 This checks code quality and must score at least 9.0/10 to pass.
 
+**4. Mypy (type checking - MUST PASS):**
+```bash
+mypy
+```
+This enforces strict type checking based on `pyproject.toml`.
+
 **Run all lint checks at once:**
 ```bash
 flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics && \
 flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics && \
-pylint . --fail-under=9.0
+pylint . --fail-under=9.0 && \
+mypy
 ```
 
 ### Code Formatting
@@ -724,9 +731,10 @@ make clean       # Clean all build artifacts
 Before opening a pull request, ensure you:
 1. ✅ Build the project: `make build` (Linux) or verify the helper compiles
 2. ✅ Run lint checks: all three flake8/pylint commands above must pass
-3. ✅ Run tests: `pytest tests/ -v --cov=. --cov-report=term-missing --cov-report=xml`
-4. ✅ Update documentation if behavior changed
-5. ✅ Follow the [LLM PR policy](.github/workflows/copilot-instructions.md) if using AI assistance (include license headers, LLM attribution, and validation commands in your PR description)
+3. ✅ Run mypy type checks: `mypy`
+4. ✅ Run tests: `pytest tests/ -v --cov=. --cov-report=term-missing --cov-report=xml`
+5. ✅ Update documentation if behavior changed
+6. ✅ Follow the [LLM PR policy](.github/workflows/copilot-instructions.md) if using AI assistance (include license headers, LLM attribution, and validation commands in your PR description)
 
 For complete contribution guidelines, see [CONTRIBUTING.md](docs/CONTRIBUTING.md).
 
@@ -1202,11 +1210,18 @@ pylint . --fail-under=9.0
 ```
 これはコード品質をチェックし、パスするには少なくとも 9.0/10 のスコアが必要です。
 
+**4. Mypy（型チェック - 必須パス）:**
+```bash
+mypy
+```
+これは `pyproject.toml` の厳格な型チェック設定を適用します。
+
 **すべての lint チェックを一度に実行:**
 ```bash
 flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics && \
 flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics && \
-pylint . --fail-under=9.0
+pylint . --fail-under=9.0 && \
+mypy
 ```
 
 #### テスト
@@ -1244,9 +1259,10 @@ pytest tests/ --cov=. --cov-report=term --cov-fail-under=80
 プルリクエストを開く前に、以下を確認してください：
 1. ✅ プロジェクトをビルド: `make build`（Linux）またはヘルパーがコンパイルされることを確認
 2. ✅ lint チェックを実行: 上記の 3 つの flake8/pylint コマンドすべてがパスする必要があります
-3. ✅ テストを実行: `pytest tests/ -v --cov=. --cov-report=term-missing --cov-report=xml`
-4. ✅ 動作が変更された場合はドキュメントを更新
-5. ✅ AI 支援を使用する場合は [LLM PR ポリシー](.github/workflows/copilot-instructions.md) に従ってください（ライセンスヘッダー、LLM 帰属、および PR 説明に検証コマンドを含める）
+3. ✅ mypy 型チェックを実行: `mypy`
+4. ✅ テストを実行: `pytest tests/ -v --cov=. --cov-report=term-missing --cov-report=xml`
+5. ✅ 動作が変更された場合はドキュメントを更新
+6. ✅ AI 支援を使用する場合は [LLM PR ポリシー](.github/workflows/copilot-instructions.md) に従ってください（ライセンスヘッダー、LLM 帰属、および PR 説明に検証コマンドを含める）
 
 完全なコントリビューションガイドラインについては、[CONTRIBUTING.md](docs/CONTRIBUTING.md) を参照してください。
 

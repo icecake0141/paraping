@@ -27,6 +27,7 @@ import tty
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+from typing import Any, List
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from paraping.core import (
@@ -69,7 +70,7 @@ from paraping.ui_render import (
 )
 
 
-def _compute_initial_timeline_width(host_labels, term_size, panel_position):
+def _compute_initial_timeline_width(host_labels: List[str], term_size: Any, panel_position: str) -> int:
     """
     Compute the initial timeline width for buffer sizing.
 
@@ -101,7 +102,7 @@ def _compute_initial_timeline_width(host_labels, term_size, panel_position):
         return 1
 
 
-def handle_options():
+def handle_options() -> argparse.Namespace:
     """Parse and validate command-line arguments."""
     parser = argparse.ArgumentParser(
         description="ParaPing - Perform ICMP ping operations to multiple hosts concurrently",
@@ -216,7 +217,7 @@ def handle_options():
     return args
 
 
-def run(args):
+def run(args: argparse.Namespace) -> None:
     """Run the ParaPing monitor with parsed arguments."""
     # Validate count parameter - allow 0 for infinite
     if args.count < 0:
@@ -341,7 +342,7 @@ def run(args):
     host_select_index = 0
     graph_host_id = None
 
-    def sync_pause_state():
+    def sync_pause_state() -> None:
         """Synchronize effective paused flag and ping pause_event from display/dormant state."""
         nonlocal paused
         paused = display_paused or dormant
@@ -996,7 +997,7 @@ def run(args):
         print(f"{info['alias']:30} {success}/{total} replies, {slow} slow, {fail} failed " f"({percentage:.1f}%) [{status}]")
 
 
-def main():
+def main() -> None:
     """Main entrypoint for the CLI - parses arguments and runs the application."""
     args = handle_options()
     run(args)

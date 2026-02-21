@@ -24,23 +24,25 @@ import queue
 import socket
 import threading
 import time
+from typing import Any, Dict, Iterator, Optional, Queue, Tuple
 
 from paraping.ping_wrapper import ping_with_helper
+from paraping.scheduler import Scheduler
 from paraping.sequence_tracker import SequenceTracker
 
 
 def ping_host(
-    host,
-    timeout,
-    count,
-    slow_threshold,
-    verbose,
-    pause_event=None,
-    stop_event=None,
-    interval=1.0,
-    helper_path="./bin/ping_helper",
+    host: str,
+    timeout: float,
+    count: int,
+    slow_threshold: float,
+    verbose: bool,
+    pause_event: Optional[threading.Event] = None,
+    stop_event: Optional[threading.Event] = None,
+    interval: float = 1.0,
+    helper_path: str = "./bin/ping_helper",
     emit_pending: bool = False,
-):
+) -> Iterator[Dict[str, Any]]:
     """
     Ping a single host with the specified parameters.
 
@@ -148,17 +150,17 @@ def ping_host(
 
 
 def worker_ping(
-    host_info,
-    timeout,
-    count,
-    slow_threshold,
-    verbose,
-    pause_event,
-    stop_event,
-    result_queue,
-    interval,
-    helper_path,
-):
+    host_info: Dict[str, Any],
+    timeout: float,
+    count: int,
+    slow_threshold: float,
+    verbose: bool,
+    pause_event: Optional[threading.Event],
+    stop_event: Optional[threading.Event],
+    result_queue: "Queue[Dict[str, Any]]",
+    interval: float,
+    helper_path: str,
+) -> None:
     """Worker function to ping a host and put results in a queue."""
     for result in ping_host(
         host_info["host"],
@@ -176,7 +178,7 @@ def worker_ping(
     result_queue.put({"host_id": host_info["id"], "status": "done"})
 
 
-def resolve_rdns(ip_address):
+def resolve_rdns(ip_address: str) -> Optional[str]:
     """Resolve reverse DNS for an IP address."""
     try:
         return socket.gethostbyaddr(ip_address)[0]
@@ -184,7 +186,11 @@ def resolve_rdns(ip_address):
         return None
 
 
-def rdns_worker(request_queue, result_queue, stop_event):
+def rdns_worker(
+    request_queue: "Queue[Optional[Tuple[str, str]]]",
+    result_queue: "Queue[Tuple[str, Optional[str]]]",
+    stop_event: threading.Event,
+) -> None:
     """Worker thread for processing reverse DNS requests."""
     while not stop_event.is_set():
         try:
@@ -204,18 +210,18 @@ def rdns_worker(request_queue, result_queue, stop_event):
 
 
 def scheduler_driven_ping_host(
-    host_info,
-    scheduler,
-    timeout,
-    count,
-    slow_threshold,
-    pause_event,
-    stop_event,
-    result_queue,
-    helper_path,
-    ping_lock,
-    sequence_tracker=None,
-):
+    host_info: Dict[str, Any],
+    scheduler: Scheduler,
+    timeout: float,
+    count: int,
+    slow_threshold: float,
+    pause_event: Optional[threading.Event],
+    stop_event: Optional[threading.Event],
+    result_queue: "Queue[Dict[str, Any]]",
+    helper_path: str,
+    ping_lock: Any,
+    sequence_tracker: Optional[SequenceTracker] = None,
+) -> None:
     """
     Ping a host using scheduler-driven timing with real-time event loop.
 
@@ -350,7 +356,7 @@ def scheduler_driven_ping_host(
             scheduler.mark_ping_sent(host, sent_time)
 
         # Perform the actual ping in a background thread to not block scheduling
-        def execute_ping_async(seq_num):
+        def execute_ping_async(seq_num: int) -> None:
             try:
                 rtt_ms, ttl = ping_with_helper(host, timeout_ms=int(timeout * 1000), helper_path=helper_path, icmp_seq=seq_num)
                 # Mark as replied regardless of success/failure
@@ -402,18 +408,18 @@ def scheduler_driven_ping_host(
 
 
 def scheduler_driven_worker_ping(
-    host_info,
-    scheduler,
-    timeout,
-    count,
-    slow_threshold,
-    pause_event,
-    stop_event,
-    result_queue,
-    helper_path,
-    ping_lock,
-    sequence_tracker=None,
-):
+    host_info: Dict[str, Any],
+    scheduler: Scheduler,
+    timeout: float,
+    count: int,
+    slow_threshold: float,
+    pause_event: Optional[threading.Event],
+    stop_event: Optional[threading.Event],
+    result_queue: "Queue[Dict[str, Any]]",
+    helper_path: str,
+    ping_lock: Any,
+    sequence_tracker: Optional[SequenceTracker] = None,
+) -> None:
     """
     Worker wrapper for scheduler-driven ping.
 

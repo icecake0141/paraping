@@ -63,6 +63,16 @@ jobs:
         }
         echo "Pylint checks passed with score >= 9.0" >> logs/pylint_full.txt
 
+    - name: Run mypy strict checks
+      run: |
+        echo "Running mypy strict checks..."
+        mypy > logs/mypy.txt 2>&1 || {
+          echo "Mypy checks failed:"
+          cat logs/mypy.txt
+          exit 1
+        }
+        echo "Mypy strict checks passed" >> logs/mypy.txt
+
     - name: Run unit tests with pytest
       run: |
         echo "Running unit tests..."
@@ -98,6 +108,7 @@ jobs:
         path: |
           logs/flake8_strict.txt
           logs/pylint_full.txt
+          logs/mypy.txt
           logs/pytest_summary.txt
           logs/native_build.txt
         retention-days: 30

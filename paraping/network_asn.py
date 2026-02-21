@@ -24,9 +24,11 @@ designed with separation of concerns:
 
 import queue
 import socket
+import threading
+from typing import Any, Dict, Optional, Queue, Tuple
 
 
-def parse_asn_response(response):
+def parse_asn_response(response: str) -> Optional[str]:
     """
     Parse ASN from Team Cymru whois response.
 
@@ -59,7 +61,13 @@ def parse_asn_response(response):
     return f"AS{asn}"
 
 
-def fetch_asn_via_whois(ip_address, timeout=3.0, max_bytes=65536, host="whois.cymru.com", port=43):
+def fetch_asn_via_whois(
+    ip_address: str,
+    timeout: float = 3.0,
+    max_bytes: int = 65536,
+    host: str = "whois.cymru.com",
+    port: int = 43,
+) -> Optional[str]:
     """
     Fetch raw ASN response from Team Cymru whois service via socket.
 
@@ -97,7 +105,7 @@ def fetch_asn_via_whois(ip_address, timeout=3.0, max_bytes=65536, host="whois.cy
     return b"".join(chunks).decode("utf-8", errors="ignore")
 
 
-def resolve_asn(ip_address, timeout=3.0, max_bytes=65536):
+def resolve_asn(ip_address: str, timeout: float = 3.0, max_bytes: int = 65536) -> Optional[str]:
     """
     Resolve ASN for an IP address via Team Cymru whois service.
 
@@ -117,7 +125,12 @@ def resolve_asn(ip_address, timeout=3.0, max_bytes=65536):
     return parse_asn_response(response)
 
 
-def asn_worker(request_queue, result_queue, stop_event, timeout):
+def asn_worker(
+    request_queue: "Queue[Optional[Tuple[str, str]]]",
+    result_queue: "Queue[Tuple[str, Optional[str]]]",
+    stop_event: threading.Event,
+    timeout: float,
+) -> None:
     """
     Worker thread for processing ASN requests.
 
@@ -144,7 +157,7 @@ def asn_worker(request_queue, result_queue, stop_event, timeout):
         request_queue.task_done()
 
 
-def should_retry_asn(ip_address, asn_cache, now, failure_ttl):
+def should_retry_asn(ip_address: str, asn_cache: Dict[str, Dict[str, Any]], now: float, failure_ttl: float) -> bool:
     """
     Determine if an ASN lookup should be retried.
 

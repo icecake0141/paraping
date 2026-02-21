@@ -21,6 +21,7 @@ readchar library for improved cross-platform compatibility and reliability.
 
 import select
 import sys
+from typing import Optional
 
 try:
     import readchar
@@ -37,7 +38,7 @@ except ImportError:
 ARROW_KEY_READ_TIMEOUT = 0.1  # Timeout for reading arrow key escape sequences
 
 
-def parse_escape_sequence(seq):
+def parse_escape_sequence(seq: str) -> Optional[str]:
     """
     Parse ANSI escape sequence to identify arrow keys.
 
@@ -69,7 +70,7 @@ def parse_escape_sequence(seq):
     return None
 
 
-def _map_readchar_key(key_value):
+def _map_readchar_key(key_value: str) -> str:
     """
     Map readchar key constants to ParaPing arrow key names.
 
@@ -107,7 +108,7 @@ def _map_readchar_key(key_value):
     return key_value
 
 
-def read_key():
+def read_key() -> Optional[str]:
     """
     Read a key from stdin, handling multi-byte sequences like arrow keys.
 

@@ -20,9 +20,11 @@ and managing rDNS worker threads.
 
 import queue
 import socket
+import threading
+from typing import Optional, Queue, Tuple
 
 
-def resolve_rdns(ip_address):
+def resolve_rdns(ip_address: str) -> Optional[str]:
     """
     Perform reverse DNS lookup for an IP address.
 
@@ -38,7 +40,11 @@ def resolve_rdns(ip_address):
         return None
 
 
-def rdns_worker(request_queue, result_queue, stop_event):
+def rdns_worker(
+    request_queue: "Queue[Optional[Tuple[str, str]]]",
+    result_queue: "Queue[Tuple[str, Optional[str]]]",
+    stop_event: threading.Event,
+) -> None:
     """
     Worker thread for processing rDNS requests.
 

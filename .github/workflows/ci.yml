@@ -75,6 +75,10 @@ jobs:
         # Fail if score is below 9.0/10 (current baseline: 9.11/10)
         pylint . --fail-under=9.0
 
+    - name: Type check with mypy
+      run: |
+        mypy
+
   test:
     name: Test Code
     runs-on: ubuntu-latest

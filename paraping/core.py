@@ -201,19 +201,19 @@ def read_input_file(input_file: str) -> List[Dict[str, str]]:
 
 
 def compute_history_page_step(
-    host_infos,
-    buffers,
-    stats,
-    symbols,
-    panel_position,
-    mode_label,
-    sort_mode,
-    filter_mode,
-    slow_threshold,
-    show_asn,
-    asn_width=8,
-    header_lines=2,
-):
+    host_infos: List[Dict[str, Any]],
+    buffers: Dict[int, Any],
+    stats: Dict[int, Any],
+    symbols: Dict[str, str],
+    panel_position: str,
+    mode_label: str,
+    sort_mode: str,
+    filter_mode: str,
+    slow_threshold: float,
+    show_asn: bool,
+    asn_width: int = 8,
+    header_lines: int = 2,
+) -> int:
     """Compute the page step for history navigation based on timeline width."""
     term_size = paraping.ui_render.get_terminal_size(fallback=(80, 24))
     term_width = term_size.columns
@@ -246,19 +246,19 @@ def compute_history_page_step(
 
 
 def get_cached_page_step(
-    cached_page_step,
-    last_term_size,
-    host_infos,
-    buffers,
-    stats,
-    symbols,
-    panel_position,
-    mode_label,
-    sort_mode,
-    filter_mode,
-    slow_threshold,
-    show_asn,
-):
+    cached_page_step: Optional[int],
+    last_term_size: Any,
+    host_infos: List[Dict[str, Any]],
+    buffers: Dict[int, Any],
+    stats: Dict[int, Any],
+    symbols: Dict[str, str],
+    panel_position: str,
+    mode_label: str,
+    sort_mode: str,
+    filter_mode: str,
+    slow_threshold: float,
+    show_asn: bool,
+) -> Tuple[int, int, Any]:
     """
     Get the page step for history navigation, using cached value if available.
 
@@ -269,7 +269,7 @@ def get_cached_page_step(
         tuple: (page_step, new_cached_page_step, new_last_term_size)
     """
 
-    def should_recalculate_page_step(cached_value, last_size, current_size):
+    def should_recalculate_page_step(cached_value: Optional[int], last_size: Any, current_size: Any) -> bool:
         """Check if page step needs recalculation due to cache miss or terminal resize"""
         if cached_value is None or last_size is None:
             return True  # First time - need to calculate
