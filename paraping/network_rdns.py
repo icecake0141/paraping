@@ -56,5 +56,9 @@ def rdns_worker(request_queue, result_queue, stop_event):
             request_queue.task_done()
             break
         host, ip_address = item
-        result_queue.put((host, resolve_rdns(ip_address)))
+        try:
+            result = resolve_rdns(ip_address)
+        except Exception:  # pylint: disable=broad-exception-caught
+            result = None
+        result_queue.put((host, result))
         request_queue.task_done()

@@ -381,6 +381,30 @@ class TestRDNSWorker(unittest.TestCase):
         # Worker should have stopped
         self.assertFalse(worker_thread.is_alive())
 
+    @patch("paraping.pinger.resolve_rdns")
+    def test_rdns_worker_handles_unexpected_exception(self, mock_resolve):
+        """Test that rdns_worker returns None and continues on unexpected exception"""
+        mock_resolve.side_effect = [RuntimeError("unexpected"), "example.com"]
+
+        request_queue = queue.Queue()
+        result_queue = queue.Queue()
+        stop_event = threading.Event()
+
+        request_queue.put(("192.0.2.1", "192.0.2.1"))
+        request_queue.put(("192.0.2.2", "192.0.2.2"))
+        request_queue.put(None)
+
+        # Should not raise
+        rdns_worker(request_queue, result_queue, stop_event)
+
+        results = []
+        while not result_queue.empty():
+            results.append(result_queue.get_nowait())
+
+        self.assertEqual(len(results), 2)
+        self.assertEqual(results[0], ("192.0.2.1", None))
+        self.assertEqual(results[1], ("192.0.2.2", "example.com"))
+
 
 class TestPingHostIntegration(unittest.TestCase):
     """Integration tests for ping_host with various scenarios"""

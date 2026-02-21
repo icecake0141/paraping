@@ -1070,7 +1070,7 @@ def render_summary_view(
     if width <= 0 or height <= 0:
         return []
 
-    render_width, render_height, can_box = resolve_boxed_dimensions(width, height, boxed)
+    render_width, _, can_box = resolve_boxed_dimensions(width, height, boxed)
     mode_labels = {
         "rates": "Rates",
         "rtt": "Avg RTT",
@@ -1099,7 +1099,7 @@ def render_summary_view(
 
 def render_help_view(width, height, boxed=False):
     """Render the help view."""
-    render_width, render_height, can_box = resolve_boxed_dimensions(width, height, boxed)
+    _, _, can_box = resolve_boxed_dimensions(width, height, boxed)
     lines = [
         "ParaPing - Help",
         "-" * width,
@@ -1552,20 +1552,20 @@ def flash_screen():
     if not sys.stdout.isatty():
         return
     # ANSI escape sequences for visual flash effect
-    SAVE_CURSOR = "\x1b7"  # Save cursor position
-    SET_WHITE_BG = "\x1b[47m"  # White background
-    SET_BLACK_FG = "\x1b[30m"  # Black foreground
-    CLEAR_SCREEN = "\x1b[2J"  # Clear screen
-    MOVE_HOME = "\x1b[H"  # Move cursor to home position
-    RESTORE_CURSOR = "\x1b8"  # Restore cursor position
-    FLASH_DURATION_SECONDS = 0.1  # Duration of flash effect
+    save_cursor = "\x1b7"  # Save cursor position
+    set_white_bg = "\x1b[47m"  # White background
+    set_black_fg = "\x1b[30m"  # Black foreground
+    clear_screen = "\x1b[2J"  # Clear screen
+    move_home = "\x1b[H"  # Move cursor to home position
+    restore_cursor = "\x1b8"  # Restore cursor position
+    flash_duration_seconds = 0.1  # Duration of flash effect
 
     # Apply white flash effect and clear screen
-    sys.stdout.write(SAVE_CURSOR + SET_WHITE_BG + SET_BLACK_FG + CLEAR_SCREEN + MOVE_HOME)
+    sys.stdout.write(save_cursor + set_white_bg + set_black_fg + clear_screen + move_home)
     sys.stdout.flush()
-    time.sleep(FLASH_DURATION_SECONDS)
+    time.sleep(flash_duration_seconds)
     # Restore normal display
-    sys.stdout.write(ANSI_RESET + RESTORE_CURSOR)
+    sys.stdout.write(ANSI_RESET + restore_cursor)
     sys.stdout.flush()
 
 

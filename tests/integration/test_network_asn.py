@@ -391,6 +391,30 @@ class TestASNWorker(unittest.TestCase):
         # Check that resolve_asn was called with correct timeout
         mock_resolve.assert_called_once_with("1.2.3.4", timeout=5.0)
 
+    @patch("paraping.network_asn.resolve_asn")
+    def test_asn_worker_handles_unexpected_exception(self, mock_resolve):
+        """Test ASN worker returns None and continues on unexpected exception."""
+        mock_resolve.side_effect = [RuntimeError("unexpected"), "AS12345"]
+
+        request_queue = queue.Queue()
+        result_queue = queue.Queue()
+        stop_event = threading.Event()
+
+        request_queue.put(("host1.com", "1.2.3.4"))
+        request_queue.put(("host2.com", "5.6.7.8"))
+        request_queue.put(None)
+
+        # Should not raise
+        asn_worker(request_queue, result_queue, stop_event, timeout=3.0)
+
+        results = []
+        while not result_queue.empty():
+            results.append(result_queue.get_nowait())
+
+        self.assertEqual(len(results), 2)
+        self.assertEqual(results[0], ("host1.com", None))
+        self.assertEqual(results[1], ("host2.com", "AS12345"))
+
 
 if __name__ == "__main__":
     unittest.main()
