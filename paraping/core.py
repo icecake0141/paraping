@@ -19,6 +19,7 @@ managing state snapshots, and history navigation.
 
 import copy
 import ipaddress
+import logging
 import socket
 import sys
 from collections import deque
@@ -34,6 +35,8 @@ from paraping.ui_render import (
     compute_panel_sizes,
     should_show_asn,
 )
+
+logger = logging.getLogger(__name__)
 
 # Constants for time navigation feature
 HISTORY_DURATION_MINUTES = 30  # Store up to 30 minutes of history
@@ -203,7 +206,8 @@ def read_input_file(input_file: str) -> List[Dict[str, str]]:
     except PermissionError:
         print(f"Error: Permission denied reading file '{input_file}'.")
         return []
-    except Exception as e:  # pylint: disable=broad-exception-caught
+    except (OSError, UnicodeDecodeError) as e:
+        logger.warning("Unexpected error reading input file '%s': %s", input_file, e)
         print(f"Error reading input file '{input_file}': {e}")
         return []
 

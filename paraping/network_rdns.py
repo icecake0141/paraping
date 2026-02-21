@@ -18,11 +18,14 @@ This module provides functions for performing reverse DNS lookups
 and managing rDNS worker threads.
 """
 
+import logging
 import queue
 import socket
 import threading
 from queue import Queue
 from typing import Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 
 def resolve_rdns(ip_address: str) -> Optional[str]:
@@ -65,7 +68,8 @@ def rdns_worker(
         host, ip_address = item
         try:
             result = resolve_rdns(ip_address)
-        except Exception:  # pylint: disable=broad-exception-caught
+        except (socket.herror, socket.gaierror, OSError) as e:
+            logger.warning("rDNS lookup failed for %s: %s", ip_address, e)
             result = None
         result_queue.put((host, result))
         request_queue.task_done()

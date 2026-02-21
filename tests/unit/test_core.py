@@ -161,8 +161,8 @@ class TestReadInputFile(unittest.TestCase):
         self.assertEqual(result, [])
 
     def test_read_file_generic_exception(self):
-        """Test handling generic exception"""
-        with patch("builtins.open", side_effect=Exception("Generic error")):
+        """Test handling generic OS/IO exception"""
+        with patch("builtins.open", side_effect=OSError("Generic error")):
             with patch("sys.stdout"):
                 result = read_input_file("error.txt")
 

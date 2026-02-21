@@ -23,10 +23,13 @@ designed with separation of concerns:
 """
 
 import queue
+import logging
 import socket
 import threading
 from queue import Queue
 from typing import Any, Dict, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 
 def parse_asn_response(response: str) -> Optional[str]:
@@ -152,7 +155,8 @@ def asn_worker(
         host, ip_address = item
         try:
             result = resolve_asn(ip_address, timeout=timeout)
-        except Exception:  # pylint: disable=broad-exception-caught
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.warning("ASN lookup failed for %s: %s", ip_address, e)
             result = None
         result_queue.put((host, result))
         request_queue.task_done()
