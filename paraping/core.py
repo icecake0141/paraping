@@ -24,7 +24,7 @@ import sys
 from collections import deque
 from collections.abc import Sequence
 from types import SimpleNamespace
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import paraping.ui_render
 from paraping.ui_render import (
@@ -307,10 +307,8 @@ def get_cached_page_step(
         return page_step, page_step, current_term_size
 
     # Use cached value
-    if cached_page_step is None:
-        page_step = calculate_page_step()
-        return page_step, page_step, current_term_size
-    return cached_page_step, cached_page_step, last_term_size
+    cached_value = cast(int, cached_page_step)
+    return cached_value, cached_value, last_term_size
 
 
 def build_host_infos(hosts: List[Union[str, Dict[str, str]]]) -> Tuple[List[Dict[str, Any]], Dict[str, List[Dict[str, Any]]]]:
