@@ -269,9 +269,9 @@ def get_cached_page_step(
         tuple: (page_step, new_cached_page_step, new_last_term_size)
     """
 
-    def should_recalculate_page_step(cached_value: Optional[int], last_size: Any, current_size: Any) -> bool:
-        """Check if page step needs recalculation due to cache miss or terminal resize"""
-        if cached_value is None or last_size is None:
+    def should_recalculate_page_step(last_size: Any, current_size: Any) -> bool:
+        """Check if page step needs recalculation due to terminal resize."""
+        if last_size is None:
             return True  # First time - need to calculate
         # Normalize last_size to ensure we can access .columns and .lines
         normalized_last = _normalize_term_size(last_size)
@@ -286,7 +286,7 @@ def get_cached_page_step(
     current_term_size = paraping.ui_render.get_terminal_size(fallback=(80, 24))
 
     # Check if we need to recalculate
-    if should_recalculate_page_step(cached_page_step, last_term_size, current_term_size):
+    if cached_page_step is None or should_recalculate_page_step(last_term_size, current_term_size):
         # Terminal size changed or first time - recalculate
         page_step = compute_history_page_step(
             host_infos,
@@ -303,7 +303,7 @@ def get_cached_page_step(
         return page_step, page_step, current_term_size
 
     # Use cached value
-    return cast(int, cached_page_step), cast(int, cached_page_step), last_term_size
+    return cached_page_step, cached_page_step, last_term_size
 
 
 def build_host_infos(hosts: List[Union[str, Dict[str, str]]]) -> Tuple[List[Dict[str, Any]], Dict[str, List[Dict[str, Any]]]]:
@@ -318,7 +318,8 @@ def build_host_infos(hosts: List[Union[str, Dict[str, str]]]) -> Tuple[List[Dict
         else:
             host_value = entry.get("host") or entry.get("ip")
             if not host_value:
-                raise ValueError(f"Host entry must include 'host' or 'ip'. Received: {entry}")
+                entry_keys = ", ".join(sorted(entry.keys()))
+                raise ValueError(f"Host entry must include 'host' or 'ip'. Received keys: {entry_keys or 'none'}")
             host = host_value
             alias = entry.get("alias") or host
             ip_address = entry.get("ip")
