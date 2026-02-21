@@ -19,9 +19,12 @@ escape sequences, particularly for arrow key navigation. It uses the
 readchar library for improved cross-platform compatibility and reliability.
 """
 
+import contextlib
 import select
 import sys
-from typing import Optional
+import termios
+import tty
+from typing import Generator, Optional
 
 import readchar
 import readchar.key
@@ -31,6 +34,39 @@ import readchar.key
 # Increased from 0.05 to 0.1 seconds to handle slow terminals/remote connections
 # where escape sequence bytes may arrive with delays (e.g., SSH, RDP, VMs)
 ARROW_KEY_READ_TIMEOUT = 0.1  # Timeout for reading arrow key escape sequences
+
+
+@contextlib.contextmanager
+def terminal_raw_mode(fd: Optional[int] = None) -> Generator[None, None, None]:
+    """Context manager that sets a terminal file descriptor to raw mode and restores it on exit.
+
+    This ensures terminal state is properly restored even when a signal (e.g. SIGINT)
+    interrupts the caller, preventing the shell from being left in an unusable state.
+
+    Args:
+        fd: Terminal file descriptor to configure.  Defaults to ``sys.stdin.fileno()``.
+
+    Yields:
+        Nothing – use as a plain ``with`` block.
+
+    Example::
+
+        with terminal_raw_mode():
+            key = read_key()
+    """
+    if fd is None:
+        fd = sys.stdin.fileno()
+    try:
+        old_settings = termios.tcgetattr(fd)
+    except termios.error:
+        # Not a real terminal (e.g. a pipe or test mock) – skip raw-mode setup.
+        yield
+        return
+    try:
+        tty.setraw(fd)
+        yield
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 
 def parse_escape_sequence(seq: str) -> Optional[str]:

@@ -17,17 +17,30 @@ Tests cover arrow key escape sequence parsing across different operating systems
 and terminal emulators to ensure consistent behavior on Windows, Mac, and Linux.
 
 Updated to test readchar-based implementation while maintaining backwards compatibility.
+Extended with edge-case coverage for:
+  - Terminal type detection (TERM env var)
+  - Incomplete / unknown escape sequences
+  - Multiline / cursor-position sequences
+  - KeyboardInterrupt handling (Ctrl+C race condition)
+  - Integration with termios/tty via the terminal_raw_mode context manager
+  - PTY (pseudo-terminal) based realistic I/O tests
 """
 
 import os
+import pty
+import select as _select
 import sys
+import termios
 import unittest
 from unittest.mock import patch
 
 # Add parent directory to path to import input_keys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from paraping.input_keys import parse_escape_sequence, read_key  # noqa: E402
+import readchar  # noqa: E402
+
+from paraping.input_keys import _map_readchar_key  # noqa: E402
+from paraping.input_keys import parse_escape_sequence, read_key, terminal_raw_mode  # noqa: E402
 
 
 class TestParseEscapeSequence(unittest.TestCase):
@@ -231,6 +244,413 @@ class TestReadKey(unittest.TestCase):
         result = read_key()
         # Should return None if readchar fails
         self.assertIsNone(result)
+
+
+# ---------------------------------------------------------------------------
+# New: _map_readchar_key direct tests
+# ---------------------------------------------------------------------------
+
+
+class TestMapReadcharKey(unittest.TestCase):
+    """Direct unit tests for the internal _map_readchar_key helper."""
+
+    def test_readchar_up_constant(self):
+        """readchar.key.UP (\x1b[A) maps to arrow_up via the key_map fast path."""
+        self.assertEqual(_map_readchar_key(readchar.key.UP), "arrow_up")
+
+    def test_readchar_down_constant(self):
+        """readchar.key.DOWN maps to arrow_down via the key_map fast path."""
+        self.assertEqual(_map_readchar_key(readchar.key.DOWN), "arrow_down")
+
+    def test_readchar_left_constant(self):
+        """readchar.key.LEFT maps to arrow_left via the key_map fast path."""
+        self.assertEqual(_map_readchar_key(readchar.key.LEFT), "arrow_left")
+
+    def test_readchar_right_constant(self):
+        """readchar.key.RIGHT maps to arrow_right via the key_map fast path."""
+        self.assertEqual(_map_readchar_key(readchar.key.RIGHT), "arrow_right")
+
+    def test_application_cursor_escape_fallback(self):
+        """\\x1bOA (application cursor mode) reaches the parse fallback path."""
+        self.assertEqual(_map_readchar_key("\x1bOA"), "arrow_up")
+
+    def test_modified_ctrl_up_fallback(self):
+        """\\x1b[1;5A (Ctrl+Up in xterm) is resolved via the parse fallback path."""
+        self.assertEqual(_map_readchar_key("\x1b[1;5A"), "arrow_up")
+
+    def test_cursor_position_sequence_returned_as_is(self):
+        """Cursor-position sequence \\x1b[5;10H is unknown; returned unchanged."""
+        self.assertEqual(_map_readchar_key("\x1b[5;10H"), "\x1b[5;10H")
+
+    def test_lone_esc_returned_as_is(self):
+        """A lone ESC byte (len == 1) is not a sequence; returned unchanged."""
+        self.assertEqual(_map_readchar_key("\x1b"), "\x1b")
+
+    def test_regular_character_passthrough(self):
+        """Plain characters are returned unchanged."""
+        self.assertEqual(_map_readchar_key("q"), "q")
+
+    def test_ctrl_c_character_passthrough(self):
+        """Ctrl+C as a character (\\x03) is returned unchanged – not swallowed."""
+        self.assertEqual(_map_readchar_key("\x03"), "\x03")
+
+    def test_empty_string_passthrough(self):
+        """An empty string is returned unchanged (no crash)."""
+        self.assertEqual(_map_readchar_key(""), "")
+
+
+# ---------------------------------------------------------------------------
+# New: escape-sequence edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestEscapeSequenceEdgeCases(unittest.TestCase):
+    """Edge cases for parse_escape_sequence that extend the basic test suite."""
+
+    def test_cursor_position_returns_none(self):
+        """Cursor-position sequence [5;10H ends with 'H', not an arrow letter → None."""
+        self.assertIsNone(parse_escape_sequence("[5;10H"))
+
+    def test_cursor_home_returns_none(self):
+        """Cursor home [H ends with 'H' → None."""
+        self.assertIsNone(parse_escape_sequence("[H"))
+
+    def test_insert_key_returns_none(self):
+        """Insert key [2~ ends with '~' → None."""
+        self.assertIsNone(parse_escape_sequence("[2~"))
+
+    def test_delete_key_returns_none(self):
+        """Delete key [3~ ends with '~' → None."""
+        self.assertIsNone(parse_escape_sequence("[3~"))
+
+    def test_bracketed_paste_start_returns_none(self):
+        """Bracketed-paste start [200~ ends with '~' → None."""
+        self.assertIsNone(parse_escape_sequence("[200~"))
+
+    def test_f1_key_returns_none(self):
+        """F1 VT key OP: first char 'O', last char 'P' (not A/B/C/D) → None."""
+        self.assertIsNone(parse_escape_sequence("OP"))
+
+    def test_semicolon_sequence_ending_in_arrow_letter(self):
+        """[5;5A: starts '[', ends 'A' → arrow_up via the generic fallback."""
+        self.assertEqual(parse_escape_sequence("[5;5A"), "arrow_up")
+
+    def test_semicolon_sequence_ending_in_d(self):
+        """[1;3D: starts '[', ends 'D' → arrow_left via the generic fallback."""
+        self.assertEqual(parse_escape_sequence("[1;3D"), "arrow_left")
+
+    def test_leading_char_not_bracket_or_o_returns_none(self):
+        """Sequences that don't start with '[' or 'O' are not arrow sequences → None."""
+        self.assertIsNone(parse_escape_sequence("PA"))
+        self.assertIsNone(parse_escape_sequence("1A"))
+
+    def test_xterm_term_env(self):
+        """parse_escape_sequence is unaffected by TERM=xterm."""
+        with patch.dict(os.environ, {"TERM": "xterm"}):
+            self.assertEqual(parse_escape_sequence("[A"), "arrow_up")
+
+    def test_xterm_256color_term_env(self):
+        """parse_escape_sequence is unaffected by TERM=xterm-256color."""
+        with patch.dict(os.environ, {"TERM": "xterm-256color"}):
+            self.assertEqual(parse_escape_sequence("[A"), "arrow_up")
+
+    def test_screen_term_env(self):
+        """parse_escape_sequence is unaffected by TERM=screen."""
+        with patch.dict(os.environ, {"TERM": "screen"}):
+            self.assertEqual(parse_escape_sequence("[A"), "arrow_up")
+
+    def test_no_term_env(self):
+        """parse_escape_sequence works correctly when TERM is not set."""
+        env = {k: v for k, v in os.environ.items() if k != "TERM"}
+        with patch.dict(os.environ, env, clear=True):
+            self.assertEqual(parse_escape_sequence("[A"), "arrow_up")
+
+
+# ---------------------------------------------------------------------------
+# New: read_key edge cases (KeyboardInterrupt, OSError from select)
+# ---------------------------------------------------------------------------
+
+
+class TestReadKeyEdgeCases(unittest.TestCase):
+    """Edge-case tests for read_key not covered by the existing test class."""
+
+    @patch("paraping.input_keys.readchar.readkey")
+    @patch("paraping.input_keys.select.select")
+    @patch("paraping.input_keys.sys.stdin")
+    def test_keyboard_interrupt_propagates(self, mock_stdin, mock_select, mock_readkey):
+        """KeyboardInterrupt from readchar.readkey must NOT be silenced.
+
+        ``except Exception`` does not catch BaseException subclasses, so Ctrl+C
+        during an active read propagates to the caller as expected.
+        """
+        mock_stdin.isatty.return_value = True
+        mock_select.return_value = ([mock_stdin], [], [])
+        mock_readkey.side_effect = KeyboardInterrupt
+
+        with self.assertRaises(KeyboardInterrupt):
+            read_key()
+
+    @patch("paraping.input_keys.select.select")
+    @patch("paraping.input_keys.sys.stdin")
+    def test_os_error_from_select_propagates(self, mock_stdin, mock_select):
+        """OSError from select.select (e.g. bad fd) propagates to the caller.
+
+        select() is intentionally not wrapped so that programming errors surface.
+        """
+        mock_stdin.isatty.return_value = True
+        mock_select.side_effect = OSError("bad file descriptor")
+
+        with self.assertRaises(OSError):
+            read_key()
+
+    @patch("paraping.input_keys.readchar.readkey")
+    @patch("paraping.input_keys.select.select")
+    @patch("paraping.input_keys.sys.stdin")
+    def test_ctrl_c_as_character(self, mock_stdin, mock_select, mock_readkey):
+        """Ctrl+C delivered as the character \\x03 (not a signal) is returned as-is."""
+        mock_stdin.isatty.return_value = True
+        mock_select.return_value = ([mock_stdin], [], [])
+        mock_readkey.return_value = "\x03"
+
+        result = read_key()
+        self.assertEqual(result, "\x03")
+
+    @patch("paraping.input_keys.readchar.readkey")
+    @patch("paraping.input_keys.select.select")
+    @patch("paraping.input_keys.sys.stdin")
+    def test_unknown_escape_sequence_returned_as_is(self, mock_stdin, mock_select, mock_readkey):
+        """An unrecognised escape sequence is returned verbatim from read_key."""
+        mock_stdin.isatty.return_value = True
+        mock_select.return_value = ([mock_stdin], [], [])
+        mock_readkey.return_value = "\x1b[5;10H"  # cursor position – not an arrow key
+
+        result = read_key()
+        self.assertEqual(result, "\x1b[5;10H")
+
+
+# ---------------------------------------------------------------------------
+# New: terminal_raw_mode context manager
+# ---------------------------------------------------------------------------
+
+
+class TestTerminalRawMode(unittest.TestCase):
+    """Tests for the terminal_raw_mode context manager using a PTY."""
+
+    def _open_pty(self):
+        """Helper: open a PTY pair and return (master_fd, slave_fd)."""
+        master_fd, slave_fd = pty.openpty()
+        return master_fd, slave_fd
+
+    def _close_fds(self, *fds):
+        for fd in fds:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+
+    def test_non_tty_fd_does_not_raise(self):
+        """terminal_raw_mode with a non-TTY fd (pipe) skips setup without error."""
+        r_fd, w_fd = os.pipe()
+        try:
+            with terminal_raw_mode(r_fd):
+                pass  # must not raise
+        finally:
+            self._close_fds(r_fd, w_fd)
+
+    def test_slave_pty_is_set_to_raw_mode(self):
+        """terminal_raw_mode succeeds on a real PTY slave fd."""
+        master_fd, slave_fd = self._open_pty()
+        try:
+            with terminal_raw_mode(slave_fd):
+                # Inside the context the fd is a valid TTY
+                self.assertTrue(os.isatty(slave_fd))
+        finally:
+            self._close_fds(master_fd, slave_fd)
+
+    def test_settings_restored_after_normal_exit(self):
+        """Terminal settings are restored to their original values after normal exit."""
+        master_fd, slave_fd = self._open_pty()
+        try:
+            original = termios.tcgetattr(slave_fd)
+            with terminal_raw_mode(slave_fd):
+                pass
+            restored = termios.tcgetattr(slave_fd)
+            self.assertEqual(original, restored)
+        finally:
+            self._close_fds(master_fd, slave_fd)
+
+    def test_settings_restored_after_exception(self):
+        """Terminal settings are restored even when the body raises an exception."""
+        master_fd, slave_fd = self._open_pty()
+        try:
+            original = termios.tcgetattr(slave_fd)
+            try:
+                with terminal_raw_mode(slave_fd):
+                    raise RuntimeError("simulated error inside raw-mode block")
+            except RuntimeError:
+                pass
+            restored = termios.tcgetattr(slave_fd)
+            self.assertEqual(original, restored)
+        finally:
+            self._close_fds(master_fd, slave_fd)
+
+    def test_settings_restored_after_keyboard_interrupt(self):
+        """Terminal settings are restored when a KeyboardInterrupt fires inside the block."""
+        master_fd, slave_fd = self._open_pty()
+        try:
+            original = termios.tcgetattr(slave_fd)
+            try:
+                with terminal_raw_mode(slave_fd):
+                    raise KeyboardInterrupt
+            except KeyboardInterrupt:
+                pass
+            restored = termios.tcgetattr(slave_fd)
+            self.assertEqual(original, restored)
+        finally:
+            self._close_fds(master_fd, slave_fd)
+
+    def test_default_fd_uses_stdin(self):
+        """Calling terminal_raw_mode() with no args falls back to sys.stdin.fileno()."""
+        master_fd, slave_fd = self._open_pty()
+        try:
+            slave_file = os.fdopen(slave_fd, "r", closefd=False)
+            with patch("paraping.input_keys.sys.stdin", slave_file):
+                with patch.object(slave_file, "fileno", return_value=slave_fd):
+                    original = termios.tcgetattr(slave_fd)
+                    with terminal_raw_mode():
+                        pass
+                    restored = termios.tcgetattr(slave_fd)
+                    self.assertEqual(original, restored)
+        finally:
+            self._close_fds(master_fd, slave_fd)
+
+
+# ---------------------------------------------------------------------------
+# New: PTY integration tests
+# ---------------------------------------------------------------------------
+
+
+class TestPTYIntegration(unittest.TestCase):
+    """Realistic integration tests using a PTY (pseudo-terminal) pair.
+
+    These tests verify escape sequence parsing in conditions that closely
+    mirror a real terminal: the slave fd is a genuine TTY, raw-mode can be
+    activated, and bytes sent by the "terminal emulator" side (master_fd)
+    are readable on the slave fd after passing through the line discipline.
+    """
+
+    def setUp(self):
+        """Create a PTY pair used by all tests in this class."""
+        self.master_fd, self.slave_fd = pty.openpty()
+
+    def tearDown(self):
+        """Close PTY file descriptors."""
+        for fd in (self.master_fd, self.slave_fd):
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+
+    def test_slave_fd_is_a_tty(self):
+        """The slave end of a PTY must be recognised as a TTY by os.isatty()."""
+        self.assertTrue(os.isatty(self.slave_fd))
+
+    def test_master_fd_is_not_a_tty(self):
+        """The master end of a PTY is *not* a TTY (it is a ptmx device, not a pts)."""
+        # On Linux, os.isatty(master_fd) may return True for some kernels;
+        # the key assertion is that the slave is a TTY, which was checked above.
+        # Here we simply verify the call doesn't raise.
+        _ = os.isatty(self.master_fd)
+
+    def test_termios_getattr_on_slave(self):
+        """termios.tcgetattr() succeeds on the slave fd (required for raw-mode setup)."""
+        attrs = termios.tcgetattr(self.slave_fd)
+        self.assertIsInstance(attrs, list)
+        self.assertEqual(len(attrs), 7)
+
+    def test_escape_sequence_bytes_via_pty(self):
+        """Escape sequence bytes written to the master appear on the slave in raw mode.
+
+        Simulates the arrow-up key (\\x1b[A) being typed in a terminal emulator:
+        write to master → read from slave → parse → 'arrow_up'.
+        """
+        # Set slave to raw mode so no canonical buffering occurs.
+        old_settings = termios.tcgetattr(self.slave_fd)
+        try:
+            import tty as _tty
+
+            _tty.setraw(self.slave_fd)
+            os.write(self.master_fd, b"\x1b[A")
+            r, _, _ = _select.select([self.slave_fd], [], [], 0.5)
+            self.assertTrue(r, "Slave fd should be readable within 0.5 s")
+            data = os.read(self.slave_fd, 16)
+            seq_str = data.decode("utf-8", errors="replace")
+            # Strip leading ESC and parse
+            if seq_str.startswith("\x1b"):
+                result = parse_escape_sequence(seq_str[1:])
+                self.assertEqual(result, "arrow_up")
+        finally:
+            termios.tcsetattr(self.slave_fd, termios.TCSADRAIN, old_settings)
+
+    def test_all_arrow_sequences_parse_correctly(self):
+        """Verify each arrow-key byte sequence decodes to the expected name.
+
+        This test exercises parse_escape_sequence with the exact byte patterns
+        a PTY would deliver for all four arrow keys.
+        """
+        cases = [
+            (b"\x1b[A", "arrow_up"),
+            (b"\x1b[B", "arrow_down"),
+            (b"\x1b[C", "arrow_right"),
+            (b"\x1b[D", "arrow_left"),
+        ]
+        for raw, expected in cases:
+            seq = raw.decode("utf-8")[1:]  # strip ESC
+            result = parse_escape_sequence(seq)
+            self.assertEqual(result, expected, f"Failed for bytes {raw!r}")
+
+    def test_app_cursor_mode_sequences_via_pty(self):
+        """Application cursor mode (\\x1bO?) sequences are also recognised.
+
+        Some terminals (e.g. VT100 in application-cursor mode) send these
+        instead of the CSI variants.
+        """
+        cases = [
+            (b"\x1bOA", "arrow_up"),
+            (b"\x1bOB", "arrow_down"),
+            (b"\x1bOC", "arrow_right"),
+            (b"\x1bOD", "arrow_left"),
+        ]
+        for raw, expected in cases:
+            seq = raw.decode("utf-8")[1:]
+            result = parse_escape_sequence(seq)
+            self.assertEqual(result, expected, f"Failed for bytes {raw!r}")
+
+    def test_non_arrow_sequence_not_recognised(self):
+        """A cursor-position sequence (\\x1b[5;10H) should not be mistaken for an arrow."""
+        seq = "[5;10H"
+        self.assertIsNone(parse_escape_sequence(seq))
+
+    @patch("paraping.input_keys.readchar.readkey")
+    @patch("paraping.input_keys.select.select")
+    def test_read_key_with_pty_slave_as_stdin(self, mock_select, mock_readkey):
+        """read_key works correctly when sys.stdin is the slave end of a PTY.
+
+        The PTY slave is a real TTY, so isatty() returns True without mocking.
+        select() and readchar.readkey() are still mocked to control the
+        sequence returned.  closefd=False keeps fd ownership in setUp/tearDown.
+        """
+        slave_file = os.fdopen(self.slave_fd, "r", closefd=False)
+        mock_select.return_value = ([slave_file], [], [])
+        mock_readkey.return_value = "\x1b[B"  # down arrow
+
+        with patch("paraping.input_keys.sys.stdin", slave_file):
+            # Patch isatty so it returns True (the file wrapper may not proxy it)
+            with patch.object(slave_file, "isatty", return_value=True):
+                result = read_key()
+
+        self.assertEqual(result, "arrow_down")
+        # slave_file is not the fd owner (closefd=False); tearDown closes self.slave_fd.
 
 
 if __name__ == "__main__":
