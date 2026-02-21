@@ -136,7 +136,11 @@ def asn_worker(request_queue, result_queue, stop_event, timeout):
             request_queue.task_done()
             break
         host, ip_address = item
-        result_queue.put((host, resolve_asn(ip_address, timeout=timeout)))
+        try:
+            result = resolve_asn(ip_address, timeout=timeout)
+        except Exception:  # pylint: disable=broad-exception-caught
+            result = None
+        result_queue.put((host, result))
         request_queue.task_done()
 
 
