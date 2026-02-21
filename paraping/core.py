@@ -280,7 +280,7 @@ def get_cached_page_step(
     """
 
     def should_recalculate_page_step(last_size: Optional[TerminalSizeLike], current_size: TerminalSizeLike) -> bool:
-        """Return True when the terminal size change requires recomputing the page step."""
+        """Check if page step needs recalculation due to terminal size change."""
         if last_size is None:
             return True
         # Normalize last_size to ensure we can access .columns and .lines

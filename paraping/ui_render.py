@@ -452,7 +452,12 @@ def build_ascii_graph(values: Sequence[Optional[float]], width: int, height: int
     if width <= 0 or height <= 0:
         return []
 
-    trimmed_values: List[Optional[float]] = list(values[-width:]) if values else []
+    trimmed_values: List[Optional[float]]
+    if values:
+        values_slice = values[-width:]
+        trimmed_values = values_slice if isinstance(values_slice, list) else list(values_slice)
+    else:
+        trimmed_values = []
     if len(trimmed_values) < width:
         padding: List[Optional[float]] = [None] * (width - len(trimmed_values))
         trimmed_values = padding + trimmed_values
