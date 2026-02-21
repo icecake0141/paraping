@@ -23,13 +23,8 @@ import select
 import sys
 from typing import Optional
 
-try:
-    import readchar
-    import readchar.key
-
-    READCHAR_AVAILABLE = True
-except ImportError:
-    READCHAR_AVAILABLE = False
+import readchar
+import readchar.key
 
 
 # Constants for arrow key reading
@@ -81,9 +76,6 @@ def _map_readchar_key(key_value: str) -> str:
         String identifier for arrow keys ('arrow_up', 'arrow_down', etc.)
         or the original key value if not an arrow key
     """
-    if not READCHAR_AVAILABLE:
-        return key_value
-
     # Map readchar arrow key constants to our naming convention
     key_map = {
         readchar.key.UP: "arrow_up",
@@ -127,14 +119,10 @@ def read_key() -> Optional[str]:
     if not ready:
         return None
 
-    # Input is available, use readchar to read it if available
-    if READCHAR_AVAILABLE:
-        try:
-            key = readchar.readkey()
-            return _map_readchar_key(key)
-        except Exception:
-            # Fallback to None if readchar fails
-            return None
-    else:
-        # Fallback to basic single character read if readchar not available
-        return sys.stdin.read(1)
+    # Input is available, use readchar to read it
+    try:
+        key = readchar.readkey()
+        return _map_readchar_key(key)
+    except Exception:
+        # Fallback to None if readchar fails
+        return None
