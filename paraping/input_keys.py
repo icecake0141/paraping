@@ -26,8 +26,18 @@ import termios
 import tty
 from typing import Generator, Optional
 
-import readchar
-import readchar.key
+try:
+    import readchar
+    import readchar.key
+
+    _READCHAR_AVAILABLE = True
+except ImportError:
+    # readchar is an optional dependency listed in requirements.txt.
+    # When it is not installed we fall back to a plain termios/select
+    # implementation.  All readchar references below are guarded by
+    # _READCHAR_AVAILABLE, so the None assignment here is safe.
+    readchar = None  # type: ignore[assignment]
+    _READCHAR_AVAILABLE = False
 
 
 # Constants for arrow key reading
@@ -112,17 +122,18 @@ def _map_readchar_key(key_value: str) -> str:
         String identifier for arrow keys ('arrow_up', 'arrow_down', etc.)
         or the original key value if not an arrow key
     """
-    # Map readchar arrow key constants to our naming convention
-    key_map = {
-        readchar.key.UP: "arrow_up",
-        readchar.key.DOWN: "arrow_down",
-        readchar.key.LEFT: "arrow_left",
-        readchar.key.RIGHT: "arrow_right",
-    }
+    if _READCHAR_AVAILABLE:
+        # Map readchar arrow key constants to our naming convention
+        key_map = {
+            readchar.key.UP: "arrow_up",
+            readchar.key.DOWN: "arrow_down",
+            readchar.key.LEFT: "arrow_left",
+            readchar.key.RIGHT: "arrow_right",
+        }
 
-    # First check if it's a standard readchar constant
-    if key_value in key_map:
-        return key_map[key_value]
+        # First check if it's a standard readchar constant
+        if key_value in key_map:
+            return key_map[key_value]
 
     # For non-standard sequences, try to parse as escape sequence
     # readchar returns full escape sequences like "\x1b[A", "\x1bOA", "\x1b[1;5A", etc.
@@ -145,7 +156,8 @@ def read_key() -> Optional[str]:
     or None if no input is available.
 
     This function uses readchar library for improved cross-platform support
-    while maintaining non-blocking behavior through select() with timeout.
+    when available, falling back to direct termios/select-based reading when
+    readchar is not installed.
     """
     if not sys.stdin.isatty():
         return None
@@ -155,10 +167,36 @@ def read_key() -> Optional[str]:
     if not ready:
         return None
 
-    # Input is available, use readchar to read it
+    if _READCHAR_AVAILABLE:
+        # Input is available, use readchar to read it
+        try:
+            key = readchar.readkey()
+            return _map_readchar_key(key)
+        except Exception:
+            # Fallback to None if readchar fails
+            return None
+
+    # Fallback: read directly from stdin when readchar is not installed
     try:
-        key = readchar.readkey()
-        return _map_readchar_key(key)
+        ch = sys.stdin.read(1)
+        if not ch:
+            return None
+        if ch == "\x1b":
+            # Possibly an escape sequence; collect additional bytes within the timeout
+            seq = ""
+            while True:
+                more_ready, _, _ = select.select([sys.stdin], [], [], ARROW_KEY_READ_TIMEOUT)
+                if not more_ready:
+                    break
+                byte = sys.stdin.read(1)
+                if not byte:
+                    break
+                seq += byte
+            if seq:
+                parsed = parse_escape_sequence(seq)
+                if parsed:
+                    return parsed
+                return ch + seq
+        return ch
     except Exception:
-        # Fallback to None if readchar fails
         return None
