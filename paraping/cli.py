@@ -247,6 +247,10 @@ def handle_options() -> argparse.Namespace:
 
 def run(args: argparse.Namespace) -> None:
     """Run the ParaPing monitor with parsed arguments."""
+    if not hasattr(args, "log_level"):
+        args.log_level = "INFO"
+    if not hasattr(args, "log_file"):
+        args.log_file = None
     _configure_logging(args.log_level, args.log_file)
     # Validate count parameter - allow 0 for infinite
     if args.count < 0:
