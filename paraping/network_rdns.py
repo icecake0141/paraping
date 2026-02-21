@@ -21,7 +21,8 @@ and managing rDNS worker threads.
 import queue
 import socket
 import threading
-from typing import Optional, Queue, Tuple
+from queue import Queue
+from typing import Optional, Tuple
 
 
 def resolve_rdns(ip_address: str) -> Optional[str]:

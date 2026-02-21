@@ -24,7 +24,8 @@ import queue
 import socket
 import threading
 import time
-from typing import Any, Dict, Iterator, Optional, Queue, Tuple
+from queue import Queue
+from typing import Any, Dict, Iterator, Optional, Tuple
 
 from paraping.ping_wrapper import ping_with_helper
 from paraping.scheduler import Scheduler

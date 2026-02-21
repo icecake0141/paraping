@@ -303,20 +303,22 @@ def get_cached_page_step(
         return page_step, page_step, current_term_size
 
     # Use cached value
+    assert cached_page_step is not None
     return cached_page_step, cached_page_step, last_term_size
 
 
 def build_host_infos(hosts: List[Union[str, Dict[str, str]]]) -> Tuple[List[Dict[str, Any]], Dict[str, List[Dict[str, Any]]]]:
     """Build host information structures from a list of hosts."""
     host_infos = []
-    host_map = {}
+    host_map: Dict[str, List[Dict[str, Any]]] = {}
     for index, entry in enumerate(hosts):
         if isinstance(entry, str):
             host = entry
             alias = entry
-            ip_address = None
+            ip_address: Optional[str] = None
         else:
-            host = entry.get("host") or entry.get("ip")
+            host_value = entry.get("host") or entry.get("ip")
+            host = host_value or ""
             alias = entry.get("alias") or host
             ip_address = entry.get("ip")
         if not ip_address:
@@ -332,9 +334,9 @@ def build_host_infos(hosts: List[Union[str, Dict[str, str]]]) -> Tuple[List[Dict
                 ipv6_addresses = []
                 for family, _socktype, _proto, _canonname, sockaddr in addr_info:
                     if family == socket.AF_INET:
-                        ipv4_addresses.append(sockaddr[0])  # sockaddr[0] is the IP address
+                        ipv4_addresses.append(str(sockaddr[0]))  # sockaddr[0] is the IP address
                     elif family == socket.AF_INET6:
-                        ipv6_addresses.append(sockaddr[0])  # sockaddr[0] is the IP address
+                        ipv6_addresses.append(str(sockaddr[0]))  # sockaddr[0] is the IP address
 
                 # Prefer IPv4 over IPv6
                 if ipv4_addresses:

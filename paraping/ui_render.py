@@ -452,9 +452,10 @@ def build_ascii_graph(values: Sequence[Optional[float]], width: int, height: int
     if width <= 0 or height <= 0:
         return []
 
-    trimmed_values = list(values[-width:]) if values else []
+    trimmed_values: List[Optional[float]] = list(values[-width:]) if values else []
     if len(trimmed_values) < width:
-        trimmed_values = [None] * (width - len(trimmed_values)) + trimmed_values
+        padding: List[Optional[float]] = [None] * (width - len(trimmed_values))
+        trimmed_values = padding + trimmed_values
 
     numeric_values = [value for value in trimmed_values if value is not None]
     if not numeric_values:
@@ -507,14 +508,16 @@ def resample_values(values: Sequence[Optional[float]], target_width: int) -> Lis
 def resolve_display_name(host_info: Dict[str, Any], mode: str) -> str:
     """Resolve the display name for a host based on mode."""
     if mode == "ip":
-        return host_info["ip"]
+        return str(host_info["ip"])
     if mode == "rdns":
         if host_info.get("rdns_pending"):
             return "resolving..."
-        return host_info["rdns"] or host_info["ip"]
+        rdns_value = host_info.get("rdns")
+        return str(rdns_value) if rdns_value is not None else str(host_info["ip"])
     if mode == "alias":
-        return host_info.get("alias") or host_info.get("host") or host_info["ip"]
-    return host_info["ip"]
+        alias_value = host_info.get("alias") or host_info.get("host")
+        return str(alias_value) if alias_value is not None else str(host_info["ip"])
+    return str(host_info["ip"])
 
 
 def format_asn_label(host_info: Dict[str, Any], asn_width: int) -> str:
@@ -522,7 +525,8 @@ def format_asn_label(host_info: Dict[str, Any], asn_width: int) -> str:
     if host_info.get("asn_pending"):
         label = "resolving..."
     else:
-        label = host_info.get("asn") or ""
+        asn_value = host_info.get("asn")
+        label = str(asn_value) if asn_value is not None else ""
     return f"{label[:asn_width]:<{asn_width}}"
 
 
@@ -1551,8 +1555,9 @@ def format_timezone_label(now_utc: datetime, display_tz: tzinfo) -> str:
     tz_name = tzinfo.tzname(now_utc) if tzinfo else None
     if tz_name:
         return tz_name
-    if hasattr(display_tz, "key"):
-        return display_tz.key
+    tz_key = getattr(display_tz, "key", None)
+    if isinstance(tz_key, str):
+        return tz_key
     return "UTC"
 
 

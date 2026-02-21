@@ -19,10 +19,10 @@ standard deviation, streaks, and aggregated ping data.
 """
 
 import math
-from typing import Any, Deque, Dict, Iterable, List, Optional
+from typing import Any, Deque, Dict, List, Optional, Sequence
 
 
-def compute_fail_streak(timeline: Iterable[str], fail_symbol: str) -> int:
+def compute_fail_streak(timeline: Sequence[str], fail_symbol: str) -> int:
     """
     Compute the current consecutive failure streak.
 
@@ -129,7 +129,7 @@ def build_summary_all_suffix(entry: Dict[str, Any]) -> str:
 
 
 def compute_summary_data(
-    host_infos: List[Dict[str, Any]],
+    host_infos: Sequence[Dict[str, Any]],
     display_names: Dict[int, str],
     buffers: Dict[int, Dict[str, Any]],
     stats: Dict[int, Dict[str, Any]],

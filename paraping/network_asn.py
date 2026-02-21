@@ -25,7 +25,8 @@ designed with separation of concerns:
 import queue
 import socket
 import threading
-from typing import Any, Dict, Optional, Queue, Tuple
+from queue import Queue
+from typing import Any, Dict, Optional, Tuple
 
 
 def parse_asn_response(response: str) -> Optional[str]:
