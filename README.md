@@ -13,6 +13,10 @@ Review required for correctness, security, and licensing.
 -->
 
 # ParaPing
+[![CI/CD Pipeline](https://github.com/icecake0141/paraping/actions/workflows/ci.yml/badge.svg)](https://github.com/icecake0141/paraping/actions/workflows/ci.yml)
+[![Dependabot Updates](https://github.com/icecake0141/paraping/actions/workflows/dependabot/dependabot-updates/badge.svg)](https://github.com/icecake0141/paraping/actions/workflows/dependabot/dependabot-updates)
+[![Dependabot — Run tests](https://github.com/icecake0141/paraping/actions/workflows/dependabot-test.yml/badge.svg)](https://github.com/icecake0141/paraping/actions/workflows/dependabot-test.yml)
+[![PR Checks](https://github.com/icecake0141/paraping/actions/workflows/pr-checks.yml/badge.svg)](https://github.com/icecake0141/paraping/actions/workflows/pr-checks.yml)
 
 ## English
 
