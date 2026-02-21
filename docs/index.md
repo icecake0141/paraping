@@ -32,6 +32,7 @@ Welcome to the ParaPing documentation hub. This directory contains comprehensive
 
 ### API Reference
 - [API Documentation](api/index.md) - Module and API documentation (placeholder)
+- [Scheduler API](api/scheduler.md) - Time-driven ping scheduler: stagger, interval, drift prevention, and examples
 
 ### Images & Diagrams
 - [images/](images/) - Screenshots, diagrams, and visual documentation
@@ -99,6 +100,7 @@ ParaPingドキュメントハブへようこそ。このディレクトリには
 
 ### APIリファレンス
 - [APIドキュメント](api/index.md) - モジュールとAPIドキュメント（プレースホルダー）
+- [Scheduler API](api/scheduler.md) - 時間駆動pingスケジューラ：stagger・interval・ドリフト防止・使用例
 
 ### 画像と図
 - [images/](images/) - スクリーンショット、図、視覚的ドキュメント
