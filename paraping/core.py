@@ -279,8 +279,8 @@ def get_cached_page_step(
         tuple: (page_step, new_cached_page_step, new_last_term_size)
     """
 
-    def is_terminal_resized(last_size: Optional[TerminalSizeLike], current_size: TerminalSizeLike) -> bool:
-        """Check if the terminal size has changed since the last measurement."""
+    def should_recalculate_page_step(last_size: Optional[TerminalSizeLike], current_size: TerminalSizeLike) -> bool:
+        """Return True when the terminal size change requires recomputing the page step."""
         if last_size is None:
             return True
         # Normalize last_size to ensure we can access .columns and .lines
@@ -296,7 +296,7 @@ def get_cached_page_step(
     current_term_size = paraping.ui_render.get_terminal_size(fallback=(80, 24))
 
     # Check if we need to recalculate
-    if cached_page_step is None or is_terminal_resized(last_term_size, current_term_size):
+    if cached_page_step is None or should_recalculate_page_step(last_term_size, current_term_size):
         # Terminal size changed or first time - recalculate
         page_step = compute_history_page_step(
             host_infos,
@@ -338,7 +338,7 @@ def build_host_infos(hosts: List[Union[str, Dict[str, str]]]) -> Tuple[List[Dict
             if not host_value:
                 entry_keys = ", ".join(sorted(entry.keys()))
                 detail = f"Received keys: {entry_keys}" if entry_keys else "Received empty entry"
-                raise ValueError(f"Host entry must include non-empty 'host' or 'ip' value. {detail}")
+                raise ValueError(f"Invalid host entry: must contain a non-empty 'host' or 'ip' key. {detail}")
             host = host_value
             alias = entry.get("alias") or host
             ip_address = entry.get("ip")
