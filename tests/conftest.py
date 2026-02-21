@@ -21,6 +21,8 @@ import logging
 from contextlib import contextmanager
 from typing import Iterator, List, Optional
 
+import pytest
+
 
 @contextmanager
 def captured_logs(
@@ -52,4 +54,7 @@ def captured_logs(
         logger.propagate = previous_propagate
 
 
-logging.captured_logs = captured_logs
+@pytest.fixture(autouse=True)
+def _attach_captured_logs(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Expose captured_logs on the logging module during tests."""
+    monkeypatch.setattr(logging, "captured_logs", captured_logs, raising=False)
