@@ -179,7 +179,7 @@ def parse_host_file_line(line: str, line_number: int, input_file: str) -> Option
         return None
     if ip_obj.version != 4:
         logger.warning(
-            "IPv6 address at %s:%d: '%s'. IPv6 is not supported by ping_helper; " "this entry will likely fail during ping.",
+            "IPv6 address at %s:%d: '%s'. IPv6 is not supported by ping_helper; this entry will likely fail during ping.",
             input_file,
             line_number,
             ip_text,
@@ -372,8 +372,8 @@ def build_host_infos(hosts: List[Union[str, Dict[str, str]]]) -> Tuple[List[Dict
                 elif ipv6_addresses:
                     ip_address = ipv6_addresses[0]
                     logger.warning(
-                        "Host '%s' resolved to IPv6 address '%s'. IPv6 is not supported by ping_helper; pinging will "
-                        "likely fail.",
+                        "Host '%s' resolved to IPv6 address '%s'. IPv6 is not supported by ping_helper; "
+                        "pinging will likely fail.",
                         host,
                         ip_address,
                     )
