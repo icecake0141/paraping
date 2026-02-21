@@ -24,7 +24,7 @@ import sys
 from collections import deque
 from collections.abc import Sequence
 from types import SimpleNamespace
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import paraping.ui_render
 from paraping.ui_render import (
@@ -269,8 +269,8 @@ def get_cached_page_step(
         tuple: (page_step, new_cached_page_step, new_last_term_size)
     """
 
-    def should_recalculate_page_step(last_size: Any, current_size: Any) -> bool:
-        """Check if page step needs recalculation due to terminal resize."""
+    def is_terminal_resized(last_size: Any, current_size: Any) -> bool:
+        """Check if the terminal size has changed since the last measurement."""
         if last_size is None:
             return True  # First time - need to calculate
         # Normalize last_size to ensure we can access .columns and .lines
@@ -286,7 +286,7 @@ def get_cached_page_step(
     current_term_size = paraping.ui_render.get_terminal_size(fallback=(80, 24))
 
     # Check if we need to recalculate
-    if cached_page_step is None or should_recalculate_page_step(last_term_size, current_term_size):
+    if cached_page_step is None or is_terminal_resized(last_term_size, current_term_size):
         # Terminal size changed or first time - recalculate
         page_step = compute_history_page_step(
             host_infos,
@@ -336,9 +336,17 @@ def build_host_infos(hosts: List[Union[str, Dict[str, str]]]) -> Tuple[List[Dict
                 ipv6_addresses = []
                 for family, _socktype, _proto, _canonname, sockaddr in addr_info:
                     if family == socket.AF_INET:
-                        ipv4_addresses.append(cast(str, sockaddr[0]))  # sockaddr[0] is the IP address
+                        address_value = sockaddr[0]
+                        if isinstance(address_value, str):
+                            ipv4_addresses.append(address_value)
+                        else:
+                            ipv4_addresses.append(str(address_value))
                     elif family == socket.AF_INET6:
-                        ipv6_addresses.append(cast(str, sockaddr[0]))  # sockaddr[0] is the IP address
+                        address_value = sockaddr[0]
+                        if isinstance(address_value, str):
+                            ipv6_addresses.append(address_value)
+                        else:
+                            ipv6_addresses.append(str(address_value))
 
                 # Prefer IPv4 over IPv6
                 if ipv4_addresses:
