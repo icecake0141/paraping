@@ -155,7 +155,7 @@ def asn_worker(
         host, ip_address = item
         try:
             result = resolve_asn(ip_address, timeout=timeout)
-        except (socket.error, OSError, TimeoutError) as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.warning("ASN lookup failed for %s: %s", ip_address, e)
             result = None
         result_queue.put((host, result))
