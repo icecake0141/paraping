@@ -310,6 +310,14 @@ def build_host_infos(hosts: List[Union[str, Dict[str, str]]]) -> Tuple[List[Dict
     """Build host information structures from a list of hosts."""
     host_infos = []
     host_map: Dict[str, List[Dict[str, Any]]] = {}
+
+    def address_from_sockaddr(sockaddr: Any) -> str:
+        """Extract a string address from a getaddrinfo sockaddr tuple."""
+        address_value = sockaddr[0]
+        if isinstance(address_value, str):
+            return address_value
+        return str(address_value)
+
     for index, entry in enumerate(hosts):
         if isinstance(entry, str):
             host = entry
@@ -319,7 +327,8 @@ def build_host_infos(hosts: List[Union[str, Dict[str, str]]]) -> Tuple[List[Dict
             host_value = entry.get("host") or entry.get("ip")
             if not host_value:
                 entry_keys = ", ".join(sorted(entry.keys()))
-                raise ValueError(f"Host entry must include 'host' or 'ip'. Received keys: {entry_keys or 'none'}")
+                detail = f"Received keys: {entry_keys}" if entry_keys else "Received empty entry"
+                raise ValueError(f"Host entry must include 'host' or 'ip'. {detail}")
             host = host_value
             alias = entry.get("alias") or host
             ip_address = entry.get("ip")
@@ -336,17 +345,9 @@ def build_host_infos(hosts: List[Union[str, Dict[str, str]]]) -> Tuple[List[Dict
                 ipv6_addresses = []
                 for family, _socktype, _proto, _canonname, sockaddr in addr_info:
                     if family == socket.AF_INET:
-                        address_value = sockaddr[0]
-                        if isinstance(address_value, str):
-                            ipv4_addresses.append(address_value)
-                        else:
-                            ipv4_addresses.append(str(address_value))
+                        ipv4_addresses.append(address_from_sockaddr(sockaddr))
                     elif family == socket.AF_INET6:
-                        address_value = sockaddr[0]
-                        if isinstance(address_value, str):
-                            ipv6_addresses.append(address_value)
-                        else:
-                            ipv6_addresses.append(str(address_value))
+                        ipv6_addresses.append(address_from_sockaddr(sockaddr))
 
                 # Prefer IPv4 over IPv6
                 if ipv4_addresses:
