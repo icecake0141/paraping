@@ -144,7 +144,7 @@ def load_yaml_config(path: str) -> Dict[str, Any]:
         ValueError: On parse errors or invalid file content.
     """
     try:
-        import yaml  # type: ignore[import]  # pylint: disable=import-outside-toplevel
+        import yaml  # type: ignore[import-untyped]  # pylint: disable=import-outside-toplevel
     except ImportError as exc:
         raise ImportError(
             "PyYAML is required for YAML config files. Install it with: pip install pyyaml"
