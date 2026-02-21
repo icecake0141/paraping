@@ -303,7 +303,20 @@ def get_cached_page_step(
         return page_step, page_step, current_term_size
 
     # Use cached value
-    assert cached_page_step is not None
+    if cached_page_step is None:
+        page_step = compute_history_page_step(
+            host_infos,
+            buffers,
+            stats,
+            symbols,
+            panel_position,
+            mode_label,
+            sort_mode,
+            filter_mode,
+            slow_threshold,
+            show_asn,
+        )
+        return page_step, page_step, current_term_size
     return cached_page_step, cached_page_step, last_term_size
 
 

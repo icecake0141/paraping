@@ -27,7 +27,7 @@ import tty
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone, tzinfo
-from typing import Any, Deque, Dict, List, Optional, Union
+from typing import Any, Deque, Dict, List, Optional, Tuple, Union
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from paraping.core import (
@@ -362,10 +362,10 @@ def run(args: argparse.Namespace) -> None:
     last_term_size: Any = None
     host_scroll_offset = 0
 
-    rdns_request_queue: queue.Queue[Optional[tuple[str, str]]] = queue.Queue()
-    rdns_result_queue: queue.Queue[tuple[str, Optional[str]]] = queue.Queue()
-    asn_request_queue: queue.Queue[Optional[tuple[str, str]]] = queue.Queue()
-    asn_result_queue: queue.Queue[tuple[str, Optional[str]]] = queue.Queue()
+    rdns_request_queue: queue.Queue[Optional[Tuple[str, str]]] = queue.Queue()
+    rdns_result_queue: queue.Queue[Tuple[str, Optional[str]]] = queue.Queue()
+    asn_request_queue: queue.Queue[Optional[Tuple[str, str]]] = queue.Queue()
+    asn_result_queue: queue.Queue[Tuple[str, Optional[str]]] = queue.Queue()
     worker_stop: threading.Event = threading.Event()
     rdns_thread = threading.Thread(
         target=rdns_worker,
@@ -381,7 +381,7 @@ def run(args: argparse.Namespace) -> None:
     asn_thread.start()
 
     stdin_fd: Optional[int] = None
-    original_term: Optional[list[Any]] = None
+    original_term: Optional[List[Any]] = None
     if sys.stdin.isatty():
         stdin_fd = sys.stdin.fileno()
         original_term = termios.tcgetattr(stdin_fd)
