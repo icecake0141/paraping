@@ -307,8 +307,7 @@ def get_cached_page_step(
         return page_step, page_step, current_term_size
 
     # Use cached value
-    cached_value = cast(int, cached_page_step)
-    return cached_value, cached_value, last_term_size
+    return cast(int, cached_page_step), cast(int, cached_page_step), last_term_size
 
 
 def build_host_infos(hosts: List[Union[str, Dict[str, str]]]) -> Tuple[List[Dict[str, Any]], Dict[str, List[Dict[str, Any]]]]:
@@ -340,9 +339,9 @@ def build_host_infos(hosts: List[Union[str, Dict[str, str]]]) -> Tuple[List[Dict
                 ipv6_addresses = []
                 for family, _socktype, _proto, _canonname, sockaddr in addr_info:
                     if family == socket.AF_INET:
-                        ipv4_addresses.append(str(sockaddr[0]))  # sockaddr[0] is the IP address
+                        ipv4_addresses.append(cast(str, sockaddr[0]))  # sockaddr[0] is the IP address
                     elif family == socket.AF_INET6:
-                        ipv6_addresses.append(str(sockaddr[0]))  # sockaddr[0] is the IP address
+                        ipv6_addresses.append(cast(str, sockaddr[0]))  # sockaddr[0] is the IP address
 
                 # Prefer IPv4 over IPv6
                 if ipv4_addresses:
