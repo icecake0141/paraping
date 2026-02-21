@@ -27,6 +27,11 @@ Main application entry point and orchestration logic.
 - **Purpose**: Application initialization, command-line parsing, main event loop
 - **Key Functions**: (documentation coming soon)
 
+#### `scheduler.py`
+Time-driven ping scheduler that eliminates timeline drift.
+- **Purpose**: Compute precise next-ping timestamps for each host using configurable interval and stagger
+- **Documentation**: See [scheduler.md](scheduler.md) for the full API reference and examples
+
 #### `ping_wrapper.py`
 Python wrapper for the privileged ICMP helper binary.
 - **Purpose**: Interface between Python application and `ping_helper` C binary
