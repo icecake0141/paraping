@@ -31,6 +31,7 @@ from datetime import datetime, timezone, tzinfo
 from typing import Any, Deque, Dict, List, Optional, Tuple, Union
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from paraping.config import load_config
 from paraping.core import (
     HISTORY_DURATION_MINUTES,
     MAX_HOST_THREADS,
@@ -117,6 +118,43 @@ def _configure_logging(log_level: str, log_file: Optional[str]) -> None:
     )
 
 
+# Hardcoded defaults for config-overridable fields.
+# Applied after config merging for any field still set to None.
+_HARDCODED_DEFAULTS: Dict[str, Any] = {
+    "timeout": 1,
+    "slow_threshold": 0.5,
+    "interval": 1.0,
+    "panel_position": "right",
+    "pause_mode": "display",
+    "snapshot_timezone": "utc",
+    "ping_helper": "./bin/ping_helper",
+    "log_level": "INFO",
+    "flash_on_fail": False,
+    "bell_on_fail": False,
+    "color": False,
+}
+
+
+def _apply_config_to_args(args: argparse.Namespace, config: Dict[str, Any]) -> None:
+    """
+    Overlay config file values onto a parsed argument namespace.
+
+    Only fields that are still ``None`` (i.e. not explicitly set on the CLI)
+    are updated.  Config-supplied ``hosts`` are applied only when the user has
+    not provided any hosts on the CLI and has not used ``--input``/``-f``.
+
+    Args:
+        args: Namespace returned by ``argparse.ArgumentParser.parse_args()``.
+        config: Dictionary of values loaded from the config file.
+    """
+    for key, value in config.items():
+        if key == "hosts":
+            if not getattr(args, "hosts", None) and not getattr(args, "input", None):
+                args.hosts = value
+        elif hasattr(args, key) and getattr(args, key) is None:
+            setattr(args, key, value)
+
+
 def handle_options() -> argparse.Namespace:
     """Parse and validate command-line arguments."""
     parser = argparse.ArgumentParser(
@@ -128,7 +166,7 @@ def handle_options() -> argparse.Namespace:
         "-t",
         "--timeout",
         type=int,
-        default=1,
+        default=None,
         help="Timeout in seconds for each ping (default: 1)",
     )
     parser.add_argument(
@@ -142,14 +180,14 @@ def handle_options() -> argparse.Namespace:
         "-s",
         "--slow-threshold",
         type=float,
-        default=0.5,
+        default=None,
         help="Threshold in seconds for slow ping (default: 0.5)",
     )
     parser.add_argument(
         "-i",
         "--interval",
         type=float,
-        default=1.0,
+        default=None,
         help="Interval in seconds between pings per host (default: 1.0, range: 0.1-60.0). "
         "Note: Global rate limit is 50 pings/sec (host_count / interval <= 50)",
     )
@@ -162,7 +200,7 @@ def handle_options() -> argparse.Namespace:
     parser.add_argument(
         "--log-level",
         type=str.upper,
-        default="INFO",
+        default=None,
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         help="Logging level for verbose and error output (default: INFO)",
     )
@@ -183,7 +221,7 @@ def handle_options() -> argparse.Namespace:
         "-P",
         "--panel-position",
         type=str,
-        default="right",
+        default=None,
         choices=["right", "left", "top", "bottom", "none"],
         help="Summary panel position (right|left|top|bottom|none)",
     )
@@ -191,7 +229,7 @@ def handle_options() -> argparse.Namespace:
         "-m",
         "--pause-mode",
         type=str,
-        default="display",
+        default=None,
         choices=["display", "ping"],
         help="Pause behavior: display (stop updates only) or ping (pause ping + updates)",
     )
@@ -206,7 +244,7 @@ def handle_options() -> argparse.Namespace:
         "-Z",
         "--snapshot-timezone",
         type=str,
-        default="utc",
+        default=None,
         choices=["utc", "display"],
         help="Timezone used in snapshot filename (utc|display). Defaults to utc.",
     )
@@ -214,30 +252,53 @@ def handle_options() -> argparse.Namespace:
         "-F",
         "--flash-on-fail",
         action="store_true",
+        default=None,
         help="Flash screen (white background) when ping fails",
     )
     parser.add_argument(
         "-B",
         "--bell-on-fail",
         action="store_true",
+        default=None,
         help="Ring terminal bell when ping fails",
     )
     parser.add_argument(
         "-C",
         "--color",
         action="store_true",
+        default=None,
         help="Enable colored output (blue=success, yellow=slow, red=fail)",
     )
     parser.add_argument(
         "-H",
         "--ping-helper",
         type=str,
-        default="./bin/ping_helper",
+        default=None,
         help="Path to ping_helper binary (default: ./bin/ping_helper)",
+    )
+    parser.add_argument(
+        "--no-config",
+        action="store_true",
+        default=False,
+        help="Skip loading ~/.paraping.conf config file",
     )
     parser.add_argument("hosts", nargs="*", help="Hosts to ping (IP addresses or hostnames)")
 
     args = parser.parse_args()
+
+    # Load and apply config file unless --no-config was given
+    if not args.no_config:
+        try:
+            config = load_config()
+            _apply_config_to_args(args, config)
+        except (ValueError, ImportError) as exc:
+            parser.error(str(exc))
+
+    # Apply hardcoded defaults for any config-overridable field still at None
+    for field, default in _HARDCODED_DEFAULTS.items():
+        if getattr(args, field, None) is None:
+            setattr(args, field, default)
+
     if args.timeout <= 0:
         parser.error("--timeout must be a positive integer.")
     if not 0.1 <= args.interval <= 60.0:

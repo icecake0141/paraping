@@ -138,6 +138,7 @@ ignore = [
 "__init__.py" = ["F401"]
 "tests/**/*.py" = ["E402"]
 "paraping/cli.py" = ["C901"]  # run() function complexity is pre-existing
+"paraping/config.py" = ["C901"]  # config loading complexity is inherent
 "paraping/core.py" = ["C901"]  # host parsing complexity is pre-existing
 "paraping/pinger.py" = ["C901"]  # ping worker complexity is pre-existing
 "paraping/stats.py" = ["C901"]  # summary data complexity is pre-existing
