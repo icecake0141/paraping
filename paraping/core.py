@@ -283,39 +283,32 @@ def get_cached_page_step(
             return True  # Terminal height changed
         return False
 
+    def calculate_page_step() -> int:
+        """Compute page step based on the latest layout measurements."""
+        return compute_history_page_step(
+            host_infos,
+            buffers,
+            stats,
+            symbols,
+            panel_position,
+            mode_label,
+            sort_mode,
+            filter_mode,
+            slow_threshold,
+            show_asn,
+        )
+
     current_term_size = paraping.ui_render.get_terminal_size(fallback=(80, 24))
 
     # Check if we need to recalculate
     if should_recalculate_page_step(cached_page_step, last_term_size, current_term_size):
         # Terminal size changed or first time - recalculate
-        page_step = compute_history_page_step(
-            host_infos,
-            buffers,
-            stats,
-            symbols,
-            panel_position,
-            mode_label,
-            sort_mode,
-            filter_mode,
-            slow_threshold,
-            show_asn,
-        )
+        page_step = calculate_page_step()
         return page_step, page_step, current_term_size
 
     # Use cached value
     if cached_page_step is None:
-        page_step = compute_history_page_step(
-            host_infos,
-            buffers,
-            stats,
-            symbols,
-            panel_position,
-            mode_label,
-            sort_mode,
-            filter_mode,
-            slow_threshold,
-            show_asn,
-        )
+        page_step = calculate_page_step()
         return page_step, page_step, current_term_size
     return cached_page_step, cached_page_step, last_term_size
 
@@ -331,7 +324,9 @@ def build_host_infos(hosts: List[Union[str, Dict[str, str]]]) -> Tuple[List[Dict
             ip_address: Optional[str] = None
         else:
             host_value = entry.get("host") or entry.get("ip")
-            host = host_value or ""
+            if not host_value:
+                raise ValueError("Host entry must include 'host' or 'ip'.")
+            host = host_value
             alias = entry.get("alias") or host
             ip_address = entry.get("ip")
         if not ip_address:
