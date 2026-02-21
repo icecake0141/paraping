@@ -19,9 +19,10 @@ standard deviation, streaks, and aggregated ping data.
 """
 
 import math
+from typing import Any, Deque, Dict, List, Optional, Sequence
 
 
-def compute_fail_streak(timeline, fail_symbol):
+def compute_fail_streak(timeline: Sequence[str], fail_symbol: str) -> int:
     """
     Compute the current consecutive failure streak.
 
@@ -41,7 +42,7 @@ def compute_fail_streak(timeline, fail_symbol):
     return streak
 
 
-def build_streak_label(entry):
+def build_streak_label(entry: Dict[str, Any]) -> str:
     """
     Build a display label for a streak.
 
@@ -59,7 +60,7 @@ def build_streak_label(entry):
     return streak_label
 
 
-def build_packet_stats_label(entry):
+def build_packet_stats_label(entry: Dict[str, Any]) -> str:
     """
     Build packet statistics label in Snt/Rcv/Los format with loss percentage.
 
@@ -75,7 +76,7 @@ def build_packet_stats_label(entry):
     return f"{sent}/{received}/{lost} loss {entry['loss_rate']:.1f}%"
 
 
-def build_summary_suffix(entry, summary_mode):
+def build_summary_suffix(entry: Dict[str, Any], summary_mode: str) -> str:
     """
     Build the suffix for a summary line based on the summary mode.
 
@@ -100,7 +101,7 @@ def build_summary_suffix(entry, summary_mode):
     return f": {build_packet_stats_label(entry)}"
 
 
-def build_summary_all_suffix(entry):
+def build_summary_all_suffix(entry: Dict[str, Any]) -> str:
     """
     Build a comprehensive summary suffix with all statistics.
 
@@ -128,13 +129,13 @@ def build_summary_all_suffix(entry):
 
 
 def compute_summary_data(
-    host_infos,
-    display_names,
-    buffers,
-    stats,
-    symbols,
-    ordered_host_ids=None,
-):
+    host_infos: Sequence[Dict[str, Any]],
+    display_names: Dict[int, str],
+    buffers: Dict[int, Dict[str, Any]],
+    stats: Dict[int, Dict[str, Any]],
+    symbols: Dict[str, str],
+    ordered_host_ids: Optional[List[int]] = None,
+) -> List[Dict[str, Any]]:
     """
     Compute summary statistics for all hosts.
 
@@ -216,7 +217,7 @@ def compute_summary_data(
     return summary
 
 
-def latest_ttl_value(ttl_history):
+def latest_ttl_value(ttl_history: Deque[Optional[int]]) -> Optional[int]:
     """
     Get the latest TTL value from history.
 
@@ -231,7 +232,7 @@ def latest_ttl_value(ttl_history):
     return ttl_history[-1]
 
 
-def latest_rtt_value(rtt_history):
+def latest_rtt_value(rtt_history: Deque[Optional[float]]) -> Optional[float]:
     """
     Get the latest RTT value from history.
 

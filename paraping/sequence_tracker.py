@@ -33,7 +33,7 @@ class SequenceTracker:
     maximum of 3 outstanding pings per host to prevent queue buildup.
     """
 
-    def __init__(self, max_outstanding: int = 3):
+    def __init__(self, max_outstanding: int = 3) -> None:
         """
         Initialize the SequenceTracker.
 

@@ -31,18 +31,24 @@ import json
 import os
 import subprocess
 import sys
+from typing import Optional, Tuple
 
 
 class PingHelperError(RuntimeError):
     """Raised when ping_helper returns an error."""
 
-    def __init__(self, message, returncode=None, stderr=None):
+    def __init__(self, message: str, returncode: Optional[int] = None, stderr: Optional[str] = None) -> None:
         super().__init__(message)
         self.returncode = returncode
         self.stderr = stderr
 
 
-def ping_with_helper(host, timeout_ms=1000, helper_path="./bin/ping_helper", icmp_seq=None):
+def ping_with_helper(
+    host: str,
+    timeout_ms: int = 1000,
+    helper_path: str = "./bin/ping_helper",
+    icmp_seq: Optional[int] = None,
+) -> Tuple[Optional[float], Optional[int]]:
     """
     Ping a host using the ping_helper binary.
 
@@ -151,7 +157,7 @@ def ping_with_helper(host, timeout_ms=1000, helper_path="./bin/ping_helper", icm
         return (None, None)
 
 
-def main():
+def main() -> None:
     """
     Command-line interface for the ping wrapper.
 

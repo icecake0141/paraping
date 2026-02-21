@@ -24,7 +24,7 @@ import sys
 from collections import deque
 from collections.abc import Sequence
 from types import SimpleNamespace
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Protocol, Tuple, Union
 
 import paraping.ui_render
 from paraping.ui_render import (
@@ -43,6 +43,16 @@ TIMELINE_LABEL_ESTIMATE_WIDTH = 15  # Estimated label column + spacing width.
 
 # Global rate limit for flood protection
 MAX_GLOBAL_PINGS_PER_SECOND = 50  # Maximum allowed ICMP pings per second globally
+
+
+class TerminalSizeLike(Protocol):
+    """Protocol for terminal size objects with columns/lines attributes."""
+
+    @property
+    def columns(self) -> int: ...
+
+    @property
+    def lines(self) -> int: ...
 
 
 def _build_term_size(columns_value: Any, lines_value: Any) -> Optional[SimpleNamespace]:
@@ -201,19 +211,19 @@ def read_input_file(input_file: str) -> List[Dict[str, str]]:
 
 
 def compute_history_page_step(
-    host_infos,
-    buffers,
-    stats,
-    symbols,
-    panel_position,
-    mode_label,
-    sort_mode,
-    filter_mode,
-    slow_threshold,
-    show_asn,
-    asn_width=8,
-    header_lines=2,
-):
+    host_infos: List[Dict[str, Any]],
+    buffers: Dict[int, Any],
+    stats: Dict[int, Any],
+    symbols: Dict[str, str],
+    panel_position: str,
+    mode_label: str,
+    sort_mode: str,
+    filter_mode: str,
+    slow_threshold: float,
+    show_asn: bool,
+    asn_width: int = 8,
+    header_lines: int = 2,
+) -> int:
     """Compute the page step for history navigation based on timeline width."""
     term_size = paraping.ui_render.get_terminal_size(fallback=(80, 24))
     term_width = term_size.columns
@@ -246,19 +256,19 @@ def compute_history_page_step(
 
 
 def get_cached_page_step(
-    cached_page_step,
-    last_term_size,
-    host_infos,
-    buffers,
-    stats,
-    symbols,
-    panel_position,
-    mode_label,
-    sort_mode,
-    filter_mode,
-    slow_threshold,
-    show_asn,
-):
+    cached_page_step: Optional[int],
+    last_term_size: Optional[TerminalSizeLike],
+    host_infos: List[Dict[str, Any]],
+    buffers: Dict[int, Any],
+    stats: Dict[int, Any],
+    symbols: Dict[str, str],
+    panel_position: str,
+    mode_label: str,
+    sort_mode: str,
+    filter_mode: str,
+    slow_threshold: float,
+    show_asn: bool,
+) -> Tuple[int, int, Optional[TerminalSizeLike]]:
     """
     Get the page step for history navigation, using cached value if available.
 
@@ -269,10 +279,10 @@ def get_cached_page_step(
         tuple: (page_step, new_cached_page_step, new_last_term_size)
     """
 
-    def should_recalculate_page_step(cached_value, last_size, current_size):
-        """Check if page step needs recalculation due to cache miss or terminal resize"""
-        if cached_value is None or last_size is None:
-            return True  # First time - need to calculate
+    def should_recalculate_page_step(last_size: Optional[TerminalSizeLike], current_size: TerminalSizeLike) -> bool:
+        """Check if page step needs recalculation due to terminal size change."""
+        if last_size is None:
+            return True
         # Normalize last_size to ensure we can access .columns and .lines
         normalized_last = _normalize_term_size(last_size)
         if normalized_last is None:
@@ -286,7 +296,7 @@ def get_cached_page_step(
     current_term_size = paraping.ui_render.get_terminal_size(fallback=(80, 24))
 
     # Check if we need to recalculate
-    if should_recalculate_page_step(cached_page_step, last_term_size, current_term_size):
+    if cached_page_step is None or should_recalculate_page_step(last_term_size, current_term_size):
         # Terminal size changed or first time - recalculate
         page_step = compute_history_page_step(
             host_infos,
@@ -309,14 +319,27 @@ def get_cached_page_step(
 def build_host_infos(hosts: List[Union[str, Dict[str, str]]]) -> Tuple[List[Dict[str, Any]], Dict[str, List[Dict[str, Any]]]]:
     """Build host information structures from a list of hosts."""
     host_infos = []
-    host_map = {}
+    host_map: Dict[str, List[Dict[str, Any]]] = {}
+
+    def address_from_sockaddr(sockaddr: Tuple[Any, ...]) -> str:
+        """Extract a string address from a getaddrinfo sockaddr tuple."""
+        address_value = sockaddr[0]
+        if isinstance(address_value, str):
+            return address_value
+        return str(address_value)
+
     for index, entry in enumerate(hosts):
         if isinstance(entry, str):
             host = entry
             alias = entry
-            ip_address = None
+            ip_address: Optional[str] = None
         else:
-            host = entry.get("host") or entry.get("ip")
+            host_value = entry.get("host") or entry.get("ip")
+            if not host_value:
+                entry_keys = ", ".join(sorted(entry.keys()))
+                detail = f"Received keys: {entry_keys}" if entry_keys else "Received empty entry"
+                raise ValueError(f"Invalid host entry: 'host' or 'ip' value must be non-empty. {detail}")
+            host = host_value
             alias = entry.get("alias") or host
             ip_address = entry.get("ip")
         if not ip_address:
@@ -332,9 +355,9 @@ def build_host_infos(hosts: List[Union[str, Dict[str, str]]]) -> Tuple[List[Dict
                 ipv6_addresses = []
                 for family, _socktype, _proto, _canonname, sockaddr in addr_info:
                     if family == socket.AF_INET:
-                        ipv4_addresses.append(sockaddr[0])  # sockaddr[0] is the IP address
+                        ipv4_addresses.append(address_from_sockaddr(sockaddr))
                     elif family == socket.AF_INET6:
-                        ipv6_addresses.append(sockaddr[0])  # sockaddr[0] is the IP address
+                        ipv6_addresses.append(address_from_sockaddr(sockaddr))
 
                 # Prefer IPv4 over IPv6
                 if ipv4_addresses:

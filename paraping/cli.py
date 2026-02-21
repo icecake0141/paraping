@@ -26,13 +26,15 @@ import time
 import tty
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timezone, tzinfo
+from typing import Any, Deque, Dict, List, Optional, Tuple, Union
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from paraping.core import (
     HISTORY_DURATION_MINUTES,
     MAX_HOST_THREADS,
     SNAPSHOT_INTERVAL_SECONDS,
+    TerminalSizeLike,
     _normalize_term_size,
     build_host_infos,
     get_cached_page_step,
@@ -69,7 +71,7 @@ from paraping.ui_render import (
 )
 
 
-def _compute_initial_timeline_width(host_labels, term_size, panel_position):
+def _compute_initial_timeline_width(host_labels: List[str], term_size: Any, panel_position: str) -> int:
     """
     Compute the initial timeline width for buffer sizing.
 
@@ -101,7 +103,7 @@ def _compute_initial_timeline_width(host_labels, term_size, panel_position):
         return 1
 
 
-def handle_options():
+def handle_options() -> argparse.Namespace:
     """Parse and validate command-line arguments."""
     parser = argparse.ArgumentParser(
         description="ParaPing - Perform ICMP ping operations to multiple hosts concurrently",
@@ -216,7 +218,7 @@ def handle_options():
     return args
 
 
-def run(args):
+def run(args: argparse.Namespace) -> None:
     """Run the ParaPing monitor with parsed arguments."""
     # Validate count parameter - allow 0 for infinite
     if args.count < 0:
@@ -232,7 +234,7 @@ def run(args):
         return
 
     # Collect all hosts to ping
-    all_hosts = []
+    all_hosts: List[Union[str, Dict[str, str]]] = []
 
     # Add hosts from command line arguments
     if args.hosts:
@@ -260,25 +262,25 @@ def run(args):
         print(error_message, file=sys.stderr)
         sys.exit(1)
 
-    display_tz = timezone.utc
+    display_tz: tzinfo = timezone.utc
     if args.timezone:
         try:
             display_tz = ZoneInfo(args.timezone)
         except ZoneInfoNotFoundError:
             print(f"Error: Unknown timezone '{args.timezone}'. Use an IANA name like 'Asia/Tokyo'.")
             return
-    snapshot_tz = display_tz if args.snapshot_timezone == "display" else timezone.utc
+    snapshot_tz: tzinfo = display_tz if args.snapshot_timezone == "display" else timezone.utc
     ping_helper_path = os.path.expanduser(args.ping_helper)
     panel_position = args.panel_position
     panel_toggle_default = args.panel_position if args.panel_position != "none" else "right"
     last_panel_position = panel_position if panel_position != "none" else None
 
-    symbols = {"success": ".", "fail": "x", "slow": "!", "pending": "-"}
+    symbols: Dict[str, str] = {"success": ".", "fail": "x", "slow": "!", "pending": "-"}
     initial_term_size = get_terminal_size(fallback=(80, 24))
     host_infos, host_info_map = build_host_infos(all_hosts)
     host_labels = [info["alias"] for info in host_infos]
     timeline_width = _compute_initial_timeline_width(host_labels, initial_term_size, panel_position)
-    buffers = {
+    buffers: Dict[int, Dict[str, Any]] = {
         info["id"]: {
             "timeline": deque(maxlen=timeline_width),
             "rtt_history": deque(maxlen=timeline_width),
@@ -288,7 +290,7 @@ def run(args):
         }
         for info in host_infos
     }
-    stats = {
+    stats: Dict[int, Dict[str, Any]] = {
         info["id"]: {
             "success": 0,
             "fail": 0,
@@ -300,7 +302,7 @@ def run(args):
         }
         for info in host_infos
     }
-    result_queue = queue.Queue()
+    result_queue: queue.Queue[Dict[str, Any]] = queue.Queue()
 
     count_label = "infinite" if args.count == 0 else str(args.count)
     print(
@@ -327,21 +329,21 @@ def run(args):
     pause_mode = args.pause_mode
     pause_event = threading.Event()
     stop_event = threading.Event()
-    status_message = None
+    status_message: Optional[str] = None
     force_render = False
     show_asn = True
     color_supported = sys.stdout.isatty()
     use_color = args.color and color_supported
     flash_on_fail = getattr(args, "flash_on_fail", False)
     bell_on_fail = getattr(args, "bell_on_fail", False)
-    asn_cache = {}
+    asn_cache: Dict[str, Dict[str, Any]] = {}
     asn_timeout = 3.0
     asn_failure_ttl = 300.0
     host_select_active = False
     host_select_index = 0
-    graph_host_id = None
+    graph_host_id: Optional[int] = None
 
-    def sync_pause_state():
+    def sync_pause_state() -> None:
         """Synchronize effective paused flag and ping pause_event from display/dormant state."""
         nonlocal paused
         paused = display_paused or dormant
@@ -353,19 +355,19 @@ def run(args):
     # History navigation state
     # Store snapshots at regular intervals for time navigation
     max_history_snapshots = int(HISTORY_DURATION_MINUTES * 60 / SNAPSHOT_INTERVAL_SECONDS)
-    history_buffer = deque(maxlen=max_history_snapshots)
+    history_buffer: Deque[Dict[str, Any]] = deque(maxlen=max_history_snapshots)
     history_offset = 0  # 0 = live, >0 = viewing history
     last_snapshot_time = 0.0
     # Cache page step to avoid expensive recalculation on every arrow key press
-    cached_page_step = None
-    last_term_size = None
+    cached_page_step: Optional[int] = None
+    last_term_size: Optional[TerminalSizeLike] = None
     host_scroll_offset = 0
 
-    rdns_request_queue = queue.Queue()
-    rdns_result_queue = queue.Queue()
-    asn_request_queue = queue.Queue()
-    asn_result_queue = queue.Queue()
-    worker_stop = threading.Event()
+    rdns_request_queue: queue.Queue[Optional[Tuple[str, str]]] = queue.Queue()
+    rdns_result_queue: queue.Queue[Tuple[str, Optional[str]]] = queue.Queue()
+    asn_request_queue: queue.Queue[Optional[Tuple[str, str]]] = queue.Queue()
+    asn_result_queue: queue.Queue[Tuple[str, Optional[str]]] = queue.Queue()
+    worker_stop: threading.Event = threading.Event()
     rdns_thread = threading.Thread(
         target=rdns_worker,
         args=(rdns_request_queue, rdns_result_queue, worker_stop),
@@ -379,8 +381,8 @@ def run(args):
     rdns_thread.start()
     asn_thread.start()
 
-    stdin_fd = None
-    original_term = None
+    stdin_fd: Optional[int] = None
+    original_term: Optional[List[Any]] = None
     if sys.stdin.isatty():
         stdin_fd = sys.stdin.fileno()
         original_term = termios.tcgetattr(stdin_fd)
@@ -996,7 +998,7 @@ def run(args):
         print(f"{info['alias']:30} {success}/{total} replies, {slow} slow, {fail} failed " f"({percentage:.1f}%) [{status}]")
 
 
-def main():
+def main() -> None:
     """Main entrypoint for the CLI - parses arguments and runs the application."""
     args = handle_options()
     run(args)

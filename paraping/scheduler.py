@@ -31,7 +31,7 @@ class Scheduler:
     and can emit mock send events for testing purposes.
     """
 
-    def __init__(self, interval: float = 1.0, stagger: float = 0.0):
+    def __init__(self, interval: float = 1.0, stagger: float = 0.0) -> None:
         """
         Initialize the Scheduler.
 
