@@ -20,13 +20,14 @@ without performing actual network operations.
 
 import os
 import sys
+import threading
 import unittest
 from unittest.mock import MagicMock, patch
 
 # Add parent directory to path to import paraping
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from paraping.cli import handle_options, main
+from paraping.cli import _handle_user_input, handle_options, main
 
 
 class TestCLIArgumentParsing(unittest.TestCase):
@@ -319,6 +320,55 @@ class TestCLIRateLimitValidation(unittest.TestCase):
         is_valid, rate, error = validate_global_rate_limit(25, 0.5)
         self.assertTrue(is_valid)
         self.assertEqual(rate, 50.0)
+
+
+class TestCLIInputHandling(unittest.TestCase):
+    """Test extracted keyboard input handler behavior."""
+
+    def test_handle_user_input_quit_sets_running_false(self):
+        """Pressing q should request shutdown."""
+        state = {"running": True, "stop_event": threading.Event()}
+
+        skip_iteration = _handle_user_input("q", MagicMock(slow_threshold=0.5), state)
+
+        self.assertFalse(skip_iteration)
+        self.assertFalse(state["running"])
+        self.assertTrue(state["stop_event"].is_set())
+
+    def test_handle_user_input_hides_help_and_skips_iteration(self):
+        """Any key while help is visible should close help and skip the loop body."""
+        state = {"show_help": True, "force_render": False, "updated": False}
+
+        skip_iteration = _handle_user_input("x", MagicMock(slow_threshold=0.5), state)
+
+        self.assertTrue(skip_iteration)
+        self.assertFalse(state["show_help"])
+        self.assertTrue(state["force_render"])
+        self.assertTrue(state["updated"])
+
+    def test_handle_user_input_toggle_display_pause(self):
+        """`p` toggles display pause mode and pause event."""
+        state = {
+            "show_help": False,
+            "host_select_active": False,
+            "graph_host_id": None,
+            "display_paused": False,
+            "dormant": False,
+            "pause_mode": "ping",
+            "pause_event": threading.Event(),
+            "status_message": None,
+            "force_render": False,
+            "updated": False,
+            "paused": False,
+        }
+
+        skip_iteration = _handle_user_input("p", MagicMock(slow_threshold=0.5), state)
+
+        self.assertFalse(skip_iteration)
+        self.assertTrue(state["display_paused"])
+        self.assertTrue(state["paused"])
+        self.assertTrue(state["pause_event"].is_set())
+        self.assertEqual(state["status_message"], "Display paused")
 
 
 if __name__ == "__main__":
