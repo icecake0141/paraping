@@ -411,7 +411,7 @@ Example (explicit IPv4 addresses only):
 - `-c`, `--count`: Number of ping attempts per host (default: 0 for infinite).
 - `-i`, `--interval`: Interval in seconds between pings per host (default: 1.0, range: 0.1-60.0). **Note**: Global rate limit is 50 pings/sec; the tool will fail if (host_count / interval) > 50.
 - `-s`, `--slow-threshold`: RTT threshold (seconds) to mark a ping as slow (default: 0.5).
-- `-v`, `--verbose`: Emit per-packet output for logging (non-UI).
+- `-v`, `--verbose`: Enable detailed per-packet logging output (non-UI mode).
 - `--log-level`: Logging level (`DEBUG|INFO|WARNING|ERROR`, default: `INFO`).
 - `--log-file`: Optional log file path for persistent logging.
 - `-f`, `--input`: Read hosts from a file (one per line; format: `IP,alias`; `#` comments supported).

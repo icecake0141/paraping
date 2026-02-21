@@ -43,7 +43,10 @@ def captured_logs(
     handler.setLevel(level)
     previous_level = logger.level
     previous_propagate = logger.propagate
-    logger.setLevel(level if previous_level == logging.NOTSET else min(previous_level, level))
+    if previous_level == logging.NOTSET:
+        logger.setLevel(level)
+    else:
+        logger.setLevel(min(previous_level, level))
     logger.propagate = False
     logger.addHandler(handler)
     try:
