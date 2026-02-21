@@ -20,6 +20,7 @@ time-slot (pending marker) and avoid timeline drift when replies are delayed.
 """
 
 import os
+import logging
 import queue
 import socket
 import threading
@@ -27,9 +28,11 @@ import time
 from queue import Queue
 from typing import Any, Dict, Iterator, Optional, Tuple
 
-from paraping.ping_wrapper import ping_with_helper
+from paraping.ping_wrapper import PingHelperError, ping_with_helper
 from paraping.scheduler import Scheduler
 from paraping.sequence_tracker import SequenceTracker
+
+logger = logging.getLogger(__name__)
 
 
 def ping_host(
@@ -131,9 +134,10 @@ def ping_host(
                     "rtt": None,
                     "ttl": None,
                 }
-        except Exception as e:
+        except (OSError, PingHelperError, ValueError) as e:
             if verbose:
                 print(f"Error pinging {host}: {e}")
+            logger.warning("Error pinging %s (seq=%d): %s", host, i + 1, e)
             yield {
                 "host": host,
                 "sequence": i + 1,
@@ -204,7 +208,8 @@ def rdns_worker(
         host, ip_address = item
         try:
             result = resolve_rdns(ip_address)
-        except Exception:  # pylint: disable=broad-exception-caught
+        except (socket.herror, socket.gaierror, OSError) as e:
+            logger.warning("rDNS lookup failed for %s: %s", ip_address, e)
             result = None
         result_queue.put((host, result))
         request_queue.task_done()
@@ -387,8 +392,9 @@ def scheduler_driven_ping_host(
                             "ttl": None,
                         }
                     )
-            except Exception:  # pylint: disable=broad-exception-caught
+            except (OSError, PingHelperError, ValueError) as e:
                 # Mark as replied on exception too
+                logger.warning("Error in async ping for %s (seq=%d): %s", host, seq_num, e)
                 sequence_tracker.mark_replied(host, seq_num)
                 result_queue.put(
                     {

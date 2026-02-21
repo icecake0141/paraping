@@ -182,7 +182,7 @@ class TestPingHost(unittest.TestCase):
     def test_ping_host_exception_handling(self, mock_exists, mock_ping):
         """Test handling of exceptions during ping"""
         mock_exists.return_value = True
-        mock_ping.side_effect = Exception("Network error")
+        mock_ping.side_effect = OSError("Network error")
 
         results = list(ping_host("192.0.2.1", timeout=1, count=1, slow_threshold=0.5, verbose=False))
 
@@ -384,7 +384,7 @@ class TestRDNSWorker(unittest.TestCase):
     @patch("paraping.pinger.resolve_rdns")
     def test_rdns_worker_handles_unexpected_exception(self, mock_resolve):
         """Test that rdns_worker returns None and continues on unexpected exception"""
-        mock_resolve.side_effect = [RuntimeError("unexpected"), "example.com"]
+        mock_resolve.side_effect = [OSError("unexpected"), "example.com"]
 
         request_queue = queue.Queue()
         result_queue = queue.Queue()
