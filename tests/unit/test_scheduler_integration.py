@@ -280,7 +280,7 @@ class TestSchedulerIntegration(unittest.TestCase):
         pause_triggered = threading.Event()
         original_get_next_ping_times = scheduler.get_next_ping_times
 
-        def get_next_ping_times_and_trigger_pause(current_time: Optional[float] = None) -> dict[str, float]:
+        def get_next_times_with_pause_trigger(current_time: Optional[float] = None) -> dict[str, float]:
             next_times = original_get_next_ping_times(current_time)
             if not pause_triggered.is_set() and all(
                 scheduler.host_data[host]["last_ping_time"] is not None for host in scheduler.hosts
@@ -289,7 +289,7 @@ class TestSchedulerIntegration(unittest.TestCase):
                 pause_triggered.set()
             return next_times
 
-        scheduler.get_next_ping_times = get_next_ping_times_and_trigger_pause  # type: ignore[method-assign]
+        scheduler.get_next_ping_times = get_next_times_with_pause_trigger  # type: ignore[method-assign]
 
         for host_info in hosts:
             scheduler.add_host(host_info["host"], host_id=host_info["id"])

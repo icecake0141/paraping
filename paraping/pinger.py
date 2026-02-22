@@ -286,8 +286,7 @@ def scheduler_driven_ping_host(
         if pause_event is not None:
             paused_during_wait = False
             while pause_event.is_set():
-                if not paused_during_wait:
-                    paused_during_wait = True
+                paused_during_wait = True
                 if stop_event is not None and stop_event.is_set():
                     result_queue.put({"host_id": host_id, "status": "done"})
                     return
@@ -336,8 +335,7 @@ def scheduler_driven_ping_host(
         if pause_event is not None:
             paused_after_wait = False
             while pause_event.is_set():
-                if not paused_after_wait:
-                    paused_after_wait = True
+                paused_after_wait = True
                 if stop_event is not None and stop_event.is_set():
                     result_queue.put({"host_id": host_id, "status": "done"})
                     return
