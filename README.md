@@ -355,7 +355,7 @@ python3 -m paraping --help
 ./main.py --help
 ```
 
-**Note:** ParaPing has no external Python dependencies (all stdlib), so `requirements.txt` is minimal.
+**Note:** ParaPing requires the `readchar` package (see `requirements.txt`). Install it with `pip install -r requirements.txt` before running.
 
 ### Uninstalling ParaPing
 
@@ -1032,7 +1032,7 @@ python3 -m paraping --help
 ./main.py --help
 ```
 
-**注:** ParaPing は外部 Python 依存関係がありません（すべて標準ライブラリ）ので、`requirements.txt` は最小限です。
+**注:** ParaPing は `readchar` パッケージに依存しています（`requirements.txt` 参照）。実行前に `pip install -r requirements.txt` でインストールしてください。
 
 #### ParaPing のアンインストール
 
