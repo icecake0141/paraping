@@ -284,11 +284,17 @@ def scheduler_driven_ping_host(
 
         # Handle pause
         if pause_event is not None:
+            paused_during_wait = False
             while pause_event.is_set():
+                if not paused_during_wait:
+                    paused_during_wait = True
                 if stop_event is not None and stop_event.is_set():
                     result_queue.put({"host_id": host_id, "status": "done"})
                     return
                 time.sleep(0.05)
+            if paused_during_wait:
+                # Restart the loop to reschedule based on the current time after a pause.
+                continue
 
         # Get next scheduled ping time from scheduler
         with ping_lock:

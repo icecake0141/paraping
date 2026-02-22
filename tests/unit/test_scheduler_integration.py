@@ -24,7 +24,8 @@ import sys
 import threading
 import time
 import unittest
-from unittest.mock import patch
+from typing import Any, TypedDict
+from unittest.mock import MagicMock, patch
 
 # Add parent directory to path to import paraping
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
@@ -33,19 +34,70 @@ from paraping.pinger import scheduler_driven_worker_ping  # noqa: E402
 from paraping.scheduler import Scheduler  # noqa: E402
 
 
+class HostInfo(TypedDict):
+    """Typed host metadata for scheduler-driven tests."""
+
+    host: str
+    id: int
+
+
+def _clear_queue(result_queue: "queue.Queue[dict[str, Any]]") -> None:
+    while not result_queue.empty():
+        result_queue.get_nowait()
+
+
+def _collect_sent_hosts(
+    result_queue: "queue.Queue[dict[str, Any]]",
+    host_count: int,
+    deadline: float,
+) -> set[int]:
+    sent_hosts: set[int] = set()
+    while len(sent_hosts) < host_count and time.time() < deadline:
+        try:
+            result = result_queue.get(timeout=0.5)
+        except queue.Empty:
+            continue
+        if result.get("status") == "sent":
+            sent_hosts.add(int(result["host_id"]))
+    return sent_hosts
+
+
+def _collect_sent_times_after(
+    result_queue: "queue.Queue[dict[str, Any]]",
+    host_count: int,
+    resume_time: float,
+    deadline: float,
+) -> dict[int, float]:
+    sent_after: dict[int, float] = {}
+    while len(sent_after) < host_count and time.time() < deadline:
+        try:
+            result = result_queue.get(timeout=0.5)
+        except queue.Empty:
+            continue
+        if result.get("status") == "sent":
+            sent_time = float(result.get("sent_time", time.time()))
+            host_id = int(result["host_id"])
+            if sent_time >= resume_time and host_id not in sent_after:
+                sent_after[host_id] = sent_time
+    return sent_after
+
+
+_MIN_STAGGER_RATIO = 0.5  # minimum acceptable ratio of observed to expected stagger
+
+
 class TestSchedulerIntegration(unittest.TestCase):
     """Integration tests for scheduler-driven ping timing"""
 
     @patch("paraping.pinger.ping_with_helper")
     @patch("os.path.exists")
-    def test_scheduler_driven_staggering(self, mock_exists, mock_ping):
+    def test_scheduler_driven_staggering(self, mock_exists: MagicMock, mock_ping: MagicMock) -> None:
         """Test that pings are staggered correctly across multiple hosts"""
         mock_exists.return_value = True
         mock_ping.return_value = (50.0, 64)  # 50ms RTT, TTL 64
 
         # Setup
         interval = 1.0
-        hosts = [
+        hosts: list[HostInfo] = [
             {"host": "192.0.2.1", "id": 0},
             {"host": "192.0.2.2", "id": 1},
             {"host": "192.0.2.3", "id": 2},
@@ -59,11 +111,11 @@ class TestSchedulerIntegration(unittest.TestCase):
         for host_info in hosts:
             scheduler.add_host(host_info["host"], host_id=host_info["id"])
 
-        result_queue = queue.Queue()
+        result_queue: "queue.Queue[dict[str, Any]]" = queue.Queue()
         stop_event = threading.Event()
 
         # Start ping workers
-        threads = []
+        threads: list[threading.Thread] = []
         for host_info in hosts:
             thread = threading.Thread(
                 target=scheduler_driven_worker_ping,
@@ -85,7 +137,7 @@ class TestSchedulerIntegration(unittest.TestCase):
             threads.append(thread)
 
         # Collect sent events with timestamps
-        sent_events = []
+        sent_events: list[dict[str, Any]] = []
         base_time = None
         collection_deadline = time.time() + 5.0  # 5 second deadline
 
@@ -133,16 +185,16 @@ class TestSchedulerIntegration(unittest.TestCase):
 
     @patch("paraping.pinger.ping_with_helper")
     @patch("os.path.exists")
-    def test_scheduler_driven_pause_and_stop(self, mock_exists, mock_ping):
+    def test_scheduler_driven_pause_and_stop(self, mock_exists: MagicMock, mock_ping: MagicMock) -> None:
         """Test that pause_event and stop_event work correctly"""
         mock_exists.return_value = True
         mock_ping.return_value = (50.0, 64)
 
-        host_info = {"host": "192.0.2.1", "id": 0}
+        host_info: HostInfo = {"host": "192.0.2.1", "id": 0}
         scheduler = Scheduler(interval=0.2, stagger=0.0)
         scheduler.add_host(host_info["host"], host_id=host_info["id"])
 
-        result_queue = queue.Queue()
+        result_queue: "queue.Queue[dict[str, Any]]" = queue.Queue()
         pause_event = threading.Event()
         stop_event = threading.Event()
         ping_lock = threading.Lock()
@@ -208,17 +260,88 @@ class TestSchedulerIntegration(unittest.TestCase):
 
     @patch("paraping.pinger.ping_with_helper")
     @patch("os.path.exists")
-    def test_scheduler_driven_monotonic_timing(self, mock_exists, mock_ping):
+    def test_scheduler_driven_resume_preserves_stagger(self, mock_exists: MagicMock, mock_ping: MagicMock) -> None:
+        """Resume from pause should preserve stagger spacing between hosts."""
+        mock_exists.return_value = True
+        mock_ping.return_value = (50.0, 64)
+
+        interval = 0.4
+        hosts: list[HostInfo] = [
+            {"host": "192.0.2.1", "id": 0},
+            {"host": "192.0.2.2", "id": 1},
+        ]
+        stagger = interval / len(hosts)
+
+        scheduler = Scheduler(interval=interval, stagger=stagger)
+        ping_lock = threading.Lock()
+        result_queue: "queue.Queue[dict[str, Any]]" = queue.Queue()
+        pause_event = threading.Event()
+        stop_event = threading.Event()
+
+        for host_info in hosts:
+            scheduler.add_host(host_info["host"], host_id=host_info["id"])
+
+        threads: list[threading.Thread] = []
+        for host_info in hosts:
+            thread = threading.Thread(
+                target=scheduler_driven_worker_ping,
+                args=(
+                    host_info,
+                    scheduler,
+                    1.0,
+                    0,  # infinite count
+                    0.5,
+                    pause_event,
+                    stop_event,
+                    result_queue,
+                    "./ping_helper",
+                    ping_lock,
+                ),
+                daemon=True,
+            )
+            thread.start()
+            threads.append(thread)
+
+        initial_sent = _collect_sent_hosts(result_queue, len(hosts), time.time() + 5.0)
+        self.assertEqual(len(initial_sent), len(hosts), "Should receive initial sent events before pause")
+
+        pause_event.set()
+        pause_duration = interval * 2  # pause so next scheduled time is < current time, forcing recomputation
+        time.sleep(pause_duration)
+        _clear_queue(result_queue)
+
+        resume_time = time.time()
+        pause_event.clear()
+
+        sent_after = _collect_sent_times_after(result_queue, len(hosts), resume_time, time.time() + 5.0)
+
+        stop_event.set()
+        for thread in threads:
+            thread.join(timeout=2.0)
+
+        self.assertEqual(len(sent_after), len(hosts), "Should receive sent events after resume")
+
+        sent_times = sorted(sent_after.values())
+        stagger_gap = sent_times[1] - sent_times[0]
+        self.assertGreaterEqual(
+            stagger_gap,
+            stagger * _MIN_STAGGER_RATIO,
+            f"Stagger gap {stagger_gap:.3f}s should remain near {stagger:.3f}s after resume",
+        )
+
+    @patch("paraping.pinger.ping_with_helper")
+    @patch("os.path.exists")
+    def test_scheduler_driven_monotonic_timing(self, mock_exists: MagicMock, mock_ping: MagicMock) -> None:
         """Test that timing uses monotonic clock for accuracy"""
         mock_exists.return_value = True
         mock_ping.return_value = (50.0, 64)
 
-        host_info = {"host": "192.0.2.1", "id": 0}
+        host_info: HostInfo = {"host": "192.0.2.1", "id": 0}
         interval = 0.3
         scheduler = Scheduler(interval=interval, stagger=0.0)
         scheduler.add_host(host_info["host"], host_id=host_info["id"])
 
-        result_queue = queue.Queue()
+        result_queue: "queue.Queue[dict[str, Any]]" = queue.Queue()
         stop_event = threading.Event()
         ping_lock = threading.Lock()
 
