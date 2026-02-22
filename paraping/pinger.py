@@ -294,6 +294,8 @@ def scheduler_driven_ping_host(
                 time.sleep(0.05)
             if paused_during_wait:
                 # Restart the loop to reschedule based on the current time after a pause.
+                with ping_lock:
+                    scheduler.reset_timing(time.time())
                 continue
 
         # Get next scheduled ping time from scheduler
@@ -332,11 +334,18 @@ def scheduler_driven_ping_host(
 
         # Check pause again before sending
         if pause_event is not None:
+            paused_after_wait = False
             while pause_event.is_set():
+                if not paused_after_wait:
+                    paused_after_wait = True
                 if stop_event is not None and stop_event.is_set():
                     result_queue.put({"host_id": host_id, "status": "done"})
                     return
                 time.sleep(0.05)
+            if paused_after_wait:
+                with ping_lock:
+                    scheduler.reset_timing(time.time())
+                continue
 
         # Get next sequence number (enforces max 3 outstanding pings)
         icmp_seq = sequence_tracker.get_next_sequence(host)
