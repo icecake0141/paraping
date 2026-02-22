@@ -82,6 +82,9 @@ def _collect_sent_times_after(
     return sent_after
 
 
+MIN_ACCEPTABLE_STAGGER_RATIO = 0.5  # allow half-stagger tolerance for thread scheduling jitter
+
+
 class TestSchedulerIntegration(unittest.TestCase):
     """Integration tests for scheduler-driven ping timing"""
 
@@ -303,7 +306,7 @@ class TestSchedulerIntegration(unittest.TestCase):
         self.assertEqual(len(initial_sent), len(hosts), "Should receive initial sent events before pause")
 
         pause_event.set()
-        pause_duration = interval * 2  # pause long enough to observe rescheduling for past-due times
+        pause_duration = interval * 2  # pause until scheduled times expire to exercise rescheduling
         time.sleep(pause_duration)
         _clear_queue(result_queue)
 
@@ -320,7 +323,6 @@ class TestSchedulerIntegration(unittest.TestCase):
 
         sent_times = sorted(sent_after.values())
         stagger_gap = sent_times[1] - sent_times[0]
-        MIN_ACCEPTABLE_STAGGER_RATIO = 0.5  # allow half-stagger tolerance for thread scheduling jitter
         self.assertGreaterEqual(
             stagger_gap,
             stagger * MIN_ACCEPTABLE_STAGGER_RATIO,
