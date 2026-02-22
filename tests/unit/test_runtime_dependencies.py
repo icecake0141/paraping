@@ -15,6 +15,8 @@
 import re
 from pathlib import Path
 
+VENV_TARGET = "$(VENV):"
+
 
 def test_default_venv_installs_runtime_requirements() -> None:
     """Ensure default venv setup installs runtime dependencies."""
@@ -23,8 +25,7 @@ def test_default_venv_installs_runtime_requirements() -> None:
     assert requirements_path.is_file(), "requirements.txt not found in repository root."
     contents = makefile_path.read_text(encoding="utf-8")
     lines = contents.splitlines()
-    target_line = "$(VENV):"
-    target_index = next((index for index, line in enumerate(lines) if line.strip() == target_line), None)
+    target_index = next((index for index, line in enumerate(lines) if line.strip() == VENV_TARGET), None)
     assert target_index is not None, "Expected $(VENV) target not found in Makefile."
     recipe_lines = []
     for line in lines[target_index + 1 :]:
