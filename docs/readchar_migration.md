@@ -1,8 +1,24 @@
+<!--
+Copyright 2025 icecake0141
+SPDX-License-Identifier: Apache-2.0
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+This file was created or modified with the assistance of an AI (Large Language Model).
+Review required for correctness, security, and licensing.
+-->
+
 # Keyboard Input Migration to readchar
 
 ## Overview
 
-As of version 1.x, ParaPing has migrated its keyboard input handling from a custom implementation using `select` and `sys.stdin` to the [`readchar`](https://github.com/magmax/python-readchar) library for improved cross-platform reliability and maintainability.
+As of version 1.x, ParaPing migrated keyboard input handling to the [`readchar`](https://github.com/magmax/python-readchar)
+library for cross-platform key definitions, while continuing to read directly from `sys.stdin` to avoid flushing buffered
+input on some terminals.
 
 ## Changes
 
@@ -14,11 +30,10 @@ As of version 1.x, ParaPing has migrated its keyboard input handling from a cust
 - Custom timeout logic with `time.monotonic()`
 - All code in `paraping/input_keys.py`
 
-**After (readchar-based Implementation):**
-- Uses `readchar.readkey()` for reading keyboard input
-- Still uses `select.select()` for non-blocking behavior
-- Simplified escape sequence handling via readchar's built-in constants
-- Maintains backward compatibility for all public APIs
+**After (readchar-assisted Implementation):**
+- Reads input via `sys.stdin.read(1)` with `select.select()` for non-blocking behavior
+- Uses `readchar` key constants and `parse_escape_sequence()` for consistent arrow-key mapping
+- Preserves the public API and escape-sequence compatibility
 
 ### API Compatibility
 
@@ -41,12 +56,13 @@ The public API remains **fully compatible**. No changes are required for existin
 The migration preserves the original non-blocking behavior by:
 
 1. Using `select.select()` with zero timeout to check if input is available
-2. Only calling `readchar.readkey()` when input is ready
-3. Mapping readchar's key constants to ParaPing's naming convention
+2. Reading single bytes directly from `sys.stdin` once input is ready
+3. Mapping arrow key sequences with `parse_escape_sequence()` (and `readchar` constants for compatibility)
 
 ### Sequence Handling
 
-readchar returns full escape sequences as strings (e.g., `"\x1b[A"` for up arrow). The `_map_readchar_key()` function:
+readchar provides key constants that map to escape sequences (e.g., `readchar.key.UP` is `"\x1b[A"`). The
+`_map_readchar_key()` helper:
 
 1. Maps readchar's standard constants (UP, DOWN, LEFT, RIGHT) to arrow key names
 2. Falls back to `parse_escape_sequence()` for non-standard sequences
@@ -55,18 +71,16 @@ readchar returns full escape sequences as strings (e.g., `"\x1b[A"` for up arrow
 
 ### Fallback Behavior
 
-If readchar is not available:
-- `READCHAR_AVAILABLE` flag is set to False
-- Falls back to basic `sys.stdin.read(1)` for single character input
-- Arrow keys won't be recognized in fallback mode
+If readchar is not available, arrow-key constants are unavailable, but direct stdin reads still work for single-byte
+input.
 
 ## Testing
 
-All original tests were updated to work with the readchar implementation:
+All original tests were updated to work with the readchar-assisted implementation:
 
 - 9 tests for `parse_escape_sequence()` - unchanged
-- 11 tests for `read_key()` - updated to mock `readchar.readkey()`
-- Added test for exception handling
+- 11 tests for `read_key()` - updated to mock `sys.stdin.read()`
+- Added test for exception handling and direct-read behavior
 
 Run tests with:
 ```bash
@@ -104,7 +118,7 @@ pip install -r requirements.txt  # For production
 
 ### Known Limitations
 
-1. **Timeout Behavior**: readchar itself is blocking, so we rely on `select.select()` for timeouts
+1. **Timeout Behavior**: Reading escape sequences relies on `select.select()` for timeouts
 2. **No Input Simulation**: Can't easily simulate keypresses without mocking (tests use mocks)
 3. **Terminal Requirements**: Still requires a TTY (checked via `sys.stdin.isatty()`)
 

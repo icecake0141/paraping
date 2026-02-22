@@ -29,11 +29,14 @@ from typing import Generator, Optional
 import readchar
 import readchar.key
 
-
 # Constants for arrow key reading
 # Increased from 0.05 to 0.1 seconds to handle slow terminals/remote connections
 # where escape sequence bytes may arrive with delays (e.g., SSH, RDP, VMs)
 ARROW_KEY_READ_TIMEOUT = 0.1  # Timeout for reading arrow key escape sequences
+# Longest expected escape sequence length (e.g., \x1b[1;5A is 6 characters; allow 2 extra for modifiers/variants).
+MAX_ESCAPE_SEQUENCE_LENGTH = 8
+CSI_INTRODUCER = "["
+SS3_INTRODUCER = "O"
 
 
 @contextlib.contextmanager
@@ -136,6 +139,27 @@ def _map_readchar_key(key_value: str) -> str:
     return key_value
 
 
+def _read_escape_sequence() -> str:
+    """Read additional bytes after an ESC and return parsed arrow keys or raw sequences."""
+    sequence = ""
+    for _ in range(MAX_ESCAPE_SEQUENCE_LENGTH):
+        ready, _, _ = select.select([sys.stdin], [], [], ARROW_KEY_READ_TIMEOUT)
+        if not ready:
+            break
+        next_char = sys.stdin.read(1)
+        if not next_char:
+            break
+        sequence += next_char
+        parsed = parse_escape_sequence(sequence)
+        if parsed:
+            return parsed
+        if sequence and sequence[0] not in (CSI_INTRODUCER, SS3_INTRODUCER):
+            break
+        if len(sequence) > 1 and (sequence[-1].isalpha() or sequence[-1] == "~"):
+            break
+    return "\x1b" + sequence if sequence else "\x1b"
+
+
 def read_key() -> Optional[str]:
     """
     Read a key from stdin, handling multi-byte sequences like arrow keys.
@@ -144,7 +168,7 @@ def read_key() -> Optional[str]:
     'arrow_up', 'arrow_down'. Returns the character for normal keys,
     or None if no input is available.
 
-    This function uses readchar library for improved cross-platform support
+    This function reads directly from stdin to avoid flushing buffered input,
     while maintaining non-blocking behavior through select() with timeout.
     """
     if not sys.stdin.isatty():
@@ -155,10 +179,12 @@ def read_key() -> Optional[str]:
     if not ready:
         return None
 
-    # Input is available, use readchar to read it
     try:
-        key = readchar.readkey()
-        return _map_readchar_key(key)
+        first_char = sys.stdin.read(1)
     except Exception:
-        # Fallback to None if readchar fails
         return None
+    if not first_char:
+        return None
+    if first_char != "\x1b":
+        return first_char
+    return _read_escape_sequence()
