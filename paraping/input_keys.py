@@ -33,6 +33,7 @@ import readchar.key
 # Increased from 0.05 to 0.1 seconds to handle slow terminals/remote connections
 # where escape sequence bytes may arrive with delays (e.g., SSH, RDP, VMs)
 ARROW_KEY_READ_TIMEOUT = 0.1  # Timeout for reading arrow key escape sequences
+MAX_ESCAPE_SEQUENCE_LENGTH = 8  # Longest expected escape sequence length including modifiers
 
 
 @contextlib.contextmanager
@@ -138,7 +139,7 @@ def _map_readchar_key(key_value: str) -> str:
 def _read_escape_sequence() -> str:
     """Read additional bytes after an ESC and return parsed arrow keys or raw sequences."""
     sequence = ""
-    for _ in range(8):
+    for _ in range(MAX_ESCAPE_SEQUENCE_LENGTH):
         ready, _, _ = select.select([sys.stdin], [], [], ARROW_KEY_READ_TIMEOUT)
         if not ready:
             break
@@ -149,7 +150,7 @@ def _read_escape_sequence() -> str:
         parsed = parse_escape_sequence(sequence)
         if parsed:
             return parsed
-        if sequence[0] not in ("[", "O"):
+        if sequence and sequence[0] not in ("[", "O"):
             break
         if len(sequence) > 1 and (sequence[-1].isalpha() or sequence[-1] == "~"):
             break

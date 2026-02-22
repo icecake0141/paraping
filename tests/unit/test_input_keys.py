@@ -41,7 +41,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../.
 import readchar  # noqa: E402
 
 from paraping.input_keys import (  # noqa: E402, isort: skip
-    _map_readchar_key,  # noqa: E402
+    _map_readchar_key,
     parse_escape_sequence,
     read_key,
     terminal_raw_mode,
