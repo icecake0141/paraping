@@ -292,6 +292,7 @@ def scheduler_driven_ping_host(
                     return
                 time.sleep(0.05)
             if paused_during_wait:
+                # Restart the loop to reschedule based on the current time after a pause.
                 continue
 
         # Get next scheduled ping time from scheduler

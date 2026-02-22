@@ -82,7 +82,7 @@ def _collect_sent_times_after(
     return sent_after
 
 
-STAGGER_TOLERANCE_RATIO = 0.5  # allow half-stagger tolerance for thread scheduling jitter
+MIN_STAGGER_RATIO = 0.5  # minimum acceptable ratio of observed to expected stagger
 
 
 class TestSchedulerIntegration(unittest.TestCase):
@@ -325,7 +325,7 @@ class TestSchedulerIntegration(unittest.TestCase):
         stagger_gap = sent_times[1] - sent_times[0]
         self.assertGreaterEqual(
             stagger_gap,
-            stagger * STAGGER_TOLERANCE_RATIO,
+            stagger * MIN_STAGGER_RATIO,
             f"Stagger gap {stagger_gap:.3f}s should remain near {stagger:.3f}s after resume",
         )
 
