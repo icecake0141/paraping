@@ -21,7 +21,7 @@ def test_default_venv_installs_runtime_requirements() -> None:
     contents = makefile_path.read_text(encoding="utf-8")
     lines = contents.splitlines()
     target_line = "$(VENV):"
-    start_index = next((index for index, line in enumerate(lines) if line.startswith(target_line)), None)
+    start_index = next((index for index, line in enumerate(lines) if line.strip() == target_line), None)
     assert start_index is not None, "Expected $(VENV) target not found in Makefile."
     recipe_lines = []
     for line in lines[start_index + 1 :]:
@@ -32,4 +32,4 @@ def test_default_venv_installs_runtime_requirements() -> None:
             continue
         break
     recipe_block = "\n".join(recipe_lines)
-    assert "pip install -r requirements.txt" in recipe_block
+    assert "$(VENV)/bin/pip install -r requirements.txt" in recipe_block
