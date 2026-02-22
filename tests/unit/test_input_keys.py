@@ -421,7 +421,7 @@ class TestReadKeyEdgeCases(unittest.TestCase):
     @patch("paraping.input_keys.select.select")
     @patch("paraping.input_keys.sys.stdin")
     def test_read_key_avoids_readchar_flush(self, mock_stdin: Any, mock_select: Any, _mock_readkey: Any) -> None:
-        """read_key reads directly from stdin so the first keypress is not discarded."""
+        """Regression guard: ensure read_key stays on direct stdin reads (no readchar flush)."""
         mock_stdin.isatty.return_value = True
         mock_select.return_value = ([mock_stdin], [], [])
         mock_stdin.read.return_value = "h"
