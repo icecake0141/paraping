@@ -54,7 +54,7 @@ $(VENV):
 	$(PYTHON) -m venv $(VENV)
 	@echo "Installing runtime dependencies..."
 	$(VENV)/bin/pip install --upgrade pip
-	@# No external dependencies required - paraping uses stdlib only
+	$(VENV)/bin/pip install -r requirements.txt
 	@echo "Virtual environment created at $(VENV)"
 
 # Run paraping with the virtual environment
