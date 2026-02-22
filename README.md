@@ -595,7 +595,15 @@ send_ping()
 - Visual comparison is easier when columns represent the same time offset
 - No drift accumulation even with varying network latency
 
-**Stagger timing:** Optional `stagger` parameter spreads pings across hosts to avoid bursts (e.g., with 0.1s stagger, host 1 pings at t=0.0s, host 2 at t=0.1s, host 3 at t=0.2s, etc.).
+**Stagger timing (per-host ping delay):** ParaPing automatically introduces a small time offset between pings to different hosts to reduce simultaneous ICMP burst load. The stagger value is calculated as `interval / number_of_hosts`, so each host's first ping is delayed by `host_index × stagger` seconds relative to the start:
+
+```
+Host 0: ping at t=0.0s, t=1.0s, t=2.0s, ...
+Host 1: ping at t=0.1s, t=1.1s, t=2.1s, ...  (stagger=0.1s with 10 hosts, 1s interval)
+Host 2: ping at t=0.2s, t=1.2s, t=2.2s, ...
+```
+
+This design ensures that the ICMP traffic is evenly distributed over the interval, preventing all hosts from being pinged at exactly the same instant and reducing peak load on both the monitoring host and the network.
 
 #### Pending Markers & Timeline Synchronization
 ParaPing displays **real-time pending markers** (`-`) to show pings in-flight:

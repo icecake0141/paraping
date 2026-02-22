@@ -117,6 +117,11 @@ class Scheduler:
             else:
                 # Subsequent pings: add interval to last ping time
                 next_time = last_ping + self.interval
+                # If the computed time is in the past (e.g., after a long pause such as
+                # dormant mode), re-anchor to current_time with the host's stagger offset
+                # so that the inter-host spacing is preserved when pinging resumes.
+                if next_time < current_time:
+                    next_time = current_time + (idx * self.stagger)
 
             next_times[host] = next_time
             host_info["next_ping_time"] = next_time

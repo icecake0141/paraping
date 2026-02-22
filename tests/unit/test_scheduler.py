@@ -181,6 +181,34 @@ class TestSchedulerNextPingTimes(unittest.TestCase):
         next_times = scheduler.get_next_ping_times(current_time + 1.0)
         self.assertEqual(next_times["192.0.2.1"], current_time + 2.0)
 
+    def test_next_ping_times_preserves_stagger_after_long_pause(self):
+        """Test that stagger offsets are preserved when resuming after a long pause (e.g., dormant mode)"""
+        scheduler = Scheduler(interval=1.0, stagger=0.1)
+        scheduler.add_host("192.0.2.1")
+        scheduler.add_host("192.0.2.2")
+        scheduler.add_host("192.0.2.3")
+
+        # Simulate initial pings at t=1000
+        start_time = 1000.0
+        next_times = scheduler.get_next_ping_times(start_time)
+        for host in ["192.0.2.1", "192.0.2.2", "192.0.2.3"]:
+            scheduler.mark_ping_sent(host, next_times[host])
+
+        # Simulate a long pause (dormant mode) of 60 seconds
+        resume_time = start_time + 60.0
+
+        # After resuming, stagger should be re-applied relative to resume_time
+        next_times = scheduler.get_next_ping_times(resume_time)
+
+        # All next_times must be >= resume_time (not stuck in the past)
+        for host in ["192.0.2.1", "192.0.2.2", "192.0.2.3"]:
+            self.assertGreaterEqual(next_times[host], resume_time)
+
+        # Stagger offsets should be preserved (host 0: +0.0s, host 1: +0.1s, host 2: +0.2s)
+        self.assertAlmostEqual(next_times["192.0.2.1"], resume_time + 0.0, places=6)
+        self.assertAlmostEqual(next_times["192.0.2.2"], resume_time + 0.1, places=6)
+        self.assertAlmostEqual(next_times["192.0.2.3"], resume_time + 0.2, places=6)
+
 
 class TestSchedulerMarkPingSent(unittest.TestCase):
     """Test cases for marking pings as sent"""
