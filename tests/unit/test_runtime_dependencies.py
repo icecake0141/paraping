@@ -19,4 +19,16 @@ def test_makefile_installs_runtime_requirements() -> None:
     """Ensure default venv setup installs runtime dependencies."""
     makefile_path = Path(__file__).resolve().parents[2] / "Makefile"
     contents = makefile_path.read_text(encoding="utf-8")
-    assert "pip install -r requirements.txt" in contents
+    lines = contents.splitlines()
+    target_line = "$(VENV):"
+    start_index = next(index for index, line in enumerate(lines) if line.startswith(target_line))
+    recipe_lines = []
+    for line in lines[start_index + 1 :]:
+        if line.startswith("\t"):
+            recipe_lines.append(line)
+            continue
+        if line.strip() == "":
+            continue
+        break
+    recipe_block = "\n".join(recipe_lines)
+    assert "pip install -r requirements.txt" in recipe_block
