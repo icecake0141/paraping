@@ -82,10 +82,6 @@ def _collect_sent_times_after(
     return sent_after
 
 
-PAUSE_INTERVAL_MULTIPLIER = 2
-MIN_ACCEPTABLE_STAGGER_RATIO = 0.5
-
-
 class TestSchedulerIntegration(unittest.TestCase):
     """Integration tests for scheduler-driven ping timing"""
 
@@ -307,7 +303,8 @@ class TestSchedulerIntegration(unittest.TestCase):
         self.assertEqual(len(initial_sent), len(hosts), "Should receive initial sent events before pause")
 
         pause_event.set()
-        pause_duration = interval * PAUSE_INTERVAL_MULTIPLIER  # allow scheduled times to pass while paused
+        pause_interval_multiplier = 2
+        pause_duration = interval * pause_interval_multiplier  # ensure scheduled ping times expire while paused
         time.sleep(pause_duration)
         _clear_queue(result_queue)
 
@@ -324,9 +321,10 @@ class TestSchedulerIntegration(unittest.TestCase):
 
         sent_times = sorted(sent_after.values())
         stagger_gap = sent_times[1] - sent_times[0]
+        min_acceptable_stagger_ratio = 0.5
         self.assertGreaterEqual(
             stagger_gap,
-            stagger * MIN_ACCEPTABLE_STAGGER_RATIO,
+            stagger * min_acceptable_stagger_ratio,
             f"Stagger gap {stagger_gap:.3f}s should remain near {stagger:.3f}s after resume",
         )
 
