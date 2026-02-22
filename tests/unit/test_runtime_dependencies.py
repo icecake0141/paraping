@@ -15,7 +15,7 @@
 import re
 from pathlib import Path
 
-VENV_TARGET = "$(VENV)"
+VENV_TARGET_PATTERN = re.compile(r"^\s*\$\(VENV\):\s*$")
 
 
 def test_venv_target_installs_runtime_requirements() -> None:
@@ -25,9 +25,10 @@ def test_venv_target_installs_runtime_requirements() -> None:
     assert requirements_path.is_file(), "requirements.txt not found in repository root."
     contents = makefile_path.read_text(encoding="utf-8")
     lines = contents.splitlines()
-    target_index = next((index for index, line in enumerate(lines) if line.strip().rstrip(":") == VENV_TARGET), None)
+    target_index = next((index for index, line in enumerate(lines) if VENV_TARGET_PATTERN.match(line)), None)
     assert target_index is not None, "Expected $(VENV) target not found in Makefile."
     recipe_lines = []
+    # This parser assumes the Makefile uses tab-indented recipe lines without continuations.
     for line in lines[target_index + 1 :]:
         if line.startswith("\t"):
             recipe_lines.append(line)
