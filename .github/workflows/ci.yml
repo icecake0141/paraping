@@ -26,108 +26,158 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
   pull_request:
-    branches: [ main, master ]
+    branches: [main, master]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
   lint:
+    if: github.actor != 'dependabot[bot]'
     name: Lint Code
     runs-on: ubuntu-latest
     permissions:
       contents: read
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v6
+      - name: Checkout code
+        uses: actions/checkout@v6
 
-    - name: Set up Python
-      uses: actions/setup-python@v6
-      with:
-        python-version: '3.10'
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements-dev.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
 
-    - name: Lint with flake8 (strict)
-      run: |
-        # Stop the build if there are Python syntax errors or undefined names
-        # These are critical errors that must be fixed
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+      - name: Lint with flake8 (strict)
+        run: |
+          # Stop the build if there are Python syntax errors or undefined names
+          # These are critical errors that must be fixed
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
 
-    - name: Lint with flake8 (style - informational)
-      run: |
-        # Report style violations but don't fail the build (yet)
-        # TODO: Fix violations and make this blocking in a future PR
-        # Max line length: 127, max complexity: 10
-        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-      continue-on-error: true
+      - name: Lint with flake8 (style - informational)
+        run: |
+          # Report style violations but don't fail the build (yet)
+          # TODO: Fix violations and make this blocking in a future PR
+          # Max line length: 127, max complexity: 10
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        continue-on-error: true
 
-    - name: Lint with pylint
-      run: |
-        # Run pylint on all Python files
-        # Fail if score is below 9.0/10 (current baseline: 9.11/10)
-        pylint . --fail-under=9.0
+      - name: Lint with pylint
+        run: |
+          # Run pylint on all Python files
+          # Fail if score is below 9.0/10 (current baseline: 9.11/10)
+          pylint . --fail-under=9.0
 
-    - name: Type check with mypy
-      run: |
-        mypy
+      - name: Type check with mypy
+        run: mypy
 
-  test:
-    name: Test Code
+  test-pr:
+    if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
+    name: Test Code (PR)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Run tests with pytest
+        run: |
+          pytest tests/ -v --cov=. --cov-report=term-missing --cov-report=xml --cov-report=html
+
+      - name: Coverage report by module
+        run: |
+          echo "## Coverage by Module" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
+          coverage report >> "$GITHUB_STEP_SUMMARY"
+          echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
+        continue-on-error: true
+
+      - name: Archive coverage HTML report
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage-report-html
+          path: htmlcov/
+          retention-days: 30
+
+  test-push:
+    if: github.event_name == 'push'
+    name: Test Code (Push)
     runs-on: ubuntu-latest
     permissions:
       contents: read
     strategy:
       matrix:
-        python-version: ['3.10', '3.11']
+        python-version: ["3.10", "3.11"]
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v6
-      with:
-        fetch-depth: 0  # Fetch full history for coverage comparison
+      - name: Checkout code
+        uses: actions/checkout@v6
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v6
-      with:
-        python-version: ${{ matrix.python-version }}
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements-dev.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
 
-    - name: Run tests with pytest
-      run: |
-        pytest tests/ -v --cov=. --cov-report=term-missing --cov-report=xml --cov-report=html
+      - name: Run tests with pytest
+        run: |
+          pytest tests/ -v --cov=. --cov-report=term-missing --cov-report=xml --cov-report=html
 
-    - name: Coverage report by module
-      if: matrix.python-version == '3.10'
-      run: |
-        echo "## Coverage by Module" >> $GITHUB_STEP_SUMMARY
-        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-        pytest tests/ --cov=. --cov-report=term --quiet | grep -E "(^Name|^------|^TOTAL|\.py(\s|$))" >> $GITHUB_STEP_SUMMARY || true
-        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+      - name: Upload coverage reports (3.10 only)
+        if: matrix.python-version == '3.10'
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
+        continue-on-error: true
 
-    - name: Upload coverage reports
-      if: matrix.python-version == '3.10'
-      uses: codecov/codecov-action@v5
-      with:
-        files: ./coverage.xml
-        fail_ci_if_error: false
-      continue-on-error: true
-
-    - name: Archive coverage HTML report
-      if: matrix.python-version == '3.10'
-      uses: actions/upload-artifact@v6
-      with:
-        name: coverage-report-html
-        path: htmlcov/
-        retention-days: 30
+      - name: Archive coverage HTML report (3.10 only)
+        if: matrix.python-version == '3.10'
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage-report-html
+          path: htmlcov/
+          retention-days: 30
