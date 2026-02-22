@@ -33,7 +33,7 @@ import readchar.key
 # Increased from 0.05 to 0.1 seconds to handle slow terminals/remote connections
 # where escape sequence bytes may arrive with delays (e.g., SSH, RDP, VMs)
 ARROW_KEY_READ_TIMEOUT = 0.1  # Timeout for reading arrow key escape sequences
-# Longest expected escape sequence length (e.g., \x1b[1;5A is 6 characters; allow headroom for modifiers).
+# Longest expected escape sequence length (e.g., \x1b[1;5A is 6 characters; allow 2 extra for modifiers/variants).
 MAX_ESCAPE_SEQUENCE_LENGTH = 8
 CSI_INTRODUCER = "["
 SS3_INTRODUCER = "O"

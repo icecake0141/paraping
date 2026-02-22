@@ -428,6 +428,7 @@ class TestReadKeyEdgeCases(unittest.TestCase):
 
         result = read_key()
         self.assertEqual(result, "h")
+        _mock_readkey.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
