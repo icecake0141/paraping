@@ -15,13 +15,14 @@
 from pathlib import Path
 
 
-def test_makefile_installs_runtime_requirements() -> None:
+def test_default_venv_installs_runtime_requirements() -> None:
     """Ensure default venv setup installs runtime dependencies."""
     makefile_path = Path(__file__).resolve().parents[2] / "Makefile"
     contents = makefile_path.read_text(encoding="utf-8")
     lines = contents.splitlines()
     target_line = "$(VENV):"
-    start_index = next(index for index, line in enumerate(lines) if line.startswith(target_line))
+    start_index = next((index for index, line in enumerate(lines) if line.startswith(target_line)), None)
+    assert start_index is not None, "Expected $(VENV) target not found in Makefile."
     recipe_lines = []
     for line in lines[start_index + 1 :]:
         if line.startswith("\t"):
