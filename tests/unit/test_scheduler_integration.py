@@ -320,10 +320,10 @@ class TestSchedulerIntegration(unittest.TestCase):
 
         sent_times = sorted(sent_after.values())
         stagger_gap = sent_times[1] - sent_times[0]
-        min_acceptable_stagger_ratio = 0.5  # allow half-stagger tolerance for thread scheduling jitter
+        MIN_ACCEPTABLE_STAGGER_RATIO = 0.5  # allow half-stagger tolerance for thread scheduling jitter
         self.assertGreaterEqual(
             stagger_gap,
-            stagger * min_acceptable_stagger_ratio,
+            stagger * MIN_ACCEPTABLE_STAGGER_RATIO,
             f"Stagger gap {stagger_gap:.3f}s should remain near {stagger:.3f}s after resume",
         )
 
