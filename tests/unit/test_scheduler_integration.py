@@ -278,15 +278,18 @@ class TestSchedulerIntegration(unittest.TestCase):
         pause_event = threading.Event()
         stop_event = threading.Event()
         pause_triggered = threading.Event()
+        pause_trigger_count = 0
         original_get_next_ping_times = scheduler.get_next_ping_times
 
         def get_next_ping_times_with_pause(current_time: Optional[float] = None) -> dict[str, float]:
+            nonlocal pause_trigger_count
             next_times = original_get_next_ping_times(current_time)
             if not pause_triggered.is_set() and all(
                 scheduler.host_data[host]["last_ping_time"] is not None for host in scheduler.hosts
             ):
                 pause_event.set()
                 pause_triggered.set()
+                pause_trigger_count += 1
             return next_times
 
         scheduler.get_next_ping_times = get_next_ping_times_with_pause  # type: ignore[method-assign]
@@ -337,6 +340,7 @@ class TestSchedulerIntegration(unittest.TestCase):
 
         self.assertEqual(len(sent_after), len(hosts), "Should receive sent events after resume")
         self.assertIsNotNone(reset_start_time, "Scheduler should reset start_time after pause")
+        self.assertEqual(pause_trigger_count, 1, "Pause should only trigger once during the test")
         self.assertGreaterEqual(
             cast(float, reset_start_time),
             resume_time,
