@@ -80,6 +80,24 @@ class Scheduler:
         """
         self.stagger = stagger
 
+    def reset_timing(self, current_time: Optional[float] = None) -> None:
+        """
+        Reset the scheduler timing anchors.
+
+        This clears per-host timing data and reanchors the stagger schedule so that
+        the next ping cycle starts fresh (e.g., after dormant pauses).
+
+        Args:
+            current_time: The current time in seconds (uses time.time() if not provided)
+        """
+        if current_time is None:
+            current_time = time.time()
+
+        self.start_time = current_time
+        for host_info in self.host_data.values():
+            host_info["last_ping_time"] = None
+            host_info["next_ping_time"] = None
+
     def get_next_ping_times(self, current_time: Optional[float] = None) -> Dict[str, float]:
         """
         Compute when the next pings should be scheduled for all hosts.

@@ -24,7 +24,7 @@ import sys
 import threading
 import time
 import unittest
-from typing import Any, TypedDict
+from typing import Any, Optional, TypedDict
 from unittest.mock import MagicMock, patch
 
 # Add parent directory to path to import paraping
@@ -277,6 +277,19 @@ class TestSchedulerIntegration(unittest.TestCase):
         result_queue: "queue.Queue[dict[str, Any]]" = queue.Queue()
         pause_event = threading.Event()
         stop_event = threading.Event()
+        pause_triggered = threading.Event()
+        original_get_next_ping_times = scheduler.get_next_ping_times
+
+        def get_next_ping_times_with_pause(current_time: Optional[float] = None) -> dict[str, float]:
+            next_times = original_get_next_ping_times(current_time)
+            if not pause_triggered.is_set() and all(
+                scheduler.host_data[host]["last_ping_time"] is not None for host in scheduler.hosts
+            ):
+                pause_event.set()
+                pause_triggered.set()
+            return next_times
+
+        scheduler.get_next_ping_times = get_next_ping_times_with_pause  # type: ignore[method-assign]
 
         for host_info in hosts:
             scheduler.add_host(host_info["host"], host_id=host_info["id"])
@@ -305,7 +318,7 @@ class TestSchedulerIntegration(unittest.TestCase):
         initial_sent = _collect_sent_hosts(result_queue, len(hosts), time.time() + 5.0)
         self.assertEqual(len(initial_sent), len(hosts), "Should receive initial sent events before pause")
 
-        pause_event.set()
+        self.assertTrue(pause_triggered.wait(timeout=2.0), "Pause should trigger during wait")
         pause_duration = interval * 2  # pause so next scheduled time is < current time, forcing recomputation
         time.sleep(pause_duration)
         _clear_queue(result_queue)
@@ -315,11 +328,21 @@ class TestSchedulerIntegration(unittest.TestCase):
 
         sent_after = _collect_sent_times_after(result_queue, len(hosts), resume_time, time.time() + 5.0)
 
+        with ping_lock:
+            reset_start_time = scheduler.start_time
+
         stop_event.set()
         for thread in threads:
             thread.join(timeout=2.0)
 
         self.assertEqual(len(sent_after), len(hosts), "Should receive sent events after resume")
+        self.assertIsNotNone(reset_start_time, "Scheduler should reset start_time after pause")
+        assert reset_start_time is not None
+        self.assertGreaterEqual(
+            reset_start_time,
+            resume_time,
+            "Scheduler start_time should be reinitialized on resume",
+        )
 
         sent_times = sorted(sent_after.values())
         stagger_gap = sent_times[1] - sent_times[0]
