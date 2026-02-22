@@ -306,7 +306,7 @@ class TestSchedulerIntegration(unittest.TestCase):
         self.assertEqual(len(initial_sent), len(hosts), "Should receive initial sent events before pause")
 
         pause_event.set()
-        pause_duration = interval * 2  # pause until scheduled times expire to exercise rescheduling
+        pause_duration = interval * 2  # pause so next scheduled times are in the past on resume to force rescheduling
         time.sleep(pause_duration)
         _clear_queue(result_queue)
 
