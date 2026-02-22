@@ -12,6 +12,7 @@
 # Review required for correctness, security, and licensing.
 """Tests that runtime dependencies are installed for default setups."""
 
+import re
 from pathlib import Path
 
 
@@ -23,10 +24,10 @@ def test_default_venv_installs_runtime_requirements() -> None:
     contents = makefile_path.read_text(encoding="utf-8")
     lines = contents.splitlines()
     target_line = "$(VENV):"
-    target_start_index = next((index for index, line in enumerate(lines) if line.strip() == target_line), None)
-    assert target_start_index is not None, "Expected $(VENV) target not found in Makefile."
+    target_idx = next((index for index, line in enumerate(lines) if line.strip() == target_line), None)
+    assert target_idx is not None, "Expected $(VENV) target not found in Makefile."
     recipe_lines = []
-    for line in lines[target_start_index + 1 :]:
+    for line in lines[target_idx + 1 :]:
         if line.startswith("\t"):
             recipe_lines.append(line)
             continue
@@ -34,4 +35,5 @@ def test_default_venv_installs_runtime_requirements() -> None:
             continue
         break
     recipe_block = "\n".join(recipe_lines)
-    assert "$(VENV)/bin/pip install -r requirements.txt" in recipe_block
+    pattern = r"\$\(VENV\)/bin/pip\s+install\b[^\n]*requirements\.txt"
+    assert re.search(pattern, recipe_block), "Expected runtime requirements to be installed in $(VENV) target."
