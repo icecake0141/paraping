@@ -41,7 +41,7 @@ class HostInfo(TypedDict):
     id: int
 
 
-def _drain_queue(result_queue: "queue.Queue[dict[str, Any]]") -> None:
+def _clear_queue(result_queue: "queue.Queue[dict[str, Any]]") -> None:
     while not result_queue.empty():
         result_queue.get_nowait()
 
@@ -303,8 +303,9 @@ class TestSchedulerIntegration(unittest.TestCase):
         self.assertEqual(len(initial_sent), len(hosts), "Should receive initial sent events before pause")
 
         pause_event.set()
-        time.sleep(interval * 2)
-        _drain_queue(result_queue)
+        pause_duration = interval * 2  # allow scheduled times to pass while paused
+        time.sleep(pause_duration)
+        _clear_queue(result_queue)
 
         resume_time = time.time()
         pause_event.clear()
@@ -319,9 +320,10 @@ class TestSchedulerIntegration(unittest.TestCase):
 
         sent_times = sorted(sent_after.values())
         stagger_gap = sent_times[1] - sent_times[0]
+        min_stagger_ratio = 0.5
         self.assertGreaterEqual(
             stagger_gap,
-            stagger * 0.5,
+            stagger * min_stagger_ratio,
             f"Stagger gap {stagger_gap:.3f}s should remain near {stagger:.3f}s after resume",
         )
 
