@@ -24,7 +24,7 @@ import sys
 import threading
 import time
 import unittest
-from typing import Any, Optional, TypedDict
+from typing import Any, Optional, TypedDict, cast
 from unittest.mock import MagicMock, patch
 
 # Add parent directory to path to import paraping
@@ -337,9 +337,8 @@ class TestSchedulerIntegration(unittest.TestCase):
 
         self.assertEqual(len(sent_after), len(hosts), "Should receive sent events after resume")
         self.assertIsNotNone(reset_start_time, "Scheduler should reset start_time after pause")
-        assert reset_start_time is not None
         self.assertGreaterEqual(
-            reset_start_time,
+            cast(float, reset_start_time),
             resume_time,
             "Scheduler start_time should be reinitialized on resume",
         )
