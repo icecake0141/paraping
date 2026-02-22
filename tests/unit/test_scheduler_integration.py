@@ -303,7 +303,7 @@ class TestSchedulerIntegration(unittest.TestCase):
         self.assertEqual(len(initial_sent), len(hosts), "Should receive initial sent events before pause")
 
         pause_event.set()
-        pause_interval_multiplier = 2
+        pause_interval_multiplier = 2  # exceed one interval so scheduled times are in the past
         pause_duration = interval * pause_interval_multiplier  # pause long enough to trigger rescheduling logic
         time.sleep(pause_duration)
         _clear_queue(result_queue)
@@ -321,7 +321,7 @@ class TestSchedulerIntegration(unittest.TestCase):
 
         sent_times = sorted(sent_after.values())
         stagger_gap = sent_times[1] - sent_times[0]
-        min_acceptable_stagger_ratio = 0.5  # allow half-stagger tolerance for scheduler jitter
+        min_acceptable_stagger_ratio = 0.5  # allow half-stagger tolerance for thread scheduling jitter
         self.assertGreaterEqual(
             stagger_gap,
             stagger * min_acceptable_stagger_ratio,
