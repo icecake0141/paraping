@@ -1,0 +1,66 @@
+# Copyright 2026 icecake0141
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# This file was created or modified with the assistance of an AI (Large Language Model).
+# Review required for correctness, security, and licensing.
+#
+# Auto-Tag Workflow
+#
+# Triggered on push to master. Reads the version from pyproject.toml and
+# creates + pushes a matching version tag (e.g. v1.0.0) if it does not
+# already exist. Pushing the tag triggers the Release workflow.
+#
+# Equivalent to running manually:
+#   git tag v1.0.0
+#   git push origin v1.0.0
+
+name: Auto Tag
+
+on:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    name: Create version tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Read version from pyproject.toml
+        id: version
+        run: |
+          VERSION=$(python3 - <<'EOF'
+          import tomllib, pathlib
+          data = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
+          print(data["project"]["version"])
+          EOF
+          )
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push tag if absent
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          if git ls-remote --tags origin | grep -q "refs/tags/${TAG}$"; then
+            echo "Tag ${TAG} already exists; nothing to do."
+          else
+            git config user.name  "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag "${TAG}"
+            git push origin "${TAG}"
+            echo "Tag ${TAG} created and pushed."
+          fi
