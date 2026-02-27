@@ -19,7 +19,7 @@ All notable changes to ParaPing will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.0.0] - 2026-02-27
 
 ### Added
 
@@ -139,3 +139,5 @@ if seq is None:
 - **SequenceTracker thread safety** prevents race conditions in concurrent ping operations
 - All new code reviewed for security vulnerabilities
 - No secrets or credentials stored in code
+
+[1.0.0]: https://github.com/icecake0141/paraping/releases/tag/v1.0.0
