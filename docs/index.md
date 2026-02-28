@@ -45,6 +45,7 @@ Welcome to the ParaPing documentation hub. This directory contains comprehensive
 ### For Contributors
 - [Contributing Guidelines](CONTRIBUTING.md) - Development guidelines and PR requirements
 - [Modularization Guide](MODULARIZATION.md) - Module ownership and test organization
+- [v2 Migration Status](v2_migration_status.md) - Completed migration status, compatibility policy, and guardrail tests
 
 ### For Developers
 - [API Documentation](api/index.md) - Module layout and API reference (coming soon)
@@ -113,6 +114,7 @@ ParaPingドキュメントハブへようこそ。このディレクトリには
 ### コントリビューター向け
 - [コントリビューティングガイドライン](CONTRIBUTING.md) - 開発ガイドラインとPR要件
 - [モジュール化ガイド](MODULARIZATION.md) - モジュール所有権とテスト構成
+- [v2移行ステータス](v2_migration_status.md) - 移行完了状況、互換ポリシー、ガードレールテスト
 
 ### 開発者向け
 - [APIドキュメント](api/index.md) - モジュールレイアウトとAPIリファレンス（近日公開）
