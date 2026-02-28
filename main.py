@@ -60,6 +60,40 @@ from paraping.core import (
     read_input_file,
     SNAPSHOT_INTERVAL_SECONDS,
 )
+from paraping.network_asn import asn_worker, resolve_asn, should_retry_asn
+from paraping.pinger import ping_host
+from paraping.stats import compute_summary_data, latest_ttl_value
+from paraping.ui_render import (
+    box_lines,
+    build_activity_indicator,
+    build_ascii_graph,
+    build_colored_sparkline,
+    build_colored_timeline,
+    build_display_entries,
+    build_display_lines,
+    build_display_names,
+    build_sparkline,
+    build_status_line,
+    build_status_metrics,
+    compute_main_layout,
+    compute_panel_sizes,
+    cycle_panel_position,
+    flash_screen,
+    format_display_name,
+    format_timestamp,
+    format_timezone_label,
+    get_terminal_size,
+    render_display,
+    render_fullscreen_rtt_graph,
+    render_help_view,
+    render_host_selection_view,
+    render_square_view,
+    render_status_box,
+    render_summary_view,
+    ring_bell,
+    should_flash_on_fail,
+    toggle_panel_visibility,
+)
 
 # pylint: enable=unused-import
 
@@ -107,6 +141,7 @@ _LAZY_EXPORTS = {
     "format_display_name": ("paraping.ui_render", "format_display_name"),
     "build_display_names": ("paraping.ui_render", "build_display_names"),
 }
+
 
 def __getattr__(name):
     """Lazily resolve backward-compatible exports."""
