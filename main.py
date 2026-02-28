@@ -35,7 +35,8 @@ The main logic has been split into separate modules in the paraping/ package.
 """
 
 # Standard library imports for test compatibility (tests patch these from main module)
-# pylint: disable=unused-import
+# This module is a compatibility shim and intentionally uses lazy/local imports.
+# pylint: disable=unused-import,import-outside-toplevel,no-name-in-module,undefined-all-variable
 # isort: skip_file
 import os
 import queue
