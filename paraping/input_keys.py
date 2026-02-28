@@ -26,8 +26,18 @@ import termios
 import tty
 from typing import Generator, Optional
 
-import readchar
-import readchar.key
+try:
+    import readchar
+    import readchar.key
+except ImportError:  # pragma: no cover - dependency fallback path
+    class _ReadcharFallback:
+        class key:  # type: ignore[override]
+            UP = "<UP>"
+            DOWN = "<DOWN>"
+            LEFT = "<LEFT>"
+            RIGHT = "<RIGHT>"
+
+    readchar = _ReadcharFallback()  # type: ignore[assignment]
 
 # Constants for arrow key reading
 # Increased from 0.05 to 0.1 seconds to handle slow terminals/remote connections

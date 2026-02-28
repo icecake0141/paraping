@@ -33,22 +33,23 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from paraping.config import load_config
 from paraping.core import (
-    HISTORY_DURATION_MINUTES,
-    MAX_HOST_THREADS,
-    SNAPSHOT_INTERVAL_SECONDS,
     _normalize_term_size,
     build_host_infos,
     get_cached_page_step,
     read_input_file,
-    resolve_render_state,
-    update_history_buffer,
-    validate_global_rate_limit,
 )
+from paraping_v2.constants import HISTORY_DURATION_MINUTES, MAX_HOST_THREADS, SNAPSHOT_INTERVAL_SECONDS
 from paraping.input_keys import read_key
 from paraping.network_asn import asn_worker, should_retry_asn
 from paraping.pinger import rdns_worker, scheduler_driven_worker_ping
-from paraping.scheduler import Scheduler
-from paraping.sequence_tracker import SequenceTracker
+from paraping_v2.engine import MonitorState
+from paraping_v2.history import update_history_buffer_v2
+from paraping_v2.legacy_adapter import project_legacy_state_from_v2
+from paraping_v2.rate_limit import validate_global_rate_limit
+from paraping_v2.render_state import resolve_v2_render_state
+from paraping_v2.scheduler import Scheduler
+from paraping_v2.sequence_tracker import SequenceTracker
+from paraping_v2.shadow import apply_shadow_v2_event
 from paraping.ui_render import (
     build_display_entries,
     build_display_lines,
@@ -350,28 +351,6 @@ def _setup_hosts_and_state(args: argparse.Namespace) -> Optional[Dict[str, Any]]
     host_infos, host_info_map = build_host_infos(all_hosts)
     host_labels = [info["alias"] for info in host_infos]
     timeline_width = _compute_initial_timeline_width(host_labels, get_terminal_size(fallback=(80, 24)), panel_position)
-    buffers: Dict[int, Dict[str, Any]] = {
-        info["id"]: {
-            "timeline": deque(maxlen=timeline_width),
-            "rtt_history": deque(maxlen=timeline_width),
-            "time_history": deque(maxlen=timeline_width),
-            "ttl_history": deque(maxlen=timeline_width),
-            "categories": {status: deque(maxlen=timeline_width) for status in symbols},
-        }
-        for info in host_infos
-    }
-    stats: Dict[int, Dict[str, Any]] = {
-        info["id"]: {
-            "success": 0,
-            "fail": 0,
-            "slow": 0,
-            "total": 0,
-            "rtt_sum": 0.0,
-            "rtt_sum_sq": 0.0,
-            "rtt_count": 0,
-        }
-        for info in host_infos
-    }
     return {
         "all_hosts": all_hosts,
         "display_tz": display_tz,
@@ -383,8 +362,9 @@ def _setup_hosts_and_state(args: argparse.Namespace) -> Optional[Dict[str, Any]]
         "symbols": symbols,
         "host_infos": host_infos,
         "host_info_map": host_info_map,
-        "buffers": buffers,
-        "stats": stats,
+        # Shadow state for incremental v2 migration. This does not affect
+        # rendering yet; it only mirrors ping events for parity validation.
+        "v2_state": MonitorState(host_ids=[info["id"] for info in host_infos], timeline_width=timeline_width),
         "result_queue": queue.Queue(),
     }
 
@@ -401,13 +381,8 @@ def _handle_user_input(key: str, args: argparse.Namespace, state: Dict[str, Any]
         state["updated"] = True
         skip_iteration = True
     elif state["host_select_active"]:
-        render_buffers, render_stats, _ = resolve_render_state(
-            state["history_offset"],
-            state["history_buffer"],
-            state["buffers"],
-            state["stats"],
-            state["paused"],
-        )
+        render_buffers = state["render_buffers"]
+        render_stats = state["render_stats"]
         term_size = get_terminal_size(fallback=(80, 24))
         include_asn = should_show_asn(
             state["host_infos"],
@@ -560,8 +535,8 @@ def _handle_user_input(key: str, args: argparse.Namespace, state: Dict[str, Any]
         snapshot_name = now_utc.astimezone(state["snapshot_tz"]).strftime("paraping_snapshot_%Y%m%d_%H%M%S.txt")
         snapshot_lines = build_display_lines(
             state["host_infos"],
-            state["buffers"],
-            state["stats"],
+            state["render_buffers"],
+            state["render_stats"],
             state["symbols"],
             state["panel_position"],
             state["modes"][state["mode_index"]],
@@ -572,7 +547,7 @@ def _handle_user_input(key: str, args: argparse.Namespace, state: Dict[str, Any]
             args.slow_threshold,
             state["show_help"],
             state["show_asn"],
-            state["paused"],
+            state["render_paused"],
             state["status_message"],
             format_timestamp(now_utc, state["display_tz"]),
             now_utc,
@@ -586,13 +561,13 @@ def _handle_user_input(key: str, args: argparse.Namespace, state: Dict[str, Any]
         state["status_message"] = f"Saved: {snapshot_name}"
         state["updated"] = True
     elif key == "arrow_left":
-        if state["history_offset"] < len(state["history_buffer"]) - 1:
+        if state["v2_history_offset"] < len(state["v2_history_buffer"]) - 1:
             page_step, state["cached_page_step"], state["last_term_size"] = get_cached_page_step(
                 state["cached_page_step"],
                 state["last_term_size"],
                 state["host_infos"],
-                state["buffers"],
-                state["stats"],
+                state["render_buffers"],
+                state["render_stats"],
                 state["symbols"],
                 state["panel_position"],
                 state["modes"][state["mode_index"]],
@@ -601,19 +576,20 @@ def _handle_user_input(key: str, args: argparse.Namespace, state: Dict[str, Any]
                 args.slow_threshold,
                 state["show_asn"],
             )
-            state["history_offset"] = min(state["history_offset"] + page_step, len(state["history_buffer"]) - 1)
+            state["v2_history_offset"] = min(state["v2_history_offset"] + page_step, len(state["v2_history_buffer"]) - 1)
             state["force_render"] = True
             state["updated"] = True
-            snapshot = state["history_buffer"][-(state["history_offset"] + 1)]
-            state["status_message"] = f"Viewing {int(time.time() - snapshot['timestamp'])}s ago"
+            if 0 < state["v2_history_offset"] <= len(state["v2_history_buffer"]):
+                snapshot = state["v2_history_buffer"][-(state["v2_history_offset"] + 1)]
+                state["status_message"] = f"Viewing {int(time.time() - snapshot['timestamp'])}s ago"
     elif key == "arrow_right":
-        if state["history_offset"] > 0:
+        if state["v2_history_offset"] > 0:
             page_step, state["cached_page_step"], state["last_term_size"] = get_cached_page_step(
                 state["cached_page_step"],
                 state["last_term_size"],
                 state["host_infos"],
-                state["buffers"],
-                state["stats"],
+                state["render_buffers"],
+                state["render_stats"],
                 state["symbols"],
                 state["panel_position"],
                 state["modes"][state["mode_index"]],
@@ -622,21 +598,18 @@ def _handle_user_input(key: str, args: argparse.Namespace, state: Dict[str, Any]
                 args.slow_threshold,
                 state["show_asn"],
             )
-            state["history_offset"] = max(0, state["history_offset"] - page_step)
+            state["v2_history_offset"] = max(0, state["v2_history_offset"] - page_step)
             state["force_render"] = True
             state["updated"] = True
-            if state["history_offset"] == 0:
+            if state["v2_history_offset"] == 0:
                 state["status_message"] = "Returned to LIVE view"
             else:
-                snapshot = state["history_buffer"][-(state["history_offset"] + 1)]
-                state["status_message"] = f"Viewing {int(time.time() - snapshot['timestamp'])}s ago"
+                if 0 < state["v2_history_offset"] <= len(state["v2_history_buffer"]):
+                    snapshot = state["v2_history_buffer"][-(state["v2_history_offset"] + 1)]
+                    state["status_message"] = f"Viewing {int(time.time() - snapshot['timestamp'])}s ago"
     elif key in ("arrow_up", "arrow_down"):
-        scroll_buffers = state["buffers"]
-        scroll_stats = state["stats"]
-        if 0 < state["history_offset"] <= len(state["history_buffer"]):
-            snapshot = state["history_buffer"][-(state["history_offset"] + 1)]
-            scroll_buffers = snapshot["buffers"]
-            scroll_stats = snapshot["stats"]
+        scroll_buffers = state["render_buffers"]
+        scroll_stats = state["render_stats"]
         max_offset, visible_hosts, total_hosts = compute_host_scroll_bounds(
             state["host_infos"],
             scroll_buffers,
@@ -716,45 +689,7 @@ def _update_render_state(state: Dict[str, Any]) -> None:
             continue
 
         status = result["status"]
-        host_buf = state["buffers"][host_id]
-        if status == "sent":
-            host_buf["timeline"].append(state["symbols"]["pending"])
-            host_buf["rtt_history"].append(None)
-            host_buf["time_history"].append(result.get("sent_time", time.time()))
-            host_buf["ttl_history"].append(None)
-            host_buf["categories"]["pending"].append(result["sequence"])
-            if not state["paused"]:
-                state["updated"] = True
-            continue
-
-        try:
-            last_symbol = host_buf["timeline"][-1]
-        except IndexError:
-            last_symbol = None
-
-        if last_symbol == state["symbols"].get("pending"):
-            host_buf["timeline"][-1] = state["symbols"][status]
-            host_buf["rtt_history"][-1] = result.get("rtt")
-            host_buf["time_history"][-1] = time.time()
-            host_buf["ttl_history"][-1] = result.get("ttl")
-            try:
-                state["buffers"][host_id]["categories"]["pending"].pop()
-            except IndexError:
-                pass
-            host_buf["categories"][status].append(result["sequence"])
-        else:
-            host_buf["timeline"].append(state["symbols"][status])
-            host_buf["rtt_history"].append(result.get("rtt"))
-            host_buf["time_history"].append(time.time())
-            host_buf["ttl_history"].append(result.get("ttl"))
-            host_buf["categories"][status].append(result["sequence"])
-
-        state["stats"][host_id][status] += 1
-        state["stats"][host_id]["total"] += 1
-        if result.get("rtt") is not None:
-            state["stats"][host_id]["rtt_sum"] += result["rtt"]
-            state["stats"][host_id]["rtt_sum_sq"] += result["rtt"] ** 2
-            state["stats"][host_id]["rtt_count"] += 1
+        apply_shadow_v2_event(state["v2_state"], result, status, host_id)
         if should_flash_on_fail(status, state["flash_on_fail"], state["show_help"]):
             flash_screen()
         if status == "fail" and state["bell_on_fail"] and not state["show_help"]:
@@ -763,21 +698,20 @@ def _update_render_state(state: Dict[str, Any]) -> None:
             state["updated"] = True
 
     now = time.time()
-    state["last_snapshot_time"], state["history_offset"] = update_history_buffer(
-        state["history_buffer"],
-        state["buffers"],
-        state["stats"],
+    state["v2_last_snapshot_time"], state["v2_history_offset"] = update_history_buffer_v2(
+        state["v2_history_buffer"],
+        state["v2_state"],
         now,
-        state["last_snapshot_time"],
-        state["history_offset"],
+        state["v2_last_snapshot_time"],
+        state["v2_history_offset"],
     )
-    state["render_buffers"], state["render_stats"], state["render_paused"] = resolve_render_state(
-        state["history_offset"],
-        state["history_buffer"],
-        state["buffers"],
-        state["stats"],
+    render_v2_state, state["render_paused"], state["render_snapshot_timestamp"] = resolve_v2_render_state(
+        state["v2_history_offset"],
+        state["v2_history_buffer"],
+        state["v2_state"],
         state["paused"],
     )
+    state["render_buffers"], state["render_stats"] = project_legacy_state_from_v2(render_v2_state, state["symbols"])
 
 
 def _render_frame(args: argparse.Namespace, state: Dict[str, Any]) -> None:
@@ -789,9 +723,9 @@ def _render_frame(args: argparse.Namespace, state: Dict[str, Any]) -> None:
     if not should_render:
         return
     display_timestamp = format_timestamp(datetime.now(timezone.utc), state["display_tz"])
-    if 0 < state["history_offset"] <= len(state["history_buffer"]):
-        snapshot = state["history_buffer"][-(state["history_offset"] + 1)]
-        snapshot_dt = datetime.fromtimestamp(snapshot["timestamp"], timezone.utc)
+    snapshot_timestamp = state.get("render_snapshot_timestamp")
+    if snapshot_timestamp is not None:
+        snapshot_dt = datetime.fromtimestamp(snapshot_timestamp, timezone.utc)
         display_timestamp = format_timestamp(snapshot_dt, state["display_tz"])
     max_offset, _visible_hosts, _total_hosts = compute_host_scroll_bounds(
         state["host_infos"],
@@ -906,6 +840,7 @@ def run(args: argparse.Namespace) -> None:
         f"ParaPing - Pinging {len(setup['all_hosts'])} host(s) with timeout={args.timeout}s, "
         f"count={count_label}, interval={args.interval}s, slow-threshold={args.slow_threshold}s"
     )
+    initial_render_buffers, initial_render_stats = project_legacy_state_from_v2(setup["v2_state"], setup["symbols"])
     state = {
         **setup,
         "modes": ["ip", "rdns", "alias"],
@@ -939,12 +874,16 @@ def run(args: argparse.Namespace) -> None:
         "host_select_active": False,
         "host_select_index": 0,
         "graph_host_id": None,
-        "history_buffer": deque(maxlen=int(HISTORY_DURATION_MINUTES * 60 / SNAPSHOT_INTERVAL_SECONDS)),
-        "history_offset": 0,
-        "last_snapshot_time": 0.0,
+        "v2_history_buffer": deque(maxlen=int(HISTORY_DURATION_MINUTES * 60 / SNAPSHOT_INTERVAL_SECONDS)),
+        "v2_history_offset": 0,
+        "v2_last_snapshot_time": 0.0,
         "cached_page_step": None,
         "last_term_size": None,
         "host_scroll_offset": 0,
+        "render_buffers": initial_render_buffers,
+        "render_stats": initial_render_stats,
+        "render_snapshot_timestamp": None,
+        "render_paused": False,
         "completed_hosts": 0,
         "updated": True,
         "last_render": 0.0,
@@ -1043,10 +982,11 @@ def run(args: argparse.Namespace) -> None:
     print("=" * 60)
     for info in state["host_infos"]:
         host_id = info["id"]
-        success = state["stats"][host_id]["success"]
-        slow = state["stats"][host_id]["slow"]
-        fail = state["stats"][host_id]["fail"]
-        total = state["stats"][host_id]["total"]
+        host_stats = state["v2_state"].stats[host_id]
+        success = host_stats.success
+        slow = host_stats.slow
+        fail = host_stats.fail
+        total = host_stats.total
         percentage = (success / total * 100) if total > 0 else 0
         status = "OK" if success > 0 else "FAILED"
         print(f"{info['alias']:30} {success}/{total} replies, {slow} slow, {fail} failed " f"({percentage:.1f}%) [{status}]")

@@ -29,8 +29,8 @@ from queue import Queue
 from typing import Any, Dict, Iterator, Optional, Tuple
 
 from paraping.ping_wrapper import PingHelperError, ping_with_helper
-from paraping.scheduler import Scheduler
-from paraping.sequence_tracker import SequenceTracker
+from paraping_v2.scheduler import Scheduler
+from paraping_v2.sequence_tracker import SequenceTracker
 
 logger = logging.getLogger(__name__)
 
