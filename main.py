@@ -50,90 +50,15 @@ from concurrent.futures import ThreadPoolExecutor
 # pylint: enable=unused-import
 
 # Import and re-export from the refactored modules
-from paraping.cli import handle_options, run
-from paraping.cli import main as cli_main
 from paraping.core import (
-    HISTORY_DURATION_MINUTES,
-    MAX_HOST_THREADS,
-    SNAPSHOT_INTERVAL_SECONDS,
     build_host_infos,
     compute_history_page_step,
-    create_state_snapshot,
     get_cached_page_step,
+    HISTORY_DURATION_MINUTES,
+    MAX_HOST_THREADS,
     parse_host_file_line,
     read_input_file,
-    resolve_render_state,
-    update_history_buffer,
-)
-from paraping.input_keys import parse_escape_sequence, read_key
-from paraping.network_asn import asn_worker, resolve_asn, should_retry_asn
-
-# Re-export symbols from other modules for backward compatibility
-from paraping.ping_wrapper import ping_with_helper
-from paraping.pinger import ping_host, rdns_worker, resolve_rdns, worker_ping
-from paraping.stats import (
-    build_streak_label,
-    build_summary_all_suffix,
-    build_summary_suffix,
-    compute_fail_streak,
-    compute_summary_data,
-    latest_rtt_value,
-    latest_ttl_value,
-)
-from paraping.ui_render import (
-    box_lines,
-    build_activity_indicator,
-    build_ascii_graph,
-    build_colored_sparkline,
-    build_colored_timeline,
-    build_display_entries,
-    build_display_lines,
-    build_display_names,
-    build_sparkline,
-    build_status_metrics,
-    build_status_line,
-    can_render_full_summary,
-    colorize_text,
-    compute_activity_indicator_width,
-    compute_host_scroll_bounds,
-    compute_main_layout,
-    compute_panel_sizes,
-    cycle_panel_position,
-    flash_screen,
-    format_asn_label,
-    format_display_name,
-    format_status_line,
-    format_summary_line,
-    format_timestamp,
-    format_timezone_label,
-    get_terminal_size,
-    latest_status_from_timeline,
-    pad_lines,
-    pad_visible,
-    prepare_terminal_for_exit,
-    render_display,
-    render_fullscreen_rtt_graph,
-    render_help_view,
-    render_host_selection_view,
-    render_main_view,
-    render_sparkline_view,
-    render_square_view,
-    render_status_box,
-    render_summary_view,
-    render_timeline_view,
-    resample_values,
-    resize_buffers,
-    resolve_boxed_dimensions,
-    resolve_display_name,
-    ring_bell,
-    rjust_visible,
-    should_flash_on_fail,
-    should_show_asn,
-    status_from_symbol,
-    strip_ansi,
-    toggle_panel_visibility,
-    truncate_visible,
-    visible_len,
+    SNAPSHOT_INTERVAL_SECONDS,
 )
 
 # pylint: enable=unused-import
@@ -141,83 +66,138 @@ from paraping.ui_render import (
 _TEST_PATCH_REFS = (os, queue, select, socket, sys, termios, threading, tty, ThreadPoolExecutor)
 # Keep references for tests that patch main.<module> symbols.
 
+_LAZY_EXPORTS = {
+    # Network ASN (kept for compatibility)
+    "resolve_asn": ("paraping.network_asn", "resolve_asn"),
+    "asn_worker": ("paraping.network_asn", "asn_worker"),
+    "should_retry_asn": ("paraping.network_asn", "should_retry_asn"),
+    # Pinger
+    "ping_host": ("paraping.pinger", "ping_host"),
+    # Stats
+    "latest_ttl_value": ("paraping.stats", "latest_ttl_value"),
+    "compute_summary_data": ("paraping.stats", "compute_summary_data"),
+    # UI
+    "build_colored_timeline": ("paraping.ui_render", "build_colored_timeline"),
+    "build_colored_sparkline": ("paraping.ui_render", "build_colored_sparkline"),
+    "build_activity_indicator": ("paraping.ui_render", "build_activity_indicator"),
+    "get_terminal_size": ("paraping.ui_render", "get_terminal_size"),
+    "build_status_metrics": ("paraping.ui_render", "build_status_metrics"),
+    "compute_main_layout": ("paraping.ui_render", "compute_main_layout"),
+    "compute_panel_sizes": ("paraping.ui_render", "compute_panel_sizes"),
+    "box_lines": ("paraping.ui_render", "box_lines"),
+    "build_sparkline": ("paraping.ui_render", "build_sparkline"),
+    "build_ascii_graph": ("paraping.ui_render", "build_ascii_graph"),
+    "build_status_line": ("paraping.ui_render", "build_status_line"),
+    "build_display_entries": ("paraping.ui_render", "build_display_entries"),
+    "render_square_view": ("paraping.ui_render", "render_square_view"),
+    "render_summary_view": ("paraping.ui_render", "render_summary_view"),
+    "render_help_view": ("paraping.ui_render", "render_help_view"),
+    "render_host_selection_view": ("paraping.ui_render", "render_host_selection_view"),
+    "render_fullscreen_rtt_graph": ("paraping.ui_render", "render_fullscreen_rtt_graph"),
+    "render_status_box": ("paraping.ui_render", "render_status_box"),
+    "build_display_lines": ("paraping.ui_render", "build_display_lines"),
+    "render_display": ("paraping.ui_render", "render_display"),
+    "format_timezone_label": ("paraping.ui_render", "format_timezone_label"),
+    "format_timestamp": ("paraping.ui_render", "format_timestamp"),
+    "flash_screen": ("paraping.ui_render", "flash_screen"),
+    "ring_bell": ("paraping.ui_render", "ring_bell"),
+    "should_flash_on_fail": ("paraping.ui_render", "should_flash_on_fail"),
+    "toggle_panel_visibility": ("paraping.ui_render", "toggle_panel_visibility"),
+    "cycle_panel_position": ("paraping.ui_render", "cycle_panel_position"),
+    "format_display_name": ("paraping.ui_render", "format_display_name"),
+    "build_display_names": ("paraping.ui_render", "build_display_names"),
+}
+
+def __getattr__(name):
+    """Lazily resolve backward-compatible exports."""
+    if name in _LAZY_EXPORTS:
+        module_name, attr_name = _LAZY_EXPORTS[name]
+        module = __import__(module_name, fromlist=[attr_name])
+        value = getattr(module, attr_name)
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+
+
+def __dir__():
+    """Include lazy exports in module introspection."""
+    return sorted(set(globals().keys()) | set(_LAZY_EXPORTS.keys()) | set(__all__))
+
+
+def handle_options():
+    """Compatibility wrapper that lazily imports CLI option parsing."""
+    from paraping.cli import handle_options as _handle_options
+
+    return _handle_options()
+
+
+def run(args):
+    """Compatibility wrapper that lazily imports CLI runtime."""
+    from paraping.cli import run as _run
+
+    return _run(args)
+
+
+def cli_main():
+    """Compatibility wrapper that lazily imports CLI main entrypoint."""
+    from paraping.cli import main as _cli_main
+
+    return _cli_main()
+
+
+def parse_escape_sequence(seq):
+    """Compatibility wrapper for escape-sequence parsing."""
+    from paraping.input_keys import parse_escape_sequence as _parse_escape_sequence
+
+    return _parse_escape_sequence(seq)
+
+
+def read_key():
+    """Compatibility wrapper for key reading."""
+    from paraping.input_keys import read_key as _read_key
+
+    return _read_key()
+
 
 # Explicitly define what's exported for backward compatibility
 __all__ = [
-    # CLI functions
+    # CLI/core compatibility
     "handle_options",
     "main",
     "run",
     "cli_main",
-    # Core functions
     "read_input_file",
     "parse_host_file_line",
     "compute_history_page_step",
     "get_cached_page_step",
     "build_host_infos",
-    "create_state_snapshot",
-    "update_history_buffer",
-    "resolve_render_state",
-    # Constants
     "MAX_HOST_THREADS",
     "HISTORY_DURATION_MINUTES",
     "SNAPSHOT_INTERVAL_SECONDS",
-    # Pinger functions
+    # Network/pinger
     "ping_host",
-    "worker_ping",
-    "resolve_rdns",
-    "rdns_worker",
-    # Ping wrapper
-    "ping_with_helper",
-    # Network ASN
     "resolve_asn",
     "asn_worker",
     "should_retry_asn",
-    # Input keys
+    # Input
     "parse_escape_sequence",
     "read_key",
-    # Stats
-    "compute_fail_streak",
+    # Stats/UI compatibility surface used by tests and external callers
     "latest_ttl_value",
-    "latest_rtt_value",
-    "build_streak_label",
-    "build_summary_suffix",
-    "build_summary_all_suffix",
     "compute_summary_data",
-    # UI render
-    "strip_ansi",
-    "visible_len",
-    "truncate_visible",
-    "pad_visible",
-    "rjust_visible",
-    "colorize_text",
-    "status_from_symbol",
-    "latest_status_from_timeline",
     "build_colored_timeline",
     "build_colored_sparkline",
     "build_activity_indicator",
-    "compute_activity_indicator_width",
     "get_terminal_size",
     "build_status_metrics",
     "compute_main_layout",
     "compute_panel_sizes",
-    "resolve_boxed_dimensions",
-    "compute_host_scroll_bounds",
-    "pad_lines",
     "box_lines",
-    "resize_buffers",
     "build_sparkline",
     "build_ascii_graph",
-    "resample_values",
-    "can_render_full_summary",
-    "format_summary_line",
-    "format_status_line",
     "build_status_line",
     "build_display_entries",
-    "render_timeline_view",
-    "render_sparkline_view",
     "render_square_view",
-    "render_main_view",
     "render_summary_view",
     "render_help_view",
     "render_host_selection_view",
@@ -227,15 +207,11 @@ __all__ = [
     "render_display",
     "format_timezone_label",
     "format_timestamp",
-    "prepare_terminal_for_exit",
     "flash_screen",
     "ring_bell",
     "should_flash_on_fail",
     "toggle_panel_visibility",
     "cycle_panel_position",
-    "should_show_asn",
-    "resolve_display_name",
-    "format_asn_label",
     "format_display_name",
     "build_display_names",
 ]

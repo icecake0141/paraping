@@ -14,13 +14,22 @@ Review required for correctness, security, and licensing.
 
 # ParaPing Modularization Guide
 
-**Last Updated**: 2026-01-20
-**Status**: Active - Reflects Completed Refactoring
+**Last Updated**: 2026-02-28
+**Status**: Historical (Pre-v2 snapshot)
 **Related**: Original Issue #94 (Follow-up to PR #93)
+
+> **Migration Note (2026-02-28)**: This document describes the package split from the
+> original monolithic `main.py`, but parts of the runtime ownership described below
+> were superseded by the v2 rewrite (`paraping_v2/*`). For current runtime ownership,
+> compatibility policy, and remaining migration targets, see
+> [docs/v2_migration_status.md](v2_migration_status.md).
 
 > **Note**: Line counts, coverage percentages, and line number references in this document reflect the state of the codebase as of the "Last Updated" date. As the codebase evolves, these specific numbers may become outdated. Refer to actual coverage reports (`pytest --cov`) for current statistics.
 
 ## Overview
+
+> **Scope Warning**: treat this as historical modularization context. It should not be
+> used as the source of truth for current state/history/render flow.
 
 This document provides guidance on the modularization of ParaPing, documenting the completed separation of concerns from the original monolithic `main.py` into a well-organized package structure (`paraping/`) with dedicated modules having clear responsibilities and ownership boundaries.
 

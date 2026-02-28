@@ -37,6 +37,8 @@ Review required for correctness, security, and licensing.
 
 ### Backward Compatibility / Migration Notes
 <!-- Note any breaking changes or migration steps required -->
+- If this PR touches runtime state/history flow, reference `docs/v2_migration_status.md`
+  and state whether compatibility shims were added, removed, or left unchanged.
 
 ## LLM Contribution Disclosure
 
@@ -164,6 +166,7 @@ Expected: All hooks pass
 - [ ] Documentation updated in docs/ (if applicable)
 - [ ] API docs updated (if applicable)
 - [ ] Examples/quick-start updated (if applicable)
+- [ ] If runtime state/history changed: `docs/v2_migration_status.md` updated
 
 ### Git Hygiene
 - [ ] Commit messages follow repository conventions
@@ -243,6 +246,8 @@ Expected: All hooks pass
 
 ### 後方互換性/移行に関する注意事項
 <!-- 破壊的変更や必要な移行手順があれば記載してください -->
+- このPRが実行時の状態/履歴フローに触れる場合は `docs/v2_migration_status.md`
+  を参照し、互換シムを追加・削除・据え置きのどれにしたか明記してください。
 
 ## LLM貢献の開示
 
@@ -374,6 +379,7 @@ pre-commit run --all-files
 - [ ] docs/のドキュメントを更新（該当する場合）
 - [ ] APIドキュメントを更新（該当する場合）
 - [ ] 例/クイックスタートを更新（該当する場合）
+- [ ] 状態/履歴フローを変更した場合：`docs/v2_migration_status.md` を更新
 
 ### Git衛生管理
 
