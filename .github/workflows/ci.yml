@@ -130,7 +130,7 @@ jobs:
         continue-on-error: true
 
       - name: Archive coverage HTML report
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report-html
           path: htmlcov/
@@ -176,7 +176,7 @@ jobs:
 
       - name: Archive coverage HTML report (3.10 only)
         if: matrix.python-version == '3.10'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report-html
           path: htmlcov/
