@@ -66,13 +66,45 @@ jobs:
             const tag = '${{ steps.version.outputs.tag }}';
             const version = '${{ steps.version.outputs.version }}';
             const body = fs.readFileSync('/tmp/release_body.md', 'utf8').trim();
-
-            await github.rest.repos.createRelease({
+            const params = {
               owner: context.repo.owner,
               repo: context.repo.repo,
               tag_name: tag,
               name: `v${version}`,
-              body: body,
+              body,
               draft: false,
               prerelease: false,
-            });
+            };
+
+            try {
+              await github.rest.repos.createRelease(params);
+              core.info(`Created release for ${tag}`);
+            } catch (error) {
+              const isAlreadyExists =
+                error.status === 422 &&
+                Array.isArray(error.response?.data?.errors) &&
+                error.response.data.errors.some(
+                  (e) => e.resource === 'Release' && e.code === 'already_exists' && e.field === 'tag_name',
+                );
+
+              if (!isAlreadyExists) {
+                throw error;
+              }
+
+              const existing = await github.rest.repos.getReleaseByTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag,
+              });
+
+              await github.rest.repos.updateRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                release_id: existing.data.id,
+                name: params.name,
+                body: params.body,
+                draft: params.draft,
+                prerelease: params.prerelease,
+              });
+              core.info(`Updated existing release for ${tag}`);
+            }
