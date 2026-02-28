@@ -3,10 +3,10 @@
 import time
 from typing import Any, Dict
 
-from paraping_v2.domain import PingEvent
+from paraping_v2.domain import PingEvent, PingStatus
 
 
-def apply_shadow_v2_event(v2_state: Any, result: Dict[str, Any], status: str, host_id: int) -> None:
+def apply_shadow_v2_event(v2_state: Any, result: Dict[str, Any], status: PingStatus, host_id: int) -> None:
     """
     Mirror one ping event into v2 state.
 

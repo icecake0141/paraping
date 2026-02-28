@@ -31,7 +31,7 @@ try:
     import readchar.key
 except ImportError:  # pragma: no cover - dependency fallback path
     class _ReadcharFallback:
-        class key:  # type: ignore[override]
+        class key:
             UP = "<UP>"
             DOWN = "<DOWN>"
             LEFT = "<LEFT>"

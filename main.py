@@ -159,8 +159,8 @@ def read_key():
     return _read_key()
 
 
-# Explicitly define what's exported for backward compatibility
-__all__ = [
+# Explicitly define eagerly-bound exports for backward compatibility.
+_EAGER_EXPORTS = [
     # CLI/core compatibility
     "handle_options",
     "main",
@@ -174,47 +174,13 @@ __all__ = [
     "MAX_HOST_THREADS",
     "HISTORY_DURATION_MINUTES",
     "SNAPSHOT_INTERVAL_SECONDS",
-    # Network/pinger
-    "ping_host",
-    "resolve_asn",
-    "asn_worker",
-    "should_retry_asn",
     # Input
     "parse_escape_sequence",
     "read_key",
-    # Stats/UI compatibility surface used by tests and external callers
-    "latest_ttl_value",
-    "compute_summary_data",
-    "build_colored_timeline",
-    "build_colored_sparkline",
-    "build_activity_indicator",
-    "get_terminal_size",
-    "build_status_metrics",
-    "compute_main_layout",
-    "compute_panel_sizes",
-    "box_lines",
-    "build_sparkline",
-    "build_ascii_graph",
-    "build_status_line",
-    "build_display_entries",
-    "render_square_view",
-    "render_summary_view",
-    "render_help_view",
-    "render_host_selection_view",
-    "render_fullscreen_rtt_graph",
-    "render_status_box",
-    "build_display_lines",
-    "render_display",
-    "format_timezone_label",
-    "format_timestamp",
-    "flash_screen",
-    "ring_bell",
-    "should_flash_on_fail",
-    "toggle_panel_visibility",
-    "cycle_panel_position",
-    "format_display_name",
-    "build_display_names",
 ]
+
+# Expose full compatibility surface, including lazy exports.
+__all__ = _EAGER_EXPORTS + list(_LAZY_EXPORTS.keys())
 
 
 # Backward compatibility: main(args) is now run(args), but keep main alias
