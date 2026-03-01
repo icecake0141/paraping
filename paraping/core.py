@@ -18,7 +18,7 @@ entrypoints, while delegating most state/history behavior to `paraping_v2`.
 """
 
 import logging
-import socket  # compatibility for tests patching paraping.core.socket
+import socket  # noqa: F401 - compatibility for tests patching paraping.core.socket
 from typing import Any, Dict, List, Optional, Protocol, Tuple, Union
 
 from paraping_v2.rate_limit import (
@@ -39,6 +39,7 @@ from paraping_v2.constants import (
 )
 
 logger = logging.getLogger(__name__)
+
 
 class TerminalSizeLike(Protocol):
     """Protocol for terminal size objects with columns/lines attributes."""
@@ -81,7 +82,7 @@ def _extract_timeline_width_from_layout(layout: Any, main_width: int) -> int:
     return extract_timeline_width_from_layout_v2(layout, main_width)
 
 
-def parse_host_file_line(line: str, line_number: int, input_file: str) -> Optional[Dict[str, str]]:
+def parse_host_file_line(line: str, line_number: int, input_file: str) -> Optional[Dict[str, Any]]:
     """
     Parse a single line from the host input file.
 
@@ -96,7 +97,7 @@ def parse_host_file_line(line: str, line_number: int, input_file: str) -> Option
     return parse_host_file_line_v2(line=line, line_number=line_number, input_file=input_file, logger=logger)
 
 
-def read_input_file(input_file: str) -> List[Dict[str, str]]:
+def read_input_file(input_file: str) -> List[Dict[str, Any]]:
     """
     Read and parse hosts from an input file.
 
@@ -180,7 +181,7 @@ def get_cached_page_step(
     )
 
 
-def build_host_infos(hosts: List[Union[str, Dict[str, str]]]) -> Tuple[List[Dict[str, Any]], Dict[str, List[Dict[str, Any]]]]:
+def build_host_infos(hosts: List[Union[str, Dict[str, Any]]]) -> Tuple[List[Dict[str, Any]], Dict[str, List[Dict[str, Any]]]]:
     """Build host information structures from a list of hosts."""
     return build_host_infos_v2(hosts=hosts, logger=logger)
 

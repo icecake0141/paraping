@@ -30,9 +30,12 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from paraping.stats import (
     build_summary_all_suffix,
     build_summary_suffix,
+    compute_group_summary_data,
     compute_fail_streak,
     compute_summary_data,
     latest_rtt_value,
+    natural_sort_key,
+    resolve_primary_group_label,
 )
 
 # ANSI and display constants (imported from main)
@@ -338,6 +341,8 @@ def compute_host_scroll_bounds(
     filter_mode: str,
     slow_threshold: float,
     show_asn: bool,
+    group_by: str = "none",
+    group_sort_enabled: bool = False,
     asn_width: int = 8,
     header_lines: int = 2,
 ) -> Tuple[int, int, int]:
@@ -358,6 +363,8 @@ def compute_host_scroll_bounds(
         sort_mode,
         filter_mode,
         slow_threshold,
+        group_by=group_by,
+        group_sort_enabled=group_sort_enabled,
     )
     host_labels = [entry[1] for entry in display_entries]
     if not host_labels:
@@ -567,8 +574,11 @@ def build_display_entries(
     sort_mode: str,
     filter_mode: str,
     slow_threshold: float,
+    group_by: str = "none",
+    group_sort_enabled: bool = False,
 ) -> List[Tuple[int, str]]:
     """Build and sort display entries based on current filter and sort modes."""
+    info_by_id = {info["id"]: info for info in host_infos}
     entries = []
     for info in host_infos:
         host_id = info["id"]
@@ -576,6 +586,10 @@ def build_display_entries(
         latest_rtt = latest_rtt_value(buffers[host_id]["rtt_history"])
         fail_streak = compute_fail_streak(timeline, symbols["fail"])
         fail_count = stats[host_id]["fail"]
+        stat_entry = stats[host_id]
+        total_count = stat_entry.get("total")
+        if total_count is None:
+            total_count = stat_entry.get("success", 0) + stat_entry.get("slow", 0) + stat_entry.get("fail", 0)
 
         include = True
         is_removed = bool(info.get("removed", False))
@@ -594,23 +608,79 @@ def build_display_entries(
                     "fail_count": fail_count,
                     "fail_streak": fail_streak,
                     "latest_rtt": latest_rtt,
+                    "total": total_count,
                 }
             )
 
-    if sort_mode == "config":
-        # Sort by host_id to maintain configuration file order
-        entries.sort(key=lambda item: item["host_id"])
-    elif sort_mode == "failures":
-        entries.sort(key=lambda item: (item["fail_count"], item["label"]), reverse=True)
-    elif sort_mode == "streak":
-        entries.sort(key=lambda item: (item["fail_streak"], item["label"]), reverse=True)
-    elif sort_mode == "latency":
-        entries.sort(
-            key=lambda item: ((item["latest_rtt"] or -1.0), item["label"]),
-            reverse=True,
-        )
-    elif sort_mode == "host":
-        entries.sort(key=lambda item: item["label"])
+    if group_sort_enabled and group_by != "none":
+        groups: Dict[str, List[Dict[str, Any]]] = {}
+        for item in entries:
+            group_label = resolve_primary_group_label(info_by_id[item["host_id"]], group_by)
+            groups.setdefault(group_label, []).append(item)
+
+        group_order = list(groups.keys())
+        if sort_mode == "config":
+            group_order.sort(key=natural_sort_key)
+        elif sort_mode == "failures":
+            group_order.sort(
+                key=lambda label: (
+                    (
+                        sum(entry["fail_count"] for entry in groups[label])
+                        / max(1, sum(entry["total"] for entry in groups[label]))
+                    ),
+                    label,
+                ),
+                reverse=True,
+            )
+        elif sort_mode == "latency":
+            group_order.sort(
+                key=lambda label: (
+                    max((entry["latest_rtt"] or -1.0) for entry in groups[label]),
+                    label,
+                ),
+                reverse=True,
+            )
+        elif sort_mode == "streak":
+            group_order.sort(
+                key=lambda label: (
+                    max(entry["fail_streak"] for entry in groups[label]),
+                    label,
+                ),
+                reverse=True,
+            )
+        elif sort_mode == "host":
+            group_order.sort(key=natural_sort_key)
+
+        ordered_entries: List[Dict[str, Any]] = []
+        for label in group_order:
+            group_entries = groups[label]
+            if sort_mode == "config":
+                group_entries.sort(key=lambda item: item["host_id"])
+            elif sort_mode == "failures":
+                group_entries.sort(key=lambda item: (item["fail_count"], item["label"]), reverse=True)
+            elif sort_mode == "streak":
+                group_entries.sort(key=lambda item: (item["fail_streak"], item["label"]), reverse=True)
+            elif sort_mode == "latency":
+                group_entries.sort(key=lambda item: ((item["latest_rtt"] or -1.0), item["label"]), reverse=True)
+            elif sort_mode == "host":
+                group_entries.sort(key=lambda item: item["label"])
+            ordered_entries.extend(group_entries)
+        entries = ordered_entries
+    else:
+        if sort_mode == "config":
+            # Sort by host_id to maintain configuration file order
+            entries.sort(key=lambda item: item["host_id"])
+        elif sort_mode == "failures":
+            entries.sort(key=lambda item: (item["fail_count"], item["label"]), reverse=True)
+        elif sort_mode == "streak":
+            entries.sort(key=lambda item: (item["fail_streak"], item["label"]), reverse=True)
+        elif sort_mode == "latency":
+            entries.sort(
+                key=lambda item: ((item["latest_rtt"] or -1.0), item["label"]),
+                reverse=True,
+            )
+        elif sort_mode == "host":
+            entries.sort(key=lambda item: item["label"])
 
     return [(entry["host_id"], entry["label"]) for entry in entries]
 
@@ -777,6 +847,8 @@ def build_status_line(
     summary_all: bool = False,
     summary_fullscreen: bool = False,
     dormant: bool = False,
+    summary_scope: str = "host",
+    group_by: str = "none",
 ) -> str:
     """Build the status line showing current modes and settings."""
     sort_labels = {
@@ -800,6 +872,8 @@ def build_status_line(
     filter_label = filter_labels.get(filter_mode, filter_mode)
     summary_label = "All" if summary_all else summary_labels.get(summary_mode, summary_mode)
     status = f"Sort: {sort_label} | Filter: {filter_label} | Summary: {summary_label}"
+    if summary_scope == "group":
+        status += f" | Group: {group_by}"
     if summary_fullscreen:
         status += " | Summary View: Fullscreen"
     if dormant:
@@ -828,6 +902,9 @@ def render_timeline_view(
     header_lines: int = 2,
     boxed: bool = False,
     interval_seconds: float = 1.0,
+    show_group_headers: bool = False,
+    host_group_labels: Optional[Dict[int, str]] = None,
+    group_header_lines: Optional[Dict[str, str]] = None,
 ) -> List[str]:
     """Render the timeline view."""
     if width <= 0 or height <= 0:
@@ -849,10 +926,20 @@ def render_timeline_view(
     lines = []
     lines.append(header)
     lines.append("".join("-" for _ in range(render_width)))
+    current_group = None
     for entry in truncated_entries:
         host = entry[0]
         label = str(entry[1]) if len(entry) >= 2 else str(entry[0])
         is_removed = "[REMOVED]" in label
+        host_group_label = host_group_labels.get(host) if host_group_labels else None
+        if show_group_headers and host_group_label and host_group_label != current_group:
+            current_group = host_group_label
+            header_line = (
+                group_header_lines.get(host_group_label, f"--- {host_group_label} ---")
+                if group_header_lines
+                else f"--- {host_group_label} ---"
+            )
+            lines.append(header_line[:render_width])
         timeline_symbols = list(buffers[host]["timeline"])
         timeline = build_colored_timeline(timeline_symbols, symbols, use_color)
         timeline = rjust_visible(timeline, timeline_width)
@@ -887,6 +974,9 @@ def render_sparkline_view(
     header_lines: int = 2,
     boxed: bool = False,
     interval_seconds: float = 1.0,
+    show_group_headers: bool = False,
+    host_group_labels: Optional[Dict[int, str]] = None,
+    group_header_lines: Optional[Dict[str, str]] = None,
 ) -> List[str]:
     """Render the sparkline view."""
     if width <= 0 or height <= 0:
@@ -908,10 +998,20 @@ def render_sparkline_view(
     lines = []
     lines.append(header)
     lines.append("".join("-" for _ in range(render_width)))
+    current_group = None
     for entry in truncated_entries:
         host = entry[0]
         label = str(entry[1]) if len(entry) >= 2 else str(entry[0])
         is_removed = "[REMOVED]" in label
+        host_group_label = host_group_labels.get(host) if host_group_labels else None
+        if show_group_headers and host_group_label and host_group_label != current_group:
+            current_group = host_group_label
+            header_line = (
+                group_header_lines.get(host_group_label, f"--- {host_group_label} ---")
+                if group_header_lines
+                else f"--- {host_group_label} ---"
+            )
+            lines.append(header_line[:render_width])
         rtt_values = list(buffers[host]["rtt_history"])[-timeline_width:]
         status_symbols = list(buffers[host]["timeline"])[-timeline_width:]
         sparkline = build_sparkline(rtt_values, status_symbols, symbols["fail"])
@@ -991,6 +1091,9 @@ def render_square_view(
     header_lines: int = 2,
     boxed: bool = False,
     interval_seconds: float = 1.0,
+    show_group_headers: bool = False,
+    host_group_labels: Optional[Dict[int, str]] = None,
+    group_header_lines: Optional[Dict[str, str]] = None,
 ) -> List[str]:
     """Render the square view as a time-series (horizontal sequence of colored squares)."""
     if width <= 0 or height <= 0:
@@ -1013,10 +1116,20 @@ def render_square_view(
     lines.append(header)
     lines.append("".join("-" for _ in range(render_width)))
 
+    current_group = None
     for entry in truncated_entries:
         host = entry[0]
         label = str(entry[1]) if len(entry) >= 2 else str(entry[0])
         is_removed = "[REMOVED]" in label
+        host_group_label = host_group_labels.get(host) if host_group_labels else None
+        if show_group_headers and host_group_label and host_group_label != current_group:
+            current_group = host_group_label
+            header_line = (
+                group_header_lines.get(host_group_label, f"--- {host_group_label} ---")
+                if group_header_lines
+                else f"--- {host_group_label} ---"
+            )
+            lines.append(header_line[:render_width])
         timeline_symbols = list(buffers[host]["timeline"])
         # Build colored square timeline from all timeline symbols
         square_timeline = build_colored_square_timeline(timeline_symbols, symbols, use_color)
@@ -1058,6 +1171,9 @@ def render_main_view(
     boxed: bool = False,
     interval_seconds: float = 1.0,
     dormant: bool = False,
+    show_group_headers: bool = False,
+    host_group_labels: Optional[Dict[int, str]] = None,
+    group_header_lines: Optional[Dict[str, str]] = None,
 ) -> List[str]:
     """Render the main view (timeline, sparkline, or square)."""
     pause_label = "DORMANT" if dormant else ("PAUSED" if paused else "LIVE")
@@ -1084,6 +1200,9 @@ def render_main_view(
             header_lines,
             boxed,
             interval_seconds,
+            show_group_headers=show_group_headers,
+            host_group_labels=host_group_labels,
+            group_header_lines=group_header_lines,
         )
     if display_mode == "square":
         return render_square_view(
@@ -1098,6 +1217,9 @@ def render_main_view(
             header_lines,
             boxed,
             interval_seconds,
+            show_group_headers=show_group_headers,
+            host_group_labels=host_group_labels,
+            group_header_lines=group_header_lines,
         )
     return render_timeline_view(
         display_entries,
@@ -1111,6 +1233,9 @@ def render_main_view(
         header_lines,
         boxed,
         interval_seconds,
+        show_group_headers=show_group_headers,
+        host_group_labels=host_group_labels,
+        group_header_lines=group_header_lines,
     )
 
 
@@ -1169,7 +1294,7 @@ def render_help_view(width: int, height: int, boxed: bool = False) -> List[str]:
         "  c: toggle color output",
         "  b: toggle bell on ping failure",
         "  F: toggle summary fullscreen view",
-        "  w/W: toggle/cycle summary panel (on/off, position)",
+        "  w/W: toggle/cycle summary panel (on/off, position) | G/T: group summary/key",
         "  p: pause/resume display",
         "  P: toggle Dormant Mode (pause ping + display)",
         "  R: reload hosts from input file | s: save snapshot to file",
@@ -1345,6 +1470,9 @@ def build_display_lines(  # noqa: C901
     header_lines: int = 2,
     interval_seconds: float = 1.0,
     dormant: bool = False,
+    summary_scope: str = "host",
+    group_by: str = "none",
+    group_sort_enabled: bool = False,
 ) -> List[str]:
     """Build all display lines for the current state."""
     # Algorithm overview:
@@ -1380,6 +1508,8 @@ def build_display_lines(  # noqa: C901
         sort_mode,
         filter_mode,
         slow_threshold,
+        group_by=group_by,
+        group_sort_enabled=group_sort_enabled,
     )
     main_width, main_height, summary_width, summary_height, resolved_position = compute_panel_sizes(
         term_width,
@@ -1397,21 +1527,47 @@ def build_display_lines(  # noqa: C901
             summary_height = panel_height - main_height - gap_size
     active_host_infos = [info for info in host_infos if info.get("active", True)]
     active_host_ids = {info["id"] for info in active_host_infos}
+    host_group_labels = {
+        info["id"]: resolve_primary_group_label(info, group_by)
+        for info in active_host_infos
+    }
+    ordered_host_ids = [host_id for host_id, _label in display_entries if host_id in active_host_ids]
     summary_data = compute_summary_data(
         active_host_infos,
         display_names,
         buffers,
         stats,
         symbols,
-        ordered_host_ids=[host_id for host_id, _label in display_entries if host_id in active_host_ids],
+        ordered_host_ids=ordered_host_ids,
     )
+    group_summary_data: List[Dict[str, Any]] = []
+    if group_by != "none":
+        group_order: List[str] = []
+        for host_id in ordered_host_ids:
+            label = host_group_labels.get(host_id)
+            if label and label not in group_order:
+                group_order.append(label)
+        group_summary_data = compute_group_summary_data(
+            active_host_infos,
+            display_names,
+            buffers,
+            stats,
+            symbols,
+            group_by=group_by,
+            ordered_group_labels=group_order,
+        )
+    summary_source = group_summary_data if summary_scope == "group" and group_by != "none" else summary_data
+    group_header_lines = {
+        entry["host"]: f"--- {entry['host']} ({entry.get('member_count', 0)} hosts, loss {entry['loss_rate']:.1f}%) ---"
+        for entry in group_summary_data
+    }
     summary_all = False
     main_lines = []
     summary_lines = []
     if summary_fullscreen:
-        summary_all = can_render_full_summary(summary_data, term_width)
+        summary_all = can_render_full_summary(summary_source, term_width)
         summary_lines = render_summary_view(
-            summary_data,
+            summary_source,
             term_width,
             panel_height,
             summary_mode,
@@ -1436,13 +1592,16 @@ def build_display_lines(  # noqa: C901
             boxed=use_panel_boxes,
             interval_seconds=interval_seconds,
             dormant=dormant,
+            show_group_headers=summary_scope == "group" and group_by != "none",
+            host_group_labels=host_group_labels,
+            group_header_lines=group_header_lines,
         )
         summary_all = resolved_position in (
             "top",
             "bottom",
-        ) and can_render_full_summary(summary_data, summary_width)
+        ) and can_render_full_summary(summary_source, summary_width)
         summary_lines = render_summary_view(
-            summary_data,
+            summary_source,
             summary_width,
             summary_height,
             summary_mode,
@@ -1480,6 +1639,8 @@ def build_display_lines(  # noqa: C901
         summary_all=summary_all,
         summary_fullscreen=summary_fullscreen,
         dormant=dormant,
+        summary_scope=summary_scope,
+        group_by=group_by,
     )
     if panel_height > 0:
         combined_lines = pad_lines(combined_lines, term_width, panel_height)
@@ -1519,6 +1680,9 @@ def render_display(
     override_lines: Optional[List[str]] = None,
     interval_seconds: float = 1.0,
     dormant: bool = False,
+    summary_scope: str = "host",
+    group_by: str = "none",
+    group_sort_enabled: bool = False,
 ) -> None:
     """Render the complete display to the terminal."""
     global LAST_RENDER_LINES
@@ -1551,6 +1715,9 @@ def render_display(
             header_lines,
             interval_seconds,
             dormant=dormant,
+            summary_scope=summary_scope,
+            group_by=group_by,
+            group_sort_enabled=group_sort_enabled,
         )
     if not combined_lines:
         return

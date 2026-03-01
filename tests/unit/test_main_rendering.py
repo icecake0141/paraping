@@ -1287,6 +1287,60 @@ class TestBuildDisplayEntries(unittest.TestCase):
         self.assertIn(1, ids)
         self.assertNotIn(0, ids)
 
+    def test_group_config_sort_uses_natural_group_order(self):
+        """group-sort config mode should natural-sort group names and keep host order in group."""
+        infos = [
+            {
+                "id": 0,
+                "ip": "10.0.0.1",
+                "alias": "h1",
+                "host": "h1",
+                "rdns": None,
+                "rdns_pending": False,
+                "asn": None,
+                "asn_pending": False,
+                "site": "Rack10",
+            },
+            {
+                "id": 1,
+                "ip": "10.0.0.2",
+                "alias": "h2",
+                "host": "h2",
+                "rdns": None,
+                "rdns_pending": False,
+                "asn": None,
+                "asn_pending": False,
+                "site": "Rack2",
+            },
+            {
+                "id": 2,
+                "ip": "10.0.0.3",
+                "alias": "h3",
+                "host": "h3",
+                "rdns": None,
+                "rdns_pending": False,
+                "asn": None,
+                "asn_pending": False,
+                "site": "Rack1",
+            },
+        ]
+        buffers = _make_buffers([0, 1, 2])
+        names = {0: "h1", 1: "h2", 2: "h3"}
+        stats = self._make_stats(3)
+        entries = build_display_entries(
+            infos,
+            names,
+            buffers,
+            stats,
+            _SYMBOLS,
+            "config",
+            "all",
+            200.0,
+            group_by="site",
+            group_sort_enabled=True,
+        )
+        self.assertEqual([host_id for host_id, _label in entries], [2, 1, 0])
+
 
 class TestShouldShowAsn(unittest.TestCase):
     """Test should_show_asn function."""

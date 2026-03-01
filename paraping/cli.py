@@ -134,6 +134,7 @@ _HARDCODED_DEFAULTS: Dict[str, Any] = {
     "flash_on_fail": False,
     "bell_on_fail": False,
     "color": False,
+    "group_by": "none",
 }
 
 
@@ -218,6 +219,13 @@ def handle_options() -> argparse.Namespace:
         type=str,
         help="Input file containing list of hosts (one per line, format: IP,alias)",
         required=False,
+    )
+    parser.add_argument(
+        "--group-by",
+        type=str,
+        default=None,
+        choices=["none", "asn", "site", "tag"],
+        help="Group key for summary and host grouping (none|asn|site|tag)",
     )
     parser.add_argument(
         "-P",
@@ -320,7 +328,7 @@ def _setup_hosts_and_state(args: argparse.Namespace) -> Optional[Dict[str, Any]]
         print("Error: Interval must be between 0.1 and 60.0 seconds.")
         return None
 
-    all_hosts: List[Union[str, Dict[str, str]]] = []
+    all_hosts: List[Union[str, Dict[str, Any]]] = []
     if args.hosts:
         all_hosts.extend({"host": host, "alias": host} for host in args.hosts)
     if args.input:
@@ -610,6 +618,8 @@ def _handle_user_input(
             state["sort_modes"][state["sort_mode_index"]],
             state["filter_modes"][state["filter_mode_index"]],
             args.slow_threshold,
+            group_by=state["group_by_modes"][state["group_by_mode_index"]],
+            group_sort_enabled=state["summary_scope_modes"][state["summary_scope_mode_index"]] == "group",
         )
         if not display_entries:
             state["host_select_index"] = 0
@@ -679,6 +689,18 @@ def _handle_user_input(
     elif key == "m":
         state["summary_mode_index"] = (state["summary_mode_index"] + 1) % len(state["summary_modes"])
         state["status_message"] = f"Summary: {state['summary_modes'][state['summary_mode_index']].upper()}"
+        state["updated"] = True
+    elif key == "G":
+        state["summary_scope_mode_index"] = (state["summary_scope_mode_index"] + 1) % len(state["summary_scope_modes"])
+        scope = state["summary_scope_modes"][state["summary_scope_mode_index"]]
+        state["status_message"] = f"Summary scope: {scope.upper()}"
+        state["cached_page_step"] = None
+        state["updated"] = True
+    elif key == "T":
+        state["group_by_mode_index"] = (state["group_by_mode_index"] + 1) % len(state["group_by_modes"])
+        group_by = state["group_by_modes"][state["group_by_mode_index"]]
+        state["status_message"] = f"Group key: {group_by}"
+        state["cached_page_step"] = None
         state["updated"] = True
     elif key == "c":
         if not state["color_supported"]:
@@ -767,6 +789,9 @@ def _handle_user_input(
             state["host_scroll_offset"],
             state["summary_fullscreen"],
             interval_seconds=args.interval,
+            summary_scope=state["summary_scope_modes"][state["summary_scope_mode_index"]],
+            group_by=state["group_by_modes"][state["group_by_mode_index"]],
+            group_sort_enabled=state["summary_scope_modes"][state["summary_scope_mode_index"]] == "group",
         )
         with open(snapshot_name, "w", encoding="utf-8") as snapshot_file:
             snapshot_file.write("\n".join(snapshot_lines) + "\n")
@@ -833,6 +858,8 @@ def _handle_user_input(
             state["filter_modes"][state["filter_mode_index"]],
             args.slow_threshold,
             state["show_asn"],
+            group_by=state["group_by_modes"][state["group_by_mode_index"]],
+            group_sort_enabled=state["summary_scope_modes"][state["summary_scope_mode_index"]] == "group",
         )
         if key == "arrow_up" and state["host_scroll_offset"] > 0 and total_hosts > 0:
             state["host_scroll_offset"] = max(0, state["host_scroll_offset"] - 1)
@@ -953,6 +980,8 @@ def _render_frame(args: argparse.Namespace, state: Dict[str, Any]) -> None:
         state["filter_modes"][state["filter_mode_index"]],
         args.slow_threshold,
         state["show_asn"],
+        group_by=state["group_by_modes"][state["group_by_mode_index"]],
+        group_sort_enabled=state["summary_scope_modes"][state["summary_scope_mode_index"]] == "group",
     )
     state["host_scroll_offset"] = min(state["host_scroll_offset"], max_offset)
     override_lines = None
@@ -981,6 +1010,8 @@ def _render_frame(args: argparse.Namespace, state: Dict[str, Any]) -> None:
             state["sort_modes"][state["sort_mode_index"]],
             state["filter_modes"][state["filter_mode_index"]],
             args.slow_threshold,
+            group_by=state["group_by_modes"][state["group_by_mode_index"]],
+            group_sort_enabled=state["summary_scope_modes"][state["summary_scope_mode_index"]] == "group",
         )
         override_lines = render_host_selection_view(
             display_entries,
@@ -1039,6 +1070,9 @@ def _render_frame(args: argparse.Namespace, state: Dict[str, Any]) -> None:
         override_lines=override_lines,
         interval_seconds=args.interval,
         dormant=state["dormant"],
+        summary_scope=state["summary_scope_modes"][state["summary_scope_mode_index"]],
+        group_by=state["group_by_modes"][state["group_by_mode_index"]],
+        group_sort_enabled=state["summary_scope_modes"][state["summary_scope_mode_index"]] == "group",
     )
     state["last_render"] = now
     state["updated"] = False
@@ -1067,6 +1101,10 @@ def run(args: argparse.Namespace) -> None:
         "display_mode_index": 0,
         "summary_modes": ["rates", "rtt", "ttl", "streak"],
         "summary_mode_index": 0,
+        "summary_scope_modes": ["host", "group"],
+        "summary_scope_mode_index": 0,
+        "group_by_modes": ["none", "asn", "site", "tag"],
+        "group_by_mode_index": 0,
         "summary_fullscreen": False,
         "sort_modes": ["config", "failures", "streak", "latency", "host"],
         "sort_mode_index": 0,
@@ -1114,6 +1152,9 @@ def run(args: argparse.Namespace) -> None:
         "asn_result_queue": queue.Queue(),
         "worker_stop": threading.Event(),
     }
+    initial_group_by = getattr(args, "group_by", "none")
+    if initial_group_by in state["group_by_modes"]:
+        state["group_by_mode_index"] = state["group_by_modes"].index(initial_group_by)
     for info in state["host_infos"]:
         info.setdefault("active", True)
         info.setdefault("removed", False)

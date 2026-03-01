@@ -56,6 +56,15 @@ class TestParseHostFileLine(unittest.TestCase):
         self.assertEqual(result["alias"], "database")
         self.assertEqual(result["ip"], "192.0.2.2")
 
+    def test_parse_valid_extended_entry_with_site_and_tags(self):
+        """Test parsing extended entry with site and tags."""
+        result = parse_host_file_line("192.0.2.10,app01,Tokyo,core;prod", 3, "hosts.txt")
+        self.assertIsNotNone(result)
+        self.assertEqual(result["host"], "192.0.2.10")
+        self.assertEqual(result["alias"], "app01")
+        self.assertEqual(result["site"], "Tokyo")
+        self.assertEqual(result["tags"], ["core", "prod"])
+
     def test_parse_empty_line(self):
         """Test parsing empty line returns None"""
         result = parse_host_file_line("", 1, "hosts.txt")

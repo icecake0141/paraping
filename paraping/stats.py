@@ -19,7 +19,8 @@ standard deviation, streaks, and aggregated ping data.
 """
 
 import math
-from typing import Any, Deque, Dict, List, Optional, Sequence
+import re
+from typing import Any, Deque, Dict, List, Optional, Sequence, Tuple
 
 
 def compute_fail_streak(timeline: Sequence[str], fail_symbol: str) -> int:
@@ -245,3 +246,170 @@ def latest_rtt_value(rtt_history: Deque[Optional[float]]) -> Optional[float]:
     if not rtt_history:
         return None
     return rtt_history[-1]
+
+
+def natural_sort_key(value: str) -> Tuple[Any, ...]:
+    """Build a natural-sort key where numeric chunks are compared as integers."""
+    parts = re.split(r"(\d+)", value)
+    key: List[Any] = []
+    for part in parts:
+        if not part:
+            continue
+        if part.isdigit():
+            key.append(int(part))
+        else:
+            key.append(part.lower())
+    return tuple(key)
+
+
+def resolve_group_labels(host_info: Dict[str, Any], group_by: str) -> List[str]:
+    """Resolve all group labels for one host based on grouping mode."""
+    if group_by == "asn":
+        asn_value = host_info.get("asn")
+        label = f"ASN:{asn_value}" if asn_value not in (None, "") else "ASN:unknown"
+        return [label]
+    if group_by == "site":
+        site_value = str(host_info.get("site") or "").strip()
+        return [f"site:{site_value}" if site_value else "site:unknown"]
+    if group_by == "tag":
+        tags = host_info.get("tags") or []
+        if not isinstance(tags, list):
+            tags = [str(tags)]
+        normalized = sorted({str(tag).strip() for tag in tags if str(tag).strip()}, key=natural_sort_key)
+        if not normalized:
+            return ["tag:unknown"]
+        return [f"tag:{tag}" for tag in normalized]
+    return ["all"]
+
+
+def resolve_primary_group_label(host_info: Dict[str, Any], group_by: str) -> str:
+    """Resolve the primary group label used for host-row ordering."""
+    labels = resolve_group_labels(host_info, group_by)
+    return labels[0] if labels else "unknown"
+
+
+def compute_group_summary_data(
+    host_infos: Sequence[Dict[str, Any]],
+    display_names: Dict[int, str],
+    buffers: Dict[int, Dict[str, Any]],
+    stats: Dict[int, Dict[str, Any]],
+    symbols: Dict[str, str],
+    group_by: str,
+    ordered_group_labels: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
+    """Compute aggregated summary rows by group label."""
+    if group_by == "none":
+        return []
+
+    success_symbols = {symbols["success"], symbols["slow"]}
+    groups: Dict[str, Dict[str, Any]] = {}
+
+    for info in host_infos:
+        host_id = info["id"]
+        host_stats = stats[host_id]
+        labels = resolve_group_labels(info, group_by)
+        timeline = list(buffers[host_id]["timeline"])
+        latest_symbol = timeline[-1] if timeline else None
+        fail_streak = compute_fail_streak(timeline, symbols["fail"])
+        rtt_values = [value for value in buffers[host_id]["rtt_history"] if value is not None]
+        jitter_ms = None
+        if len(rtt_values) >= 2:
+            diffs = [abs(current - previous) for previous, current in zip(rtt_values, rtt_values[1:])]
+            jitter_ms = sum(diffs) / len(diffs) * 1000
+
+        for label in labels:
+            group = groups.setdefault(
+                label,
+                {
+                    "host": label,
+                    "sent": 0,
+                    "received": 0,
+                    "lost": 0,
+                    "success_rate": 0.0,
+                    "loss_rate": 0.0,
+                    "streak_type": None,
+                    "streak_length": 0,
+                    "avg_rtt_ms": None,
+                    "jitter_ms": None,
+                    "stddev_ms": None,
+                    "latest_ttl": None,
+                    "_member_ids": set(),
+                    "_rtt_sum": 0.0,
+                    "_rtt_sum_sq": 0.0,
+                    "_rtt_count": 0,
+                    "_jitter_weighted_sum": 0.0,
+                    "_jitter_weight": 0,
+                    "_latest_symbol": None,
+                },
+            )
+            group["_member_ids"].add(host_id)
+            group["sent"] += host_stats["total"]
+            group["received"] += host_stats["success"] + host_stats["slow"]
+            group["lost"] += host_stats["fail"]
+            group["_rtt_sum"] += host_stats["rtt_sum"]
+            group["_rtt_sum_sq"] += host_stats.get("rtt_sum_sq", 0.0)
+            group["_rtt_count"] += host_stats["rtt_count"]
+            if jitter_ms is not None and len(rtt_values) > 1:
+                weight = len(rtt_values) - 1
+                group["_jitter_weighted_sum"] += jitter_ms * weight
+                group["_jitter_weight"] += weight
+            latest_ttl = latest_ttl_value(buffers[host_id]["ttl_history"])
+            if latest_ttl is not None:
+                group["latest_ttl"] = latest_ttl
+            group["streak_length"] = max(group["streak_length"], fail_streak)
+            if latest_symbol == symbols["fail"]:
+                group["_latest_symbol"] = symbols["fail"]
+            elif latest_symbol == symbols["slow"] and group["_latest_symbol"] not in (symbols["fail"], symbols["slow"]):
+                group["_latest_symbol"] = symbols["slow"]
+            elif latest_symbol in success_symbols and group["_latest_symbol"] is None:
+                group["_latest_symbol"] = symbols["success"]
+
+    summary = []
+    for label, group in groups.items():
+        sent = group["sent"]
+        received = group["received"]
+        lost = group["lost"]
+        group["success_rate"] = (received / sent * 100) if sent > 0 else 0.0
+        group["loss_rate"] = (lost / sent * 100) if sent > 0 else 0.0
+        rtt_count = group["_rtt_count"]
+        if rtt_count > 0:
+            mean_rtt = group["_rtt_sum"] / rtt_count
+            group["avg_rtt_ms"] = mean_rtt * 1000
+        if rtt_count > 1:
+            mean_rtt = group["_rtt_sum"] / rtt_count
+            mean_square = group["_rtt_sum_sq"] / rtt_count
+            variance = max(0.0, mean_square - mean_rtt * mean_rtt)
+            group["stddev_ms"] = math.sqrt(variance) * 1000
+        if group["_jitter_weight"] > 0:
+            group["jitter_ms"] = group["_jitter_weighted_sum"] / group["_jitter_weight"]
+        latest_symbol = group["_latest_symbol"]
+        if latest_symbol == symbols["fail"] and group["streak_length"] > 0:
+            group["streak_type"] = "fail"
+        else:
+            group["streak_type"] = None
+            group["streak_length"] = 0
+        group["member_count"] = len(group["_member_ids"])
+        summary.append(
+            {
+                "host": label,
+                "sent": group["sent"],
+                "received": group["received"],
+                "lost": group["lost"],
+                "success_rate": group["success_rate"],
+                "loss_rate": group["loss_rate"],
+                "streak_type": group["streak_type"],
+                "streak_length": group["streak_length"],
+                "avg_rtt_ms": group["avg_rtt_ms"],
+                "jitter_ms": group["jitter_ms"],
+                "stddev_ms": group["stddev_ms"],
+                "latest_ttl": group["latest_ttl"],
+                "member_count": group["member_count"],
+            }
+        )
+
+    if ordered_group_labels is not None:
+        order_index = {label: index for index, label in enumerate(ordered_group_labels)}
+        summary.sort(key=lambda entry: order_index.get(entry["host"], len(order_index)))
+    else:
+        summary.sort(key=lambda entry: natural_sort_key(entry["host"]))
+    return summary

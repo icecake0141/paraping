@@ -5,25 +5,44 @@ import socket
 from typing import Any, Dict, List, Optional, Union
 
 
+def _is_header_row(parts: List[str]) -> bool:
+    """Return True when parsed columns look like a CSV header row."""
+    lowered = [part.strip().lower() for part in parts]
+    if len(lowered) == 2:
+        return lowered[0] in {"host", "ip"} and lowered[1] in {"alias", "name"}
+    if len(lowered) == 4:
+        return (
+            lowered[0] in {"host", "ip"}
+            and lowered[1] in {"alias", "name"}
+            and lowered[2] == "site"
+            and lowered[3] == "tags"
+        )
+    return False
+
+
 def parse_host_file_line_v2(
     line: str,
     line_number: int,
     input_file: str,
     logger: Any,
-) -> Optional[Dict[str, str]]:
+) -> Optional[Dict[str, Any]]:
     """Parse a single line from the host input file."""
     stripped = line.strip()
     if not stripped or stripped.startswith("#"):
         return None
     parts = [part.strip() for part in stripped.split(",")]
-    if len(parts) != 2:
+    if len(parts) not in (2, 4):
         logger.warning(
-            "Invalid host entry at %s:%d. Expected format 'IP,alias'.",
+            "Invalid host entry at %s:%d. Expected format 'IP,alias' or 'IP,alias,site,tags'.",
             input_file,
             line_number,
         )
         return None
-    ip_text, alias = parts
+    if _is_header_row(parts):
+        return None
+    ip_text, alias = parts[0], parts[1]
+    site = parts[2] if len(parts) == 4 else ""
+    tags_value = parts[3] if len(parts) == 4 else ""
     if not ip_text or not alias:
         logger.warning(
             "Invalid host entry at %s:%d. IP address and alias are required.",
@@ -48,10 +67,14 @@ def parse_host_file_line_v2(
             line_number,
             ip_text,
         )
-    return {"host": ip_text, "alias": alias, "ip": ip_text}
+    entry: Dict[str, Any] = {"host": ip_text, "alias": alias, "ip": ip_text}
+    if len(parts) == 4:
+        entry["site"] = site
+        entry["tags"] = [tag.strip() for tag in tags_value.split(";") if tag.strip()]
+    return entry
 
 
-def read_input_file_v2(input_file: str, logger: Any) -> List[Dict[str, str]]:
+def read_input_file_v2(input_file: str, logger: Any) -> List[Dict[str, Any]]:
     """Read and parse hosts from an input file."""
     host_list = []
     try:
@@ -74,7 +97,7 @@ def read_input_file_v2(input_file: str, logger: Any) -> List[Dict[str, str]]:
 
 
 def build_host_infos_v2(
-    hosts: List[Union[str, Dict[str, str]]],
+    hosts: List[Union[str, Dict[str, Any]]],
     logger: Any,
 ) -> tuple[List[Dict[str, Any]], Dict[str, List[Dict[str, Any]]]]:
     """Build host information structures from a list of hosts."""
@@ -93,6 +116,8 @@ def build_host_infos_v2(
             host = entry
             alias = entry
             ip_address: Optional[str] = None
+            site: Optional[str] = None
+            tags: List[str] = []
         else:
             host_value = entry.get("host") or entry.get("ip")
             if not host_value:
@@ -102,6 +127,14 @@ def build_host_infos_v2(
             host = host_value
             alias = entry.get("alias") or host
             ip_address = entry.get("ip")
+            site = str(entry.get("site") or "").strip() or None
+            raw_tags = entry.get("tags", [])
+            if isinstance(raw_tags, str):
+                tags = [tag.strip() for tag in raw_tags.split(";") if tag.strip()]
+            elif isinstance(raw_tags, list):
+                tags = [str(tag).strip() for tag in raw_tags if str(tag).strip()]
+            else:
+                tags = []
         if not ip_address:
             try:
                 addr_info = socket.getaddrinfo(host, None, socket.AF_UNSPEC, socket.SOCK_RAW)
@@ -137,6 +170,8 @@ def build_host_infos_v2(
             "rdns_pending": False,
             "asn": None,
             "asn_pending": False,
+            "site": site,
+            "tags": tags,
         }
         host_infos.append(info)
         host_map.setdefault(host, []).append(info)

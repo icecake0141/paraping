@@ -31,6 +31,20 @@ def test_read_input_file_v2_returns_empty_for_missing_file() -> None:
     assert logger.errors
 
 
+def test_parse_host_file_line_v2_parses_extended_entry() -> None:
+    logger = _LoggerStub()
+    result = parse_host_file_line_v2("192.0.2.2,alias-a,Tokyo,core;prod", 1, "hosts.txt", logger)
+    assert result is not None
+    assert result["site"] == "Tokyo"
+    assert result["tags"] == ["core", "prod"]
+
+
+def test_parse_host_file_line_v2_skips_header_row() -> None:
+    logger = _LoggerStub()
+    result = parse_host_file_line_v2("host,alias,site,tags", 1, "hosts.txt", logger)
+    assert result is None
+
+
 @patch("socket.getaddrinfo")
 def test_build_host_infos_v2_prefers_ipv4(mock_getaddrinfo) -> None:
     logger = _LoggerStub()
