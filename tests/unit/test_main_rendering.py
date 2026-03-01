@@ -84,6 +84,19 @@ class TestHelpView(unittest.TestCase):
         self.assertIn("P: toggle Dormant Mode", combined)
         self.assertIn("Press any key to close", combined)
 
+    def test_help_view_contains_group_hotkeys(self):
+        """Help view should include explicit G/T hotkey descriptions."""
+        lines = render_help_view(80, 24)
+        combined = "\n".join(lines)
+        self.assertIn("G: toggle summary scope", combined)
+        self.assertIn("T: cycle group key", combined)
+
+    def test_help_view_uses_two_columns_when_height_is_tight(self):
+        """Tight height and wide width should still include right-column entries."""
+        lines = render_help_view(100, 14)
+        combined = "\n".join(lines)
+        self.assertIn("q: quit", combined)
+
 
 class TestBoxedRendering(unittest.TestCase):
     """Test boxed panel rendering helpers."""
