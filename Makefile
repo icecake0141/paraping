@@ -19,6 +19,7 @@ TARGET = bin/ping_helper
 SRC = src/native/ping_helper.c
 VENV = .venv
 PYTHON = python3
+OS = $(shell uname -s)
 
 # ==============================================================================
 # User Targets (for end users)
@@ -41,6 +42,8 @@ all: user-setup
 	@echo ""
 	@echo "Next steps for Linux users:"
 	@echo "  make setcap           # Configure ICMP helper (requires sudo)"
+	@echo "Next steps for macOS/BSD users:"
+	@echo "  sudo make run ARGS='8.8.8.8'   # Run with sudo for ICMP"
 	@echo ""
 
 # Setup user environment with virtual environment
@@ -130,6 +133,10 @@ $(TARGET): $(SRC)
 	@echo "Building ICMP helper binary..."
 	$(CC) $(CFLAGS) -o $(TARGET) $(SRC)
 	@echo "Build complete: $(TARGET)"
+	@if [ "$(OS)" = "Darwin" ]; then \
+		echo "macOS detected: setcap is unsupported."; \
+		echo "Run ParaPing with sudo when using ICMP (example: sudo make run ARGS='8.8.8.8')."; \
+	fi
 
 # ==============================================================================
 # Linux-Specific Targets
@@ -138,16 +145,21 @@ $(TARGET): $(SRC)
 # Set capabilities on the helper (requires sudo, Linux only)
 .PHONY: setcap
 setcap: $(TARGET)
+ifeq ($(OS),Linux)
 	@if ! command -v setcap >/dev/null 2>&1; then \
 		echo "Error: setcap command not found."; \
 		echo "On Debian/Ubuntu, install with: sudo apt-get install libcap2-bin"; \
-		echo "On macOS/BSD, setcap is not available. Use setuid bit instead (not recommended)."; \
+		echo "On macOS/BSD, setcap is not available. Run ParaPing with sudo when using ICMP."; \
 		exit 1; \
 	fi
 	@echo "Setting cap_net_raw+ep on $(TARGET)..."
 	sudo setcap cap_net_raw+ep $(TARGET)
 	@echo "Capabilities set successfully:"
 	@getcap $(TARGET)
+else
+	@echo "Skipping setcap: unsupported on $(OS)."
+	@echo "Run ParaPing with sudo on $(OS) (example: sudo make run ARGS='8.8.8.8')."
+endif
 
 # ==============================================================================
 # Cleanup Targets
@@ -215,7 +227,7 @@ help:
 	@echo ""
 	@echo "Platform Notes:"
 	@echo "  - Virtual environment (.venv) works on Linux, macOS, and Windows"
-	@echo "  - The 'setcap' target is Linux-only (use sudo on other platforms)"
+	@echo "  - The 'setcap' target is Linux-only; on macOS/BSD run ParaPing with sudo"
 	@echo "  - All user targets are cross-platform compatible"
 	@echo ""
 
