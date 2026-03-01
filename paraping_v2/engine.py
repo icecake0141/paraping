@@ -71,6 +71,28 @@ class MonitorState:
 
         return cloned
 
+    def add_host(self, host_id: int) -> None:
+        """Add a host timeline/stat bucket if it does not already exist."""
+        if host_id in self.timelines:
+            return
+        width = 1
+        if self.timelines:
+            any_timeline = next(iter(self.timelines.values()))
+            width = any_timeline.symbols.maxlen or 1
+        self.timelines[host_id] = HostTimeline(
+            symbols=deque(maxlen=width),
+            sequence_history=deque(maxlen=width),
+            rtt_history=deque(maxlen=width),
+            time_history=deque(maxlen=width),
+            ttl_history=deque(maxlen=width),
+        )
+        self.stats[host_id] = HostStats()
+
+    def remove_host(self, host_id: int) -> None:
+        """Remove a host timeline/stat bucket if present."""
+        self.timelines.pop(host_id, None)
+        self.stats.pop(host_id, None)
+
     def apply_event(self, event: PingEvent) -> None:
         """Apply one ping event to timeline and aggregate stats."""
         timeline = self.timelines[event.host_id]

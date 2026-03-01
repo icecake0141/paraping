@@ -515,6 +515,7 @@ Example (explicit IPv4 addresses only):
 - `W`: Cycle summary panel position (left/right/top/bottom).
 - `p`: Pause/resume display updates.
 - `P`: Toggle Dormant Mode (pause ping monitoring + display updates).
+- `R`: Reload hosts from the input file (`-f/--input`) without restarting the app.
 - `s`: Save a snapshot to `paraping_snapshot_YYYYMMDD_HHMMSS.txt`.
 - `←` / `→`: Navigate backward/forward in time by one page. History keeps recording while browsing; the view is frozen until you return to live.
 - `↑` / `↓`: Scroll the host list (when not in host-selection mode). In host-selection mode use `n` (next) and `p` (previous) to move the selection; when the selection moves beyond the visible area, the host list scrolls to keep the selection in view.
@@ -528,12 +529,14 @@ Example (explicit IPv4 addresses only):
 - `x` failure/timeout
 - `-` pending (ping sent but response not yet received)
 - When `--color` is enabled: white=success, yellow=slow, red=failure, dark gray=pending.
+- During manual reload, removed hosts are marked with `[REMOVED]` and kept dimmed for 10 seconds before being hidden.
 
 ## Notes
 - ICMP requires elevated privileges (run with `sudo` or Administrator on Windows) unless using the capability-based helper on Linux.
 - ASN lookups use `whois.cymru.com`; blocked networks will show blank ASN values.
 - IPv6 addresses can be specified but pinging will likely fail (ping_helper only supports IPv4). When hostnames resolve to both IPv4 and IPv6, IPv4 is automatically preferred.
 - The monitor starts one worker thread per host and enforces a hard limit of 128 hosts. It exits with an error if exceeded.
+- Manual reload (`R`) is available only when hosts are loaded from `-f/--input`.
 - When the summary panel is positioned at the top/bottom, it expands to use available empty rows.
 - When the summary panel is positioned at the top/bottom, it shows all summary fields if the width allows.
 
@@ -1197,6 +1200,7 @@ make clean
 - `W`: サマリーパネル位置を切替（left / right / top / bottom）
 - `p`: 一時停止 / 再開（表示更新のみ）
 - `P`: Dormant モードをトグル（ping 監視と表示更新の両方を停止）
+- `R`: 入力ファイル（`-f/--input`）からホスト一覧を手動で再読み込み
 - `s`: スナップショットを `paraping_snapshot_YYYYMMDD_HHMMSS.txt` として保存
 - `←` / `→`: 履歴を1ページ単位で遡る / 進める（履歴は録り続けられ、ライブ表示に戻るまで画面は固定）
 - `↑` / `↓`: ホスト一覧をスクロール（ホスト選択モードでないとき）。ホスト選択モードでは `n`（次） と `p`（前） を使用して選択を移動。選択が表示領域を超えると一覧がスクロールして選択を視界に保ちます
@@ -1208,13 +1212,16 @@ make clean
 - `.` 成功
 - `!` 遅延（RTT >= `--slow-threshold`）
 - `x` 失敗 / タイムアウト
-- 色付き表示が有効な場合: 白=成功、黄=遅延、赤=失敗
+- `-` pending（ping 送信済みで応答待ち）
+- 色付き表示が有効な場合: 白=成功、黄=遅延、赤=失敗、濃いグレー=pending
+- 手動リロードで削除されたホストは `[REMOVED]` が付き、10秒間は薄く表示されてから非表示になります
 
 ### 注意事項
 - ICMP は特権操作です。Linux では capability ベースの `ping_helper` を利用することで通常ユーザ権限で実行できますが、補助バイナリが使えない環境では管理者権限が必要です。
 - ASN の取得は `whois.cymru.com` を利用します。ネットワーク側でブロックされている場合、ASN 情報は取得できません。
 - IPv6 アドレスは指定可能ですが、ping は失敗する可能性があります（ping_helper は IPv4 のみサポート）。ホスト名が IPv4 と IPv6 の両方に解決される場合、IPv4 が自動的に優先されます。
 - 各ホストに対してワーカースレッドを 1 スレッド起動し、128 ホストの上限を設けています。上限を超えるとエラーで終了します。
+- 手動リロード（`R`）は `-f/--input` を指定して起動した場合にのみ利用できます。
 - サマリーパネルを上／下に配置した場合、利用可能な空き行を使って表示を拡張します。
 - サマリーパネルを上／下に配置した場合、端末幅が十分であれば全フィールドを表示します。
 

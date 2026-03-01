@@ -34,6 +34,12 @@ class Scheduler:
                 "ping_count": 0,
             }
 
+    def remove_host(self, host: str) -> None:
+        """Remove a host from scheduler tracking."""
+        if host in self.hosts:
+            self.hosts.remove(host)
+            self.host_data.pop(host, None)
+
     def set_interval(self, interval: float) -> None:
         self.interval = interval
 
