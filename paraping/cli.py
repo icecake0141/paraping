@@ -107,11 +107,21 @@ def _compute_initial_timeline_width(host_labels: List[str], term_size: Any, pane
         return 1
 
 
-def _configure_logging(log_level: str, log_file: Optional[str]) -> None:
+def _configure_logging(
+    log_level: str,
+    log_file: Optional[str],
+    interactive_ui: bool = False,
+    verbose_ui_errors: bool = False,
+) -> None:
     """Configure logging handlers for CLI execution."""
-    handlers: List[logging.Handler] = [logging.StreamHandler()]
+    handlers: List[logging.Handler] = []
+    # Avoid polluting the live TUI with asynchronous log lines.
+    if (not interactive_ui) or verbose_ui_errors:
+        handlers.append(logging.StreamHandler())
     if log_file:
-        handlers.insert(0, logging.FileHandler(os.path.expanduser(log_file), encoding="utf-8"))
+        handlers.append(logging.FileHandler(os.path.expanduser(log_file), encoding="utf-8"))
+    if not handlers:
+        handlers.append(logging.NullHandler())
     logging.basicConfig(
         level=getattr(logging, log_level, logging.INFO),
         format="%(message)s",
@@ -287,6 +297,12 @@ def handle_options() -> argparse.Namespace:
         help="Path to ping_helper binary (default: ./bin/ping_helper)",
     )
     parser.add_argument(
+        "--verbose-ui-errors",
+        action="store_true",
+        default=False,
+        help="Show warning/error log lines in live TUI output (default: off)",
+    )
+    parser.add_argument(
         "--no-config",
         action="store_true",
         default=False,
@@ -361,11 +377,28 @@ def _setup_hosts_and_state(args: argparse.Namespace) -> Optional[Dict[str, Any]]
     host_infos, host_info_map = build_host_infos(all_hosts)
     host_labels = [info["alias"] for info in host_infos]
     timeline_width = _compute_initial_timeline_width(host_labels, get_terminal_size(fallback=(80, 24)), panel_position)
+    ping_helper_path = os.path.abspath(os.path.expanduser(args.ping_helper))
+    if not os.path.exists(ping_helper_path):
+        print(
+            "Error: ping_helper binary not found at "
+            f"'{ping_helper_path}'. Run 'make build' first. "
+            "On macOS, run ParaPing with sudo because setcap is unavailable.",
+            file=sys.stderr,
+        )
+        return None
+    if not os.access(ping_helper_path, os.X_OK):
+        print(
+            "Error: ping_helper is not executable at "
+            f"'{ping_helper_path}'. Run 'chmod +x {ping_helper_path}' "
+            "or rebuild with 'make build'.",
+            file=sys.stderr,
+        )
+        return None
     return {
         "all_hosts": all_hosts,
         "display_tz": display_tz,
         "snapshot_tz": snapshot_tz,
-        "ping_helper_path": os.path.expanduser(args.ping_helper),
+        "ping_helper_path": ping_helper_path,
         "panel_position": panel_position,
         "panel_toggle_default": panel_position if panel_position != "none" else "right",
         "last_panel_position": panel_position if panel_position != "none" else None,
@@ -1081,7 +1114,12 @@ def _render_frame(args: argparse.Namespace, state: Dict[str, Any]) -> None:
 
 def run(args: argparse.Namespace) -> None:
     """Run the ParaPing monitor with parsed arguments."""
-    _configure_logging(getattr(args, "log_level", "INFO"), getattr(args, "log_file", None))
+    _configure_logging(
+        getattr(args, "log_level", "INFO"),
+        getattr(args, "log_file", None),
+        interactive_ui=sys.stdout.isatty(),
+        verbose_ui_errors=getattr(args, "verbose_ui_errors", False),
+    )
     setup = _setup_hosts_and_state(args)
     if setup is None:
         return
