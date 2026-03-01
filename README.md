@@ -108,6 +108,7 @@ ParaPing is an interactive, terminal-based ICMP monitor that pings many hosts in
 - Fullscreen ASCII RTT graph per host with axis labels and scale, including X-axis seconds-ago labels (selectable via TUI).
 - Configurable timezone for timestamps and snapshot naming.
 - Input file support for host lists (one per line in `IP,alias` format; comments allowed).
+- Extended input format support: `IP,alias,site,tags` (`tags` separated by `;`) with optional header row (`host,alias,site,tags`).
 - **Global rate limit protection**: Enforces a maximum of 50 pings/sec globally (host_count / interval ≤ 50) to prevent network flooding. The tool will exit with an error if this limit is exceeded.
 - **Per-host outstanding ping window**: Maximum of 3 concurrent pings per host prevents queue buildup and resource exhaustion when monitoring slow or unresponsive hosts.
 
@@ -487,6 +488,7 @@ Example (explicit IPv4 addresses only):
 - `--log-level`: Logging level (`DEBUG|INFO|WARNING|ERROR`, default: `INFO`).
 - `--log-file`: Optional log file path for persistent logging.
 - `-f`, `--input`: Read hosts from a file (one per line; format: `IP,alias`; `#` comments supported).
+- `--group-by`: Grouping key for grouped summary/ordering (`none|asn|site|tag`, default: `none`).
 - `-P`, `--panel-position`: Summary panel position (`right|left|top|bottom|none`).
 - `-m`, `--pause-mode`: Pause behavior (`display|ping`).
 - `-z`, `--timezone`: IANA timezone name for on-screen timestamps.
@@ -508,6 +510,8 @@ Example (explicit IPv4 addresses only):
 - `f`: Cycle filter (failures/latency/all).
 - `a`: Toggle ASN display (auto hides when space is tight).
 - `m`: Cycle summary info (rates/avg RTT/TTL/streak).
+- `G`: Toggle summary scope (`host`/`group`).
+- `T`: Cycle group key (`none`/`asn`/`site`/`tag`).
 - `c`: Toggle colored output.
 - `b`: Toggle terminal bell on ping failure.
 - `F`: Toggle summary fullscreen view.
@@ -537,6 +541,8 @@ Example (explicit IPv4 addresses only):
 - IPv6 addresses can be specified but pinging will likely fail (ping_helper only supports IPv4). When hostnames resolve to both IPv4 and IPv6, IPv4 is automatically preferred.
 - The monitor starts one worker thread per host and enforces a hard limit of 128 hosts. It exits with an error if exceeded.
 - Manual reload (`R`) is available only when hosts are loaded from `-f/--input`.
+- Grouped summary mode keeps one-row-per-host in the main view and adds group header separators.
+- Group labels use `unknown` when metadata is missing (for example, `site:unknown`, `ASN:unknown`, `tag:unknown`).
 - When the summary panel is positioned at the top/bottom, it expands to use available empty rows.
 - When the summary panel is positioned at the top/bottom, it shows all summary fields if the width allows.
 
@@ -860,6 +866,7 @@ ParaPing は、複数のホストへ並列に ICMP ping を実行し、ライブ
 - ホストごとのフルスクリーン ASCII RTT グラフ（軸ラベル、スケール、X 軸に「何秒前」ラベル）
 - タイムゾーン設定（画面表示・スナップショット名に利用可能）
 - 入力ファイル対応（1 行に `IP,alias`、`#` 行はコメントとして無視）
+- 入力拡張形式に対応（`IP,alias,site,tags`、`tags` は `;` 区切り）。ヘッダ行（`host,alias,site,tags`）も利用可能
 
 ### 要件
 - Python 3.9 以上
@@ -1176,6 +1183,7 @@ make clean
 - `--log-level`: ログレベル（`DEBUG|INFO|WARNING|ERROR`、デフォルト `INFO`）
 - `--log-file`: ログの保存先ファイル（任意）
 - `-f`, `--input`: ホスト一覧ファイル（1 行 `IP,alias`、`#` はコメント）
+- `--group-by`: グループ集約キー（`none|asn|site|tag`、デフォルト `none`）
 - `-P`, `--panel-position`: サマリーパネル位置（`right|left|top|bottom|none`）
 - `-m`, `--pause-mode`: 一時停止モード（`display|ping`）
 - `-z`, `--timezone`: 表示用タイムゾーン（IANA 名、例: Asia/Tokyo）
@@ -1193,6 +1201,8 @@ make clean
 - `f`: フィルタを切替（failures / latency / all）
 - `a`: ASN 表示をトグル（表示領域が狭いと自動で非表示）
 - `m`: サマリ表示内容を切替（rates / avg RTT / TTL / streak）
+- `G`: サマリ表示範囲を切替（host / group）
+- `T`: グループキーを切替（none / asn / site / tag）
 - `c`: 色付き表示をトグル
 - `b`: 失敗時のベルをトグル
 - `F`: サマリのフルスクリーン表示をトグル
@@ -1222,6 +1232,8 @@ make clean
 - IPv6 アドレスは指定可能ですが、ping は失敗する可能性があります（ping_helper は IPv4 のみサポート）。ホスト名が IPv4 と IPv6 の両方に解決される場合、IPv4 が自動的に優先されます。
 - 各ホストに対してワーカースレッドを 1 スレッド起動し、128 ホストの上限を設けています。上限を超えるとエラーで終了します。
 - 手動リロード（`R`）は `-f/--input` を指定して起動した場合にのみ利用できます。
+- グループ集約を有効化してもメイン表示は 1 行 1 ホストのままです（グループ境界は見出し行で表示）。
+- メタ情報がない場合のグループ名は `unknown` で統一されます（例: `site:unknown`, `ASN:unknown`, `tag:unknown`）。
 - サマリーパネルを上／下に配置した場合、利用可能な空き行を使って表示を拡張します。
 - サマリーパネルを上／下に配置した場合、端末幅が十分であれば全フィールドを表示します。
 
