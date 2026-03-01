@@ -540,10 +540,14 @@ def format_display_name(
     """Format the complete display name including optional ASN."""
     base_label = resolve_display_name(host_info, mode)
     if not include_asn:
-        return base_label
-    padded_label = f"{base_label:<{base_label_width}}" if base_label_width else base_label
-    asn_label = format_asn_label(host_info, asn_width)
-    return f"{padded_label} {asn_label}"
+        formatted = base_label
+    else:
+        padded_label = f"{base_label:<{base_label_width}}" if base_label_width else base_label
+        asn_label = format_asn_label(host_info, asn_width)
+        formatted = f"{padded_label} {asn_label}"
+    if host_info.get("removed"):
+        return f"{formatted} [REMOVED]"
+    return formatted
 
 
 def build_display_names(host_infos: Sequence[Dict[str, Any]], mode: str, include_asn: bool, asn_width: int) -> Dict[int, str]:
@@ -563,7 +567,7 @@ def build_display_entries(
     sort_mode: str,
     filter_mode: str,
     slow_threshold: float,
-) -> List[Tuple[int, str]]:
+) -> List[Tuple[int, str, bool]]:
     """Build and sort display entries based on current filter and sort modes."""
     entries = []
     for info in host_infos:
@@ -574,7 +578,10 @@ def build_display_entries(
         fail_count = stats[host_id]["fail"]
 
         include = True
-        if filter_mode == "failures":
+        is_removed = bool(info.get("removed", False))
+        if is_removed:
+            include = True
+        elif filter_mode == "failures":
             include = fail_count > 0
         elif filter_mode == "latency":
             include = latest_rtt is not None and latest_rtt >= slow_threshold
@@ -587,6 +594,7 @@ def build_display_entries(
                     "fail_count": fail_count,
                     "fail_streak": fail_streak,
                     "latest_rtt": latest_rtt,
+                    "removed": is_removed,
                 }
             )
 
@@ -605,7 +613,7 @@ def build_display_entries(
     elif sort_mode == "host":
         entries.sort(key=lambda item: item["label"])
 
-    return [(entry["host_id"], entry["label"]) for entry in entries]
+    return [(entry["host_id"], entry["label"], entry["removed"]) for entry in entries]
 
 
 def can_render_full_summary(summary_data: Sequence[Dict[str, Any]], width: int) -> bool:
@@ -810,7 +818,7 @@ def build_status_line(
 
 
 def render_timeline_view(
-    display_entries: Sequence[Tuple[int, str]],
+    display_entries: Sequence[Tuple[int, str, bool]],
     buffers: Dict[int, Dict[str, Any]],
     symbols: Dict[str, str],
     width: int,
@@ -842,11 +850,13 @@ def render_timeline_view(
     lines = []
     lines.append(header)
     lines.append("".join("-" for _ in range(render_width)))
-    for host, label in truncated_entries:
+    for host, label, is_removed in truncated_entries:
         timeline_symbols = list(buffers[host]["timeline"])
         timeline = build_colored_timeline(timeline_symbols, symbols, use_color)
         timeline = rjust_visible(timeline, timeline_width)
         status = latest_status_from_timeline(timeline_symbols, symbols)
+        if is_removed:
+            status = "pending"
         colored_label = colorize_text(label, status, use_color)
         lines.append(format_status_line(colored_label, timeline, label_width))
 
@@ -864,7 +874,7 @@ def render_timeline_view(
 
 
 def render_sparkline_view(
-    display_entries: Sequence[Tuple[int, str]],
+    display_entries: Sequence[Tuple[int, str, bool]],
     buffers: Dict[int, Dict[str, Any]],
     symbols: Dict[str, str],
     width: int,
@@ -896,13 +906,15 @@ def render_sparkline_view(
     lines = []
     lines.append(header)
     lines.append("".join("-" for _ in range(render_width)))
-    for host, label in truncated_entries:
+    for host, label, is_removed in truncated_entries:
         rtt_values = list(buffers[host]["rtt_history"])[-timeline_width:]
         status_symbols = list(buffers[host]["timeline"])[-timeline_width:]
         sparkline = build_sparkline(rtt_values, status_symbols, symbols["fail"])
         sparkline = build_colored_sparkline(sparkline, status_symbols, symbols, use_color)
         sparkline = rjust_visible(sparkline, timeline_width)
         status = latest_status_from_timeline(status_symbols, symbols)
+        if is_removed:
+            status = "pending"
         colored_label = colorize_text(label, status, use_color)
         lines.append(format_status_line(colored_label, sparkline, label_width))
 
@@ -963,7 +975,7 @@ def build_colored_square_timeline(timeline_symbols: Sequence[str], symbols: Dict
 
 
 def render_square_view(
-    display_entries: Sequence[Tuple[int, str]],
+    display_entries: Sequence[Tuple[int, str, bool]],
     buffers: Dict[int, Dict[str, Any]],
     symbols: Dict[str, str],
     width: int,
@@ -996,13 +1008,15 @@ def render_square_view(
     lines.append(header)
     lines.append("".join("-" for _ in range(render_width)))
 
-    for host, label in truncated_entries:
+    for host, label, is_removed in truncated_entries:
         timeline_symbols = list(buffers[host]["timeline"])
         # Build colored square timeline from all timeline symbols
         square_timeline = build_colored_square_timeline(timeline_symbols, symbols, use_color)
         square_timeline = rjust_visible(square_timeline, timeline_width)
         # Get the latest status for label colorization
         status = latest_status_from_timeline(timeline_symbols, symbols)
+        if is_removed:
+            status = "pending"
         colored_label = colorize_text(label, status, use_color)
         lines.append(format_status_line(colored_label, square_timeline, label_width))
 
@@ -1020,7 +1034,7 @@ def render_square_view(
 
 
 def render_main_view(
-    display_entries: Sequence[Tuple[int, str]],
+    display_entries: Sequence[Tuple[int, str, bool]],
     buffers: Dict[int, Dict[str, Any]],
     symbols: Dict[str, str],
     width: int,
@@ -1150,6 +1164,7 @@ def render_help_view(width: int, height: int, boxed: bool = False) -> List[str]:
         "  w/W: toggle/cycle summary panel (on/off, position)",
         "  p: pause/resume display",
         "  P: toggle Dormant Mode (pause ping + display)",
+        "  R: reload hosts from input file",
         "  s: save snapshot to file",
         "  <- / -> : navigate backward/forward in time (1 page)",
         "  up / down: scroll host list",
@@ -1163,7 +1178,7 @@ def render_help_view(width: int, height: int, boxed: bool = False) -> List[str]:
 
 
 def render_host_selection_view(
-    display_entries: Sequence[Tuple[int, str]],
+    display_entries: Sequence[Tuple[Any, ...]],
     selected_index: int,
     width: int,
     height: int,
@@ -1194,7 +1209,8 @@ def render_host_selection_view(
     end_index = min(len(display_entries), start_index + list_height)
 
     for idx in range(start_index, end_index):
-        _host_id, label = display_entries[idx]
+        entry = display_entries[idx]
+        label = str(entry[1]) if len(entry) >= 2 else str(entry[0])
         prefix = "> " if idx == selected_index else "  "
         entry_label = f"{prefix}{label}"
         lines.append(entry_label[:width].ljust(width))
@@ -1372,13 +1388,15 @@ def build_display_lines(  # noqa: C901
         if adjusted_main_height < main_height:
             main_height = adjusted_main_height
             summary_height = panel_height - main_height - gap_size
+    active_host_infos = [info for info in host_infos if info.get("active", True)]
+    active_host_ids = {info["id"] for info in active_host_infos}
     summary_data = compute_summary_data(
-        host_infos,
+        active_host_infos,
         display_names,
         buffers,
         stats,
         symbols,
-        ordered_host_ids=[host_id for host_id, _label in display_entries],
+        ordered_host_ids=[host_id for host_id, _label, _is_removed in display_entries if host_id in active_host_ids],
     )
     summary_all = False
     main_lines = []
@@ -1444,7 +1462,7 @@ def build_display_lines(  # noqa: C901
     else:
         combined_lines = main_lines
 
-    status_metrics = build_status_metrics(host_infos, stats, interval_seconds=interval_seconds)
+    status_metrics = build_status_metrics(active_host_infos, stats, interval_seconds=interval_seconds)
     status_details = f"{status_metrics} | {status_message}" if status_message else status_metrics
     status_line = build_status_line(
         sort_mode,

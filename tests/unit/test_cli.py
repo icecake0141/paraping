@@ -370,6 +370,49 @@ class TestCLIInputHandling(unittest.TestCase):
         self.assertTrue(state["pause_event"].is_set())
         self.assertEqual(state["status_message"], "Display paused")
 
+    def test_handle_user_input_reload_without_input_file_shows_status(self):
+        """`R` without -f/--input should show an unavailable message."""
+        state = {
+            "show_help": False,
+            "host_select_active": False,
+            "graph_host_id": None,
+            "status_message": None,
+            "force_render": False,
+            "updated": False,
+        }
+        args = MagicMock(slow_threshold=0.5, input=None)
+
+        skip_iteration = _handle_user_input("R", args, state)
+
+        self.assertFalse(skip_iteration)
+        self.assertEqual(state["status_message"], "Reload unavailable in this context")
+        self.assertTrue(state["force_render"])
+        self.assertTrue(state["updated"])
+
+    @patch("paraping.cli._apply_manual_reload", return_value="Reloaded: +1 -0 (total 1)")
+    def test_handle_user_input_reload_delegates_to_reload_handler(self, mock_reload):
+        """`R` with scheduler context should call manual reload helper."""
+        state = {
+            "show_help": False,
+            "host_select_active": False,
+            "graph_host_id": None,
+            "status_message": None,
+            "force_render": False,
+            "updated": False,
+        }
+        args = MagicMock(slow_threshold=0.5, input="hosts.txt")
+        scheduler = MagicMock()
+        ping_lock = threading.Lock()
+        sequence_tracker = MagicMock()
+
+        skip_iteration = _handle_user_input("R", args, state, scheduler, ping_lock, sequence_tracker)
+
+        self.assertFalse(skip_iteration)
+        mock_reload.assert_called_once_with(args, state, scheduler, ping_lock, sequence_tracker)
+        self.assertEqual(state["status_message"], "Reloaded: +1 -0 (total 1)")
+        self.assertTrue(state["force_render"])
+        self.assertTrue(state["updated"])
+
 
 if __name__ == "__main__":
     unittest.main()

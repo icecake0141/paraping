@@ -26,7 +26,7 @@ import threading
 import time
 import tty
 from collections import deque
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor  # noqa: F401 - Backward-compatibility for tests patching this symbol.
 from datetime import datetime, timezone, tzinfo
 from typing import Any, Dict, List, Optional, Union
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -71,6 +71,8 @@ from paraping.ui_render import (
     should_show_asn,
     toggle_panel_visibility,
 )
+
+REMOVED_HOST_RETENTION_SECONDS = 10.0
 
 
 def _compute_initial_timeline_width(host_labels: List[str], term_size: Any, panel_position: str) -> int:
@@ -369,7 +371,210 @@ def _setup_hosts_and_state(args: argparse.Namespace) -> Optional[Dict[str, Any]]
     }
 
 
-def _handle_user_input(key: str, args: argparse.Namespace, state: Dict[str, Any]) -> bool:
+def _rebuild_host_info_map(host_infos: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    """Rebuild host-to-info mapping for DNS/ASN updates."""
+    host_info_map: Dict[str, List[Dict[str, Any]]] = {}
+    for info in host_infos:
+        host_info_map.setdefault(info["host"], []).append(info)
+    return host_info_map
+
+
+def _build_host_info_from_entry(entry: Dict[str, str], host_id: int) -> Dict[str, Any]:
+    """Create a host info record from parsed input entry."""
+    host = entry.get("host") or entry.get("ip") or ""
+    alias = entry.get("alias") or host
+    ip_address = entry.get("ip") or host
+    return {
+        "id": host_id,
+        "host": host,
+        "alias": alias,
+        "ip": ip_address,
+        "rdns": None,
+        "rdns_pending": False,
+        "asn": None,
+        "asn_pending": False,
+        "active": True,
+        "removed": False,
+        "retired_until": None,
+    }
+
+
+def _start_host_worker(
+    host_info: Dict[str, Any],
+    args: argparse.Namespace,
+    state: Dict[str, Any],
+    scheduler: Scheduler,
+    ping_lock: threading.Lock,
+    sequence_tracker: SequenceTracker,
+) -> None:
+    """Start one scheduler-driven worker thread for a host."""
+    thread = threading.Thread(
+        target=scheduler_driven_worker_ping,
+        args=(
+            host_info,
+            scheduler,
+            args.timeout,
+            args.count,
+            args.slow_threshold,
+            state["pause_event"],
+            state["stop_event"],
+            state["result_queue"],
+            state["ping_helper_path"],
+            ping_lock,
+            sequence_tracker,
+        ),
+        daemon=True,
+    )
+    state["worker_threads"][host_info["id"]] = thread
+    thread.start()
+
+
+def _active_host_count(state: Dict[str, Any]) -> int:
+    """Count active hosts currently monitored by scheduler workers."""
+    return sum(1 for info in state["host_infos"] if info.get("active", True))
+
+
+def _all_active_hosts_completed(state: Dict[str, Any]) -> bool:
+    """Check whether all active hosts have emitted completion markers."""
+    active_ids = {info["id"] for info in state["host_infos"] if info.get("active", True)}
+    return active_ids.issubset(state["done_host_ids"])
+
+
+def _apply_manual_reload(
+    args: argparse.Namespace,
+    state: Dict[str, Any],
+    scheduler: Scheduler,
+    ping_lock: threading.Lock,
+    sequence_tracker: SequenceTracker,
+) -> str:
+    """Reload hosts from input file and apply add/remove/update deltas."""
+    if not args.input:
+        return "Reload unavailable: start with -f/--input"
+
+    loaded_hosts = read_input_file(args.input)
+    if not loaded_hosts:
+        return "Reload failed: input file is empty or invalid"
+
+    desired_by_ip: Dict[str, Dict[str, str]] = {}
+    for entry in loaded_hosts:
+        ip_address = entry.get("ip") or entry.get("host")
+        if not ip_address:
+            continue
+        if ip_address in desired_by_ip:
+            continue
+        desired_by_ip[ip_address] = entry
+
+    if not desired_by_ip:
+        return "Reload failed: no valid hosts"
+
+    existing_by_ip = {info["ip"]: info for info in state["host_infos"]}
+    active_ips = {info["ip"] for info in state["host_infos"] if info.get("active", True)}
+    desired_ips = set(desired_by_ip.keys())
+
+    added_count = 0
+    removed_count = 0
+
+    for ip_address in sorted(active_ips - desired_ips):
+        info = existing_by_ip.get(ip_address)
+        if info is None:
+            continue
+        info["active"] = False
+        info["removed"] = True
+        info["retired_until"] = time.time() + REMOVED_HOST_RETENTION_SECONDS
+        with ping_lock:
+            scheduler.remove_host(info["host"])
+            host_count = scheduler.get_host_count()
+            scheduler.set_stagger(args.interval / host_count if host_count > 0 else 0.0)
+        removed_count += 1
+
+    now = time.time()
+    for ip_address in sorted(desired_ips):
+        entry = desired_by_ip[ip_address]
+        info = existing_by_ip.get(ip_address)
+        if info is not None:
+            info["host"] = entry.get("host") or info["host"]
+            info["alias"] = entry.get("alias") or info["alias"]
+            info["ip"] = ip_address
+            if not info.get("active", True):
+                info["active"] = True
+                info["removed"] = False
+                info["retired_until"] = None
+                with ping_lock:
+                    scheduler.add_host(info["host"], host_id=info["id"])
+                    host_count = scheduler.get_host_count()
+                    scheduler.set_stagger(args.interval / host_count if host_count > 0 else 0.0)
+                state["done_host_ids"].discard(info["id"])
+                _start_host_worker(info, args, state, scheduler, ping_lock, sequence_tracker)
+                info["rdns_pending"] = True
+                state["rdns_request_queue"].put((info["host"], info["ip"]))
+                if should_retry_asn(info["ip"], state["asn_cache"], now, state["asn_failure_ttl"]):
+                    info["asn_pending"] = True
+                    state["asn_request_queue"].put((info["host"], info["ip"]))
+                added_count += 1
+            continue
+
+        new_info = _build_host_info_from_entry(entry, state["next_host_id"])
+        state["next_host_id"] += 1
+        state["host_infos"].append(new_info)
+        state["v2_state"].add_host(new_info["id"])
+        with ping_lock:
+            scheduler.add_host(new_info["host"], host_id=new_info["id"])
+            host_count = scheduler.get_host_count()
+            scheduler.set_stagger(args.interval / host_count if host_count > 0 else 0.0)
+        state["done_host_ids"].discard(new_info["id"])
+        _start_host_worker(new_info, args, state, scheduler, ping_lock, sequence_tracker)
+        new_info["rdns_pending"] = True
+        state["rdns_request_queue"].put((new_info["host"], new_info["ip"]))
+        if should_retry_asn(new_info["ip"], state["asn_cache"], now, state["asn_failure_ttl"]):
+            new_info["asn_pending"] = True
+            state["asn_request_queue"].put((new_info["host"], new_info["ip"]))
+        added_count += 1
+
+    state["host_info_map"] = _rebuild_host_info_map(state["host_infos"])
+    state["cached_page_step"] = None
+    state["updated"] = True
+    state["force_render"] = True
+    return f"Reloaded: +{added_count} -{removed_count} (total {_active_host_count(state)})"
+
+
+def _purge_expired_removed_hosts(state: Dict[str, Any]) -> None:
+    """Permanently remove hosts after retirement window expires."""
+    now = time.time()
+    remaining_infos: List[Dict[str, Any]] = []
+    purged_ids: List[int] = []
+    for info in state["host_infos"]:
+        if info.get("active", True):
+            remaining_infos.append(info)
+            continue
+        retired_until = info.get("retired_until")
+        if retired_until is None or now < retired_until:
+            remaining_infos.append(info)
+            continue
+        purged_ids.append(info["id"])
+
+    if not purged_ids:
+        return
+
+    state["host_infos"] = remaining_infos
+    for host_id in purged_ids:
+        state["v2_state"].remove_host(host_id)
+        state["worker_threads"].pop(host_id, None)
+        state["done_host_ids"].discard(host_id)
+        if state.get("graph_host_id") == host_id:
+            state["graph_host_id"] = None
+    state["host_info_map"] = _rebuild_host_info_map(state["host_infos"])
+    state["cached_page_step"] = None
+    state["updated"] = True
+
+
+def _handle_user_input(
+    key: str,
+    args: argparse.Namespace,
+    state: Dict[str, Any],
+    scheduler: Optional[Scheduler] = None,
+    ping_lock: Optional[threading.Lock] = None,
+    sequence_tracker: Optional[SequenceTracker] = None,
+) -> bool:
     """Process one keyboard input event and return True when the current loop iteration should be skipped."""
     skip_iteration = False
     if key in ("q", "Q"):
@@ -445,6 +650,13 @@ def _handle_user_input(key: str, args: argparse.Namespace, state: Dict[str, Any]
         state["show_help"] = True
         state["force_render"] = True
         state["updated"] = True
+    elif key == "R":
+        if scheduler is None or ping_lock is None or sequence_tracker is None:
+            state["status_message"] = "Reload unavailable in this context"
+        else:
+            state["status_message"] = _apply_manual_reload(args, state, scheduler, ping_lock, sequence_tracker)
+        state["updated"] = True
+        state["force_render"] = True
     elif key == "n":
         state["mode_index"] = (state["mode_index"] + 1) % len(state["modes"])
         state["cached_page_step"] = None
@@ -670,6 +882,8 @@ def _update_render_state(state: Dict[str, Any]) -> None:
 
     now = time.time()
     for host, infos in state["host_info_map"].items():
+        if not any(info.get("active", True) for info in infos):
+            continue
         if any(info["asn_pending"] for info in infos) or any(info["asn"] is not None for info in infos):
             continue
         ip_address = infos[0]["ip"]
@@ -685,7 +899,7 @@ def _update_render_state(state: Dict[str, Any]) -> None:
             break
         host_id = result["host_id"]
         if result.get("status") == "done":
-            state["completed_hosts"] += 1
+            state["done_host_ids"].add(host_id)
             continue
 
         status = result["status"]
@@ -712,6 +926,7 @@ def _update_render_state(state: Dict[str, Any]) -> None:
         state["paused"],
     )
     state["render_buffers"], state["render_stats"] = project_legacy_state_from_v2(render_v2_state, state["symbols"])
+    _purge_expired_removed_hosts(state)
 
 
 def _render_frame(args: argparse.Namespace, state: Dict[str, Any]) -> None:
@@ -787,7 +1002,9 @@ def _render_frame(args: argparse.Namespace, state: Dict[str, Any]) -> None:
             include_asn,
             asn_width=8,
         )
-        host_label = display_names.get(state["graph_host_id"], state["host_infos"][state["graph_host_id"]]["alias"])
+        host_info_by_id = {info["id"]: info for info in state["host_infos"]}
+        fallback_label = host_info_by_id.get(state["graph_host_id"], {}).get("alias", "unknown-host")
+        host_label = display_names.get(state["graph_host_id"], fallback_label)
         override_lines = render_fullscreen_rtt_graph(
             host_label,
             state["render_buffers"][state["graph_host_id"]]["rtt_history"],
@@ -884,7 +1101,9 @@ def run(args: argparse.Namespace) -> None:
         "render_stats": initial_render_stats,
         "render_snapshot_timestamp": None,
         "render_paused": False,
-        "completed_hosts": 0,
+        "done_host_ids": set(),
+        "worker_threads": {},
+        "next_host_id": (max((info["id"] for info in setup["host_infos"]), default=-1) + 1),
         "updated": True,
         "last_render": 0.0,
         "refresh_interval": 0.15,
@@ -895,6 +1114,10 @@ def run(args: argparse.Namespace) -> None:
         "asn_result_queue": queue.Queue(),
         "worker_stop": threading.Event(),
     }
+    for info in state["host_infos"]:
+        info.setdefault("active", True)
+        info.setdefault("removed", False)
+        info.setdefault("retired_until", None)
     state["rdns_thread"] = threading.Thread(
         target=rdns_worker,
         args=(state["rdns_request_queue"], state["rdns_result_queue"], state["worker_stop"]),
@@ -920,67 +1143,55 @@ def run(args: argparse.Namespace) -> None:
     sequence_tracker = SequenceTracker(max_outstanding=3)
     for info in state["host_infos"]:
         scheduler.add_host(info["host"], host_id=info["id"])
-
-    with ThreadPoolExecutor(max_workers=len(setup["all_hosts"])) as executor:
-        for host, infos in state["host_info_map"].items():
-            info = infos[0]
+    for host, infos in state["host_info_map"].items():
+        info = infos[0]
+        for entry in infos:
+            entry["rdns_pending"] = True
+        state["rdns_request_queue"].put((host, info["ip"]))
+        now = time.time()
+        if info["ip"] in state["asn_cache"] and state["asn_cache"][info["ip"]]["value"] is not None:
             for entry in infos:
-                entry["rdns_pending"] = True
-            state["rdns_request_queue"].put((host, info["ip"]))
-            now = time.time()
-            if info["ip"] in state["asn_cache"] and state["asn_cache"][info["ip"]]["value"] is not None:
-                for entry in infos:
-                    entry["asn"] = state["asn_cache"][info["ip"]]["value"]
-                    entry["asn_pending"] = False
-            elif should_retry_asn(info["ip"], state["asn_cache"], now, state["asn_failure_ttl"]):
-                for entry in infos:
-                    entry["asn_pending"] = True
-                state["asn_request_queue"].put((host, info["ip"]))
-        for info in state["host_infos"]:
-            executor.submit(
-                scheduler_driven_worker_ping,
-                info,
-                scheduler,
-                args.timeout,
-                args.count,
-                args.slow_threshold,
-                state["pause_event"],
-                state["stop_event"],
-                state["result_queue"],
-                state["ping_helper_path"],
-                ping_lock,
-                sequence_tracker,
-            )
-        try:
-            if stdin_fd is not None:
-                tty.setcbreak(stdin_fd)
-            while state["running"] and (
-                not state["expect_completion"] or state["completed_hosts"] < len(state["host_infos"])
-            ):
-                key = read_key()
-                if key and _handle_user_input(key, args, state):
-                    continue
-                _update_render_state(state)
-                _render_frame(args, state)
-                time.sleep(0.05)
-        except KeyboardInterrupt:
-            state["running"] = False
-            state["stop_event"].set()
-        finally:
-            state["stop_event"].set()
-            state["worker_stop"].set()
-            state["rdns_request_queue"].put(None)
-            state["asn_request_queue"].put(None)
-            state["rdns_thread"].join(timeout=1.0)
-            state["asn_thread"].join(timeout=1.0)
-            if stdin_fd is not None and original_term is not None:
-                termios.tcsetattr(stdin_fd, termios.TCSADRAIN, original_term)
+                entry["asn"] = state["asn_cache"][info["ip"]]["value"]
+                entry["asn_pending"] = False
+        elif should_retry_asn(info["ip"], state["asn_cache"], now, state["asn_failure_ttl"]):
+            for entry in infos:
+                entry["asn_pending"] = True
+            state["asn_request_queue"].put((host, info["ip"]))
+    for info in state["host_infos"]:
+        _start_host_worker(info, args, state, scheduler, ping_lock, sequence_tracker)
+
+    try:
+        if stdin_fd is not None:
+            tty.setcbreak(stdin_fd)
+        while state["running"] and (not state["expect_completion"] or not _all_active_hosts_completed(state)):
+            key = read_key()
+            if key and _handle_user_input(key, args, state, scheduler, ping_lock, sequence_tracker):
+                continue
+            _update_render_state(state)
+            _render_frame(args, state)
+            time.sleep(0.05)
+    except KeyboardInterrupt:
+        state["running"] = False
+        state["stop_event"].set()
+    finally:
+        state["stop_event"].set()
+        state["worker_stop"].set()
+        state["rdns_request_queue"].put(None)
+        state["asn_request_queue"].put(None)
+        state["rdns_thread"].join(timeout=1.0)
+        state["asn_thread"].join(timeout=1.0)
+        for thread in state["worker_threads"].values():
+            thread.join(timeout=1.0)
+        if stdin_fd is not None and original_term is not None:
+            termios.tcsetattr(stdin_fd, termios.TCSADRAIN, original_term)
 
     prepare_terminal_for_exit()
     print("\n" + "=" * 60)
     print("SUMMARY")
     print("=" * 60)
     for info in state["host_infos"]:
+        if not info.get("active", True):
+            continue
         host_id = info["id"]
         host_stats = state["v2_state"].stats[host_id]
         success = host_stats.success
