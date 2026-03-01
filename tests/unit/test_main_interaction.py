@@ -383,7 +383,9 @@ class TestQuitHotkey(unittest.TestCase):
         with patch("main.termios.tcgetattr", return_value=MagicMock()):
             with patch("main.termios.tcsetattr"):
                 with patch("main.tty.setcbreak"):
-                    main(args)
+                    with patch("paraping.cli.os.path.exists", return_value=True):
+                        with patch("paraping.cli.os.access", return_value=True):
+                            main(args)
 
         pause_event.set.assert_called()
         pause_event.clear.assert_called()
@@ -440,7 +442,9 @@ class TestQuitHotkey(unittest.TestCase):
         with patch("main.termios.tcgetattr", return_value=MagicMock()):
             with patch("main.termios.tcsetattr"):
                 with patch("main.tty.setcbreak"):
-                    main(args)
+                    with patch("paraping.cli.os.path.exists", return_value=True):
+                        with patch("paraping.cli.os.access", return_value=True):
+                            main(args)
 
         pause_event.set.assert_called()
         pause_event.clear.assert_called()

@@ -19,7 +19,10 @@ without performing actual network operations.
 """
 
 import os
+import io
 import sys
+import argparse
+import logging
 import threading
 import unittest
 from unittest.mock import MagicMock, patch
@@ -27,7 +30,7 @@ from unittest.mock import MagicMock, patch
 # Add parent directory to path to import paraping
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from paraping.cli import _handle_user_input, handle_options, main
+from paraping.cli import _configure_logging, _handle_user_input, _setup_hosts_and_state, handle_options, main
 
 
 class TestCLIArgumentParsing(unittest.TestCase):
@@ -142,6 +145,18 @@ class TestCLIArgumentParsing(unittest.TestCase):
         with patch("sys.argv", ["paraping", "-C", "example.com"]):
             args = handle_options()
             self.assertTrue(args.color)
+
+    def test_handle_options_verbose_ui_errors_default_false(self):
+        """--verbose-ui-errors should default to False."""
+        with patch("sys.argv", ["paraping", "example.com"]):
+            args = handle_options()
+            self.assertFalse(args.verbose_ui_errors)
+
+    def test_handle_options_verbose_ui_errors_flag(self):
+        """--verbose-ui-errors should enable UI error logs."""
+        with patch("sys.argv", ["paraping", "--verbose-ui-errors", "example.com"]):
+            args = handle_options()
+            self.assertTrue(args.verbose_ui_errors)
 
     def test_handle_options_ping_helper_path(self):
         """Test ping helper path option"""
@@ -320,6 +335,61 @@ class TestCLIRateLimitValidation(unittest.TestCase):
         is_valid, rate, error = validate_global_rate_limit(25, 0.5)
         self.assertTrue(is_valid)
         self.assertEqual(rate, 50.0)
+
+
+class TestCLISetupValidation(unittest.TestCase):
+    """Test setup-time validation behavior."""
+
+    @patch("paraping.cli.os.path.exists", return_value=False)
+    @patch("paraping.cli.build_host_infos", return_value=([{"id": 0, "host": "1.1.1.1", "alias": "h"}], {"1.1.1.1": []}))
+    @patch("paraping.cli.get_terminal_size")
+    def test_setup_fails_fast_when_ping_helper_missing(self, mock_term_size, _mock_build_host_infos, _mock_exists):
+        """Missing ping helper should abort setup with clear error."""
+        mock_term_size.return_value = os.terminal_size((80, 24))
+        args = argparse.Namespace(
+            count=0,
+            timeout=1,
+            interval=1.0,
+            hosts=["1.1.1.1"],
+            input=None,
+            timezone=None,
+            snapshot_timezone="utc",
+            panel_position="right",
+            ping_helper="./bin/ping_helper",
+        )
+        stderr = io.StringIO()
+        with patch("sys.stderr", stderr):
+            result = _setup_hosts_and_state(args)
+        self.assertIsNone(result)
+        self.assertIn("ping_helper binary not found", stderr.getvalue())
+
+
+class TestCLILoggingConfiguration(unittest.TestCase):
+    """Test logging handler setup for interactive and non-interactive modes."""
+
+    @patch("paraping.cli.logging.basicConfig")
+    def test_configure_logging_interactive_uses_null_handler(self, mock_basic_config):
+        """Interactive mode without log file should avoid terminal log noise."""
+        _configure_logging("INFO", None, interactive_ui=True, verbose_ui_errors=False)
+        handlers = mock_basic_config.call_args.kwargs["handlers"]
+        self.assertEqual(len(handlers), 1)
+        self.assertIsInstance(handlers[0], logging.NullHandler)
+
+    @patch("paraping.cli.logging.basicConfig")
+    def test_configure_logging_noninteractive_uses_stream_handler(self, mock_basic_config):
+        """Non-interactive mode should keep stream logging enabled."""
+        _configure_logging("INFO", None, interactive_ui=False, verbose_ui_errors=False)
+        handlers = mock_basic_config.call_args.kwargs["handlers"]
+        self.assertEqual(len(handlers), 1)
+        self.assertIsInstance(handlers[0], logging.StreamHandler)
+
+    @patch("paraping.cli.logging.basicConfig")
+    def test_configure_logging_interactive_verbose_enabled_uses_stream_handler(self, mock_basic_config):
+        """Interactive mode with verbose UI errors should enable stream logging."""
+        _configure_logging("INFO", None, interactive_ui=True, verbose_ui_errors=True)
+        handlers = mock_basic_config.call_args.kwargs["handlers"]
+        self.assertEqual(len(handlers), 1)
+        self.assertIsInstance(handlers[0], logging.StreamHandler)
 
 
 class TestCLIInputHandling(unittest.TestCase):

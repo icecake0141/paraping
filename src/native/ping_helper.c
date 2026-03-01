@@ -158,11 +158,13 @@ int main(int argc, char *argv[]) {
     struct timeval start_time, end_time;
     gettimeofday(&start_time, NULL);
 
-    /* Send ICMP echo request */
-    ssize_t sent = sendto(sockfd, packet, PACKET_SIZE, 0,
-                          (struct sockaddr *)dest_addr, sizeof(*dest_addr));
+    /* Send ICMP echo request.
+     * The socket is already connected above; use send() for portability.
+     * On macOS, sendto() on a connected socket can fail with EISCONN.
+     */
+    ssize_t sent = send(sockfd, packet, PACKET_SIZE, 0);
     if (sent < 0) {
-        fprintf(stderr, "Error: sendto failed: %s\n", strerror(errno));
+        fprintf(stderr, "Error: send failed: %s\n", strerror(errno));
         close(sockfd);
         freeaddrinfo(res);
         return 5;
