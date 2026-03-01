@@ -891,6 +891,33 @@ def build_status_line(
 # ============================================================================
 
 
+def build_group_tree_label_map(
+    display_entries: Sequence[Tuple[Any, ...]],
+    show_group_headers: bool = False,
+    host_group_labels: Optional[Dict[int, str]] = None,
+) -> Dict[int, str]:
+    """Build host label overrides with tree branch markers for grouped rendering."""
+    if not show_group_headers or not host_group_labels:
+        return {}
+
+    label_map: Dict[int, str] = {}
+    for index, entry in enumerate(display_entries):
+        host = entry[0]
+        group_label = host_group_labels.get(host)
+        if not group_label:
+            continue
+
+        label = str(entry[1]) if len(entry) >= 2 else str(entry[0])
+        next_same_group = False
+        if index + 1 < len(display_entries):
+            next_host = display_entries[index + 1][0]
+            next_same_group = host_group_labels.get(next_host) == group_label
+
+        branch = "├ " if next_same_group else "└ "
+        label_map[host] = f"{branch}{label}"
+    return label_map
+
+
 def render_timeline_view(
     display_entries: Sequence[Tuple[Any, ...]],
     buffers: Dict[int, Dict[str, Any]],
@@ -912,7 +939,12 @@ def render_timeline_view(
         return []
 
     render_width, render_height, can_box = resolve_boxed_dimensions(width, height, boxed)
-    host_labels = [entry[1] for entry in display_entries]
+    label_overrides = build_group_tree_label_map(
+        display_entries,
+        show_group_headers=show_group_headers,
+        host_group_labels=host_group_labels,
+    )
+    host_labels = [label_overrides.get(entry[0], str(entry[1]) if len(entry) >= 2 else str(entry[0])) for entry in display_entries]
     # Account for time axis line when calculating visible hosts
     # header_lines + 1 for the time axis line
     render_width, label_width, timeline_width, visible_hosts = compute_main_layout(
@@ -930,7 +962,8 @@ def render_timeline_view(
     current_group = None
     for entry in truncated_entries:
         host = entry[0]
-        label = str(entry[1]) if len(entry) >= 2 else str(entry[0])
+        base_label = str(entry[1]) if len(entry) >= 2 else str(entry[0])
+        label = label_overrides.get(host, base_label)
         is_removed = "[REMOVED]" in label
         host_group_label = host_group_labels.get(host) if host_group_labels else None
         if show_group_headers and host_group_label and host_group_label != current_group:
@@ -984,7 +1017,12 @@ def render_sparkline_view(
         return []
 
     render_width, render_height, can_box = resolve_boxed_dimensions(width, height, boxed)
-    host_labels = [entry[1] for entry in display_entries]
+    label_overrides = build_group_tree_label_map(
+        display_entries,
+        show_group_headers=show_group_headers,
+        host_group_labels=host_group_labels,
+    )
+    host_labels = [label_overrides.get(entry[0], str(entry[1]) if len(entry) >= 2 else str(entry[0])) for entry in display_entries]
     # Account for time axis line when calculating visible hosts
     # header_lines + 1 for the time axis line
     render_width, label_width, timeline_width, visible_hosts = compute_main_layout(
@@ -1002,7 +1040,8 @@ def render_sparkline_view(
     current_group = None
     for entry in truncated_entries:
         host = entry[0]
-        label = str(entry[1]) if len(entry) >= 2 else str(entry[0])
+        base_label = str(entry[1]) if len(entry) >= 2 else str(entry[0])
+        label = label_overrides.get(host, base_label)
         is_removed = "[REMOVED]" in label
         host_group_label = host_group_labels.get(host) if host_group_labels else None
         if show_group_headers and host_group_label and host_group_label != current_group:
@@ -1101,7 +1140,12 @@ def render_square_view(
         return []
 
     render_width, render_height, can_box = resolve_boxed_dimensions(width, height, boxed)
-    host_labels = [entry[1] for entry in display_entries]
+    label_overrides = build_group_tree_label_map(
+        display_entries,
+        show_group_headers=show_group_headers,
+        host_group_labels=host_group_labels,
+    )
+    host_labels = [label_overrides.get(entry[0], str(entry[1]) if len(entry) >= 2 else str(entry[0])) for entry in display_entries]
     # Account for time axis line when calculating visible hosts
     # header_lines + 1 for the time axis line
     render_width, label_width, timeline_width, visible_hosts = compute_main_layout(
@@ -1120,7 +1164,8 @@ def render_square_view(
     current_group = None
     for entry in truncated_entries:
         host = entry[0]
-        label = str(entry[1]) if len(entry) >= 2 else str(entry[0])
+        base_label = str(entry[1]) if len(entry) >= 2 else str(entry[0])
+        label = label_overrides.get(host, base_label)
         is_removed = "[REMOVED]" in label
         host_group_label = host_group_labels.get(host) if host_group_labels else None
         if show_group_headers and host_group_label and host_group_label != current_group:
