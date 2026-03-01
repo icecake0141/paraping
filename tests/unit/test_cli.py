@@ -370,6 +370,48 @@ class TestCLIInputHandling(unittest.TestCase):
         self.assertTrue(state["pause_event"].is_set())
         self.assertEqual(state["status_message"], "Display paused")
 
+    def test_handle_user_input_group_scope_toggle(self):
+        """`G` toggles summary scope between host and group."""
+        state = {
+            "show_help": False,
+            "host_select_active": False,
+            "graph_host_id": None,
+            "summary_scope_modes": ["host", "group"],
+            "summary_scope_mode_index": 0,
+            "status_message": None,
+            "cached_page_step": 1,
+            "updated": False,
+        }
+
+        skip_iteration = _handle_user_input("G", MagicMock(slow_threshold=0.5), state)
+
+        self.assertFalse(skip_iteration)
+        self.assertEqual(state["summary_scope_mode_index"], 1)
+        self.assertEqual(state["status_message"], "Summary scope: GROUP")
+        self.assertIsNone(state["cached_page_step"])
+        self.assertTrue(state["updated"])
+
+    def test_handle_user_input_group_key_toggle(self):
+        """`T` cycles the group-by key."""
+        state = {
+            "show_help": False,
+            "host_select_active": False,
+            "graph_host_id": None,
+            "group_by_modes": ["none", "asn", "site", "tag"],
+            "group_by_mode_index": 0,
+            "status_message": None,
+            "cached_page_step": 1,
+            "updated": False,
+        }
+
+        skip_iteration = _handle_user_input("T", MagicMock(slow_threshold=0.5), state)
+
+        self.assertFalse(skip_iteration)
+        self.assertEqual(state["group_by_mode_index"], 1)
+        self.assertEqual(state["status_message"], "Group key: asn")
+        self.assertIsNone(state["cached_page_step"])
+        self.assertTrue(state["updated"])
+
     def test_handle_user_input_reload_without_input_file_shows_status(self):
         """`R` without -f/--input should show an unavailable message."""
         state = {
