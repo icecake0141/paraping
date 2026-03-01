@@ -115,7 +115,7 @@ ParaPing is an interactive, terminal-based ICMP monitor that pings many hosts in
 ## Requirements
 - Python 3.9 or newer.
 - The `ping_helper` binary built with `cap_net_raw` (Linux) to run without `sudo`.
-- Root/administrator privileges if you cannot use the helper (non-Linux platforms).
+- On macOS/BSD, run ParaPing with `sudo` because `setcap` is Linux-only.
 - Network access for optional ASN lookups.
 - IPv4-only ping support: IPv6 addresses can be specified in configuration files but will likely fail during ping. When a hostname resolves to both IPv4 and IPv6 addresses, IPv4 is automatically preferred.
 
@@ -169,7 +169,7 @@ ping_helper <host> <timeout_ms> [icmp_seq]
 
 **Documentation:** For detailed information about `ping_helper`'s design, CLI contract, validation logic, and limitations, see [docs/ping_helper.md](docs/ping_helper.md).
 
-**Note for macOS/BSD users:** The `setcap` command is Linux-specific and not available on macOS or BSD systems. On these platforms, you would need to use the setuid bit instead (e.g., `sudo chown root:wheel bin/ping_helper && sudo chmod u+s bin/ping_helper`), but this is less secure and not recommended. Follow platform best practices for granting minimal privilege.
+**Note for macOS/BSD users:** The `setcap` command is Linux-specific and not available on macOS or BSD systems. On these platforms, run ParaPing with `sudo` when sending ICMP (for example, `sudo make run ARGS='8.8.8.8'` or `sudo .venv/bin/python paraping.py ...`). The `make setcap` target will print a skip message on non-Linux systems.
 
 **Security Note:** Never grant `cap_net_raw` or any capabilities to `/usr/bin/python3` or other general-purpose interpreters. Only grant the minimal required privilege to the specific `ping_helper` binary.
 
@@ -192,7 +192,10 @@ make
 sudo make setcap
 
 # Run paraping
+# Linux (after sudo make setcap)
 make run ARGS='--help'
+# macOS/BSD
+sudo make run ARGS='--help'
 # Or run directly
 python3 paraping.py --help
 ```
@@ -710,7 +713,7 @@ sudo make setcap
 
 **Platform notes:**
 - **Linux**: Use `setcap` to grant `cap_net_raw` to the `ping_helper` binary. This is more secure than running Python as root.
-- **macOS/BSD**: The `setcap` command is not available. You can use the setuid bit (`sudo chown root:wheel bin/ping_helper && sudo chmod u+s bin/ping_helper`), but this is not recommended for security reasons.
+- **macOS/BSD**: The `setcap` command is not available. Run ParaPing with `sudo` when sending ICMP (for example, `sudo make run ARGS='8.8.8.8'`).
 - **Security**: Never grant `cap_net_raw` or any capabilities to general-purpose interpreters like `/usr/bin/python3`. Only grant the minimal required privilege to the specific `ping_helper` binary.
 
 ### Linting
@@ -909,7 +912,7 @@ ping_helper <host> <timeout_ms> [icmp_seq]
 - エラー（exit 1–6, 8）: stderr にエラーメッセージ（引数エラー、解決失敗、ソケット/送受信エラー等）
 
 macOS / BSD の注意:
-- `setcap` は Linux 固有です。macOS / BSD では setuid による手段がありますが、セキュリティ上の理由で推奨しません。各プラットフォームのベストプラクティスに従って最小権限化してください。
+- `setcap` は Linux 固有です。macOS / BSD では ICMP 実行時に `sudo` で ParaPing を起動してください（例: `sudo make run ARGS='8.8.8.8'` または `sudo .venv/bin/python paraping.py ...`）。`make setcap` は non-Linux ではスキップされます。
 
 セキュリティ注意:
 - 汎用インタプリタ（例: `/usr/bin/python3`）へ `cap_net_raw` 等の権限を与えないでください。特定の小さなヘルパーバイナリのみに権限を付与してください。
@@ -1288,7 +1291,7 @@ sudo make setcap
 
 **プラットフォーム注記:**
 - **Linux**: `setcap` を使用して `ping_helper` バイナリに `cap_net_raw` を付与します。これは Python を root で実行するよりも安全です。
-- **macOS/BSD**: `setcap` コマンドは利用できません。setuid ビット（`sudo chown root:wheel bin/ping_helper && sudo chmod u+s bin/ping_helper`）を使用できますが、セキュリティ上の理由で推奨されません。
+- **macOS/BSD**: `setcap` コマンドは利用できません。ICMP 実行時は `sudo` で ParaPing を起動してください（例: `sudo make run ARGS='8.8.8.8'`）。
 - **セキュリティ**: `/usr/bin/python3` などの汎用インタプリタに `cap_net_raw` や他の capabilities を付与しないでください。特定の `ping_helper` バイナリのみに最小限の必要な権限を付与してください。
 
 #### Linting

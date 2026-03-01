@@ -10,10 +10,9 @@
 # This file was created or modified with the assistance of an AI (Large Language Model).
 # Review required for correctness, security, and licensing.
 
-CC = gcc
-CFLAGS = -Wall -Wextra -O2
-TARGET = ping_helper
-SRC = ping_helper.c
+ROOT_DIR = ../..
+ROOT_HELPER = $(ROOT_DIR)/bin/ping_helper
+LOCAL_HELPER = ping_helper
 
 # Default target: build the helper
 .PHONY: all
@@ -21,26 +20,20 @@ all: build
 
 # Build the ICMP helper
 .PHONY: build
-build: $(TARGET)
-
-$(TARGET): $(SRC)
-	$(CC) $(CFLAGS) -o $(TARGET) $(SRC)
+build:
+	@echo "Delegating build to repository root Makefile..."
+	@$(MAKE) -C $(ROOT_DIR) build
+	@cp $(ROOT_HELPER) $(LOCAL_HELPER)
+	@echo "Synced local helper: $(LOCAL_HELPER)"
 
 # Set capabilities on the helper (requires sudo)
 .PHONY: setcap
-setcap: $(TARGET)
-	@if ! command -v setcap >/dev/null 2>&1; then \
-		echo "Error: setcap command not found."; \
-		echo "On Debian/Ubuntu, install with: sudo apt-get install libcap2-bin"; \
-		echo "On macOS/BSD, setcap is not available. Use setuid bit instead (not recommended)."; \
-		exit 1; \
-	fi
-	@echo "Setting cap_net_raw+ep on $(TARGET)..."
-	sudo setcap cap_net_raw+ep $(TARGET)
-	@echo "Capabilities set successfully:"
-	@getcap $(TARGET)
+setcap:
+	@echo "Delegating setcap to repository root Makefile..."
+	@$(MAKE) -C $(ROOT_DIR) setcap
 
 # Clean build artifacts
 .PHONY: clean
 clean:
-	rm -f $(TARGET)
+	@rm -f $(LOCAL_HELPER) $(ROOT_HELPER)
+	@echo "Removed native helper artifacts."
