@@ -567,7 +567,7 @@ def build_display_entries(
     sort_mode: str,
     filter_mode: str,
     slow_threshold: float,
-) -> List[Tuple[int, str, bool]]:
+) -> List[Tuple[int, str]]:
     """Build and sort display entries based on current filter and sort modes."""
     entries = []
     for info in host_infos:
@@ -594,7 +594,6 @@ def build_display_entries(
                     "fail_count": fail_count,
                     "fail_streak": fail_streak,
                     "latest_rtt": latest_rtt,
-                    "removed": is_removed,
                 }
             )
 
@@ -613,7 +612,7 @@ def build_display_entries(
     elif sort_mode == "host":
         entries.sort(key=lambda item: item["label"])
 
-    return [(entry["host_id"], entry["label"], entry["removed"]) for entry in entries]
+    return [(entry["host_id"], entry["label"]) for entry in entries]
 
 
 def can_render_full_summary(summary_data: Sequence[Dict[str, Any]], width: int) -> bool:
@@ -818,7 +817,7 @@ def build_status_line(
 
 
 def render_timeline_view(
-    display_entries: Sequence[Tuple[int, str, bool]],
+    display_entries: Sequence[Tuple[Any, ...]],
     buffers: Dict[int, Dict[str, Any]],
     symbols: Dict[str, str],
     width: int,
@@ -850,7 +849,10 @@ def render_timeline_view(
     lines = []
     lines.append(header)
     lines.append("".join("-" for _ in range(render_width)))
-    for host, label, is_removed in truncated_entries:
+    for entry in truncated_entries:
+        host = entry[0]
+        label = str(entry[1]) if len(entry) >= 2 else str(entry[0])
+        is_removed = "[REMOVED]" in label
         timeline_symbols = list(buffers[host]["timeline"])
         timeline = build_colored_timeline(timeline_symbols, symbols, use_color)
         timeline = rjust_visible(timeline, timeline_width)
@@ -874,7 +876,7 @@ def render_timeline_view(
 
 
 def render_sparkline_view(
-    display_entries: Sequence[Tuple[int, str, bool]],
+    display_entries: Sequence[Tuple[Any, ...]],
     buffers: Dict[int, Dict[str, Any]],
     symbols: Dict[str, str],
     width: int,
@@ -906,7 +908,10 @@ def render_sparkline_view(
     lines = []
     lines.append(header)
     lines.append("".join("-" for _ in range(render_width)))
-    for host, label, is_removed in truncated_entries:
+    for entry in truncated_entries:
+        host = entry[0]
+        label = str(entry[1]) if len(entry) >= 2 else str(entry[0])
+        is_removed = "[REMOVED]" in label
         rtt_values = list(buffers[host]["rtt_history"])[-timeline_width:]
         status_symbols = list(buffers[host]["timeline"])[-timeline_width:]
         sparkline = build_sparkline(rtt_values, status_symbols, symbols["fail"])
@@ -975,7 +980,7 @@ def build_colored_square_timeline(timeline_symbols: Sequence[str], symbols: Dict
 
 
 def render_square_view(
-    display_entries: Sequence[Tuple[int, str, bool]],
+    display_entries: Sequence[Tuple[Any, ...]],
     buffers: Dict[int, Dict[str, Any]],
     symbols: Dict[str, str],
     width: int,
@@ -1008,7 +1013,10 @@ def render_square_view(
     lines.append(header)
     lines.append("".join("-" for _ in range(render_width)))
 
-    for host, label, is_removed in truncated_entries:
+    for entry in truncated_entries:
+        host = entry[0]
+        label = str(entry[1]) if len(entry) >= 2 else str(entry[0])
+        is_removed = "[REMOVED]" in label
         timeline_symbols = list(buffers[host]["timeline"])
         # Build colored square timeline from all timeline symbols
         square_timeline = build_colored_square_timeline(timeline_symbols, symbols, use_color)
@@ -1034,7 +1042,7 @@ def render_square_view(
 
 
 def render_main_view(
-    display_entries: Sequence[Tuple[int, str, bool]],
+    display_entries: Sequence[Tuple[Any, ...]],
     buffers: Dict[int, Dict[str, Any]],
     symbols: Dict[str, str],
     width: int,
@@ -1164,8 +1172,7 @@ def render_help_view(width: int, height: int, boxed: bool = False) -> List[str]:
         "  w/W: toggle/cycle summary panel (on/off, position)",
         "  p: pause/resume display",
         "  P: toggle Dormant Mode (pause ping + display)",
-        "  R: reload hosts from input file",
-        "  s: save snapshot to file",
+        "  R: reload hosts from input file | s: save snapshot to file",
         "  <- / -> : navigate backward/forward in time (1 page)",
         "  up / down: scroll host list",
         "  ESC: exit fullscreen graph",
@@ -1396,7 +1403,7 @@ def build_display_lines(  # noqa: C901
         buffers,
         stats,
         symbols,
-        ordered_host_ids=[host_id for host_id, _label, _is_removed in display_entries if host_id in active_host_ids],
+        ordered_host_ids=[host_id for host_id, _label in display_entries if host_id in active_host_ids],
     )
     summary_all = False
     main_lines = []
