@@ -22,6 +22,7 @@ view rendering, graph utilities, formatting functions, and terminal utilities.
 import os
 import re
 import sys
+import textwrap
 import time
 from collections import deque
 from datetime import datetime, timezone, tzinfo
@@ -1280,30 +1281,64 @@ def render_summary_view(
 
 def render_help_view(width: int, height: int, boxed: bool = False) -> List[str]:
     """Render the help view."""
-    _, _, can_box = resolve_boxed_dimensions(width, height, boxed)
-    lines = [
+    render_width, render_height, can_box = resolve_boxed_dimensions(width, height, boxed)
+    header_lines = [
         "ParaPing - Help",
-        "-" * width,
+        "-" * render_width,
+    ]
+    help_items = [
         "  n: cycle display mode (ip/rdns/alias)",
-        "  v: toggle view (timeline/sparkline/square)",
+        "  v: cycle view (timeline/sparkline/square)",
         "  g: select host for fullscreen RTT graph",
         "  o: cycle sort (failures/streak/latency/host)",
         "  f: cycle filter (failures/latency/all)",
         "  a: toggle ASN display",
         "  m: cycle summary info (rates/rtt/ttl/streak)",
-        "  c: toggle color output",
-        "  b: toggle bell on ping failure",
+        "  c/b: color output / bell on ping failure",
         "  F: toggle summary fullscreen view",
-        "  w/W: toggle/cycle summary panel (on/off, position) | G/T: group summary/key",
-        "  p: pause/resume display",
-        "  P: toggle Dormant Mode (pause ping + display)",
-        "  R: reload hosts from input file | s: save snapshot to file",
-        "  <- / -> : navigate backward/forward in time (1 page)",
-        "  up / down: scroll host list",
-        "  ESC: exit fullscreen graph",
+        "  w: toggle summary panel (on/off)",
+        "  W: cycle summary panel position",
+        "  G: toggle summary scope (host/group)",
+        "  T: cycle group key (none/asn/site/tag)",
+        "  p: pause display | P: toggle Dormant Mode",
+        "  R/s: reload hosts / save snapshot",
+        "  <-/-> + up/down: page/list navigation",
+        "  ESC: exit fullscreen graph | q: quit",
         "  H: show help (Press any key to close)",
-        "  q: quit",
     ]
+
+    def _wrap_items(items: Sequence[str], line_width: int) -> List[str]:
+        wrapped: List[str] = []
+        for item in items:
+            chunks = textwrap.wrap(
+                item,
+                width=max(1, line_width),
+                break_long_words=False,
+                break_on_hyphens=False,
+                subsequent_indent="    ",
+            )
+            wrapped.extend(chunks or [""])
+        return wrapped
+
+    lines = list(header_lines)
+    body_height = max(0, render_height - len(header_lines))
+    single_column = _wrap_items(help_items, render_width)
+    # Use two columns when vertical space is tight and enough horizontal space exists.
+    if len(single_column) > body_height and render_width >= 72:
+        gap = 3
+        col_width = max(1, (render_width - gap) // 2)
+        split_at = (len(help_items) + 1) // 2
+        left_items = help_items[:split_at]
+        right_items = help_items[split_at:]
+        left_lines = _wrap_items(left_items, col_width)
+        right_lines = _wrap_items(right_items, col_width)
+        for row_index in range(max(len(left_lines), len(right_lines))):
+            left = left_lines[row_index] if row_index < len(left_lines) else ""
+            right = right_lines[row_index] if row_index < len(right_lines) else ""
+            lines.append(f"{left.ljust(col_width)}{' ' * gap}{right}".rstrip())
+    else:
+        lines.extend(single_column)
+
     if can_box:
         return box_lines(lines, width, height)
     return pad_lines(lines, width, height)
