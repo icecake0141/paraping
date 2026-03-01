@@ -543,6 +543,29 @@ class TestColorAndNonTTY(unittest.TestCase):
         combined = "\n".join(lines)
         self.assertIn("\x1b[", combined)
 
+    def test_render_timeline_view_group_tree_prefixes(self):
+        """Grouped timeline view should prefix host labels with tree branches."""
+        entries = [(0, "example.com"), (1, "example.net"), (2, "internal.example")]
+        buffers = _make_buffers([0, 1, 2], timeline_data=["."])
+        lines = render_timeline_view(
+            entries,
+            buffers,
+            _SYMBOLS,
+            width=80,
+            height=12,
+            header="H",
+            show_group_headers=True,
+            host_group_labels={0: "site:external-docs", 1: "site:external-docs", 2: "site:internal"},
+            group_header_lines={
+                "site:external-docs": "--- site:external-docs (2 hosts, loss 0.0%) ---",
+                "site:internal": "--- site:internal (1 hosts, loss 0.0%) ---",
+            },
+        )
+        combined = "\n".join(lines)
+        self.assertIn("├ example.com", combined)
+        self.assertIn("└ example.net", combined)
+        self.assertIn("└ internal.example", combined)
+
     def test_truncate_visible_preserves_ansi(self):
         """truncate_visible must count only visible chars and keep ANSI codes."""
         colored = "\x1b[31mabcdef\x1b[0m"
