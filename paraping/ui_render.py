@@ -586,6 +586,10 @@ def build_display_entries(
         latest_rtt = latest_rtt_value(buffers[host_id]["rtt_history"])
         fail_streak = compute_fail_streak(timeline, symbols["fail"])
         fail_count = stats[host_id]["fail"]
+        stat_entry = stats[host_id]
+        total_count = stat_entry.get("total")
+        if total_count is None:
+            total_count = stat_entry.get("success", 0) + stat_entry.get("slow", 0) + stat_entry.get("fail", 0)
 
         include = True
         is_removed = bool(info.get("removed", False))
@@ -604,7 +608,7 @@ def build_display_entries(
                     "fail_count": fail_count,
                     "fail_streak": fail_streak,
                     "latest_rtt": latest_rtt,
-                    "total": stats[host_id]["total"],
+                    "total": total_count,
                 }
             )
 
