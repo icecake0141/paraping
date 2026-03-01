@@ -40,3 +40,23 @@
 192.0.2.20,example.com
 198.51.100.20,example.net
 203.0.113.20,example.org
+
+# ---------------------------------------------------------------------------
+# Optional extended format (commented out by default)
+# Format: IP,alias,site,tags
+#   - site: optional site/location/group label
+#   - tags: optional semicolon-separated labels (e.g. core;prod;icmp)
+# ---------------------------------------------------------------------------
+# host,alias,site,tags
+# 192.0.2.1,gw-primary,dc-tokyo,core;gateway;prod
+# 192.0.2.2,dns-primary,dc-tokyo,core;dns;prod
+# 192.0.2.10,web-server,dc-tokyo,web;frontend;prod
+# 198.51.100.1,router-edge,edge-osaka,edge;router;wan
+# 198.51.100.50,mail-server,dc-osaka,mail;mx;prod
+# 203.0.113.1,cdn-node-1,pop-singapore,cdn;edge;node
+# 203.0.113.2,cdn-node-2,pop-singapore,cdn;edge;node
+# 10.0.0.1,lan-gateway,office-lan,lan;gateway;private
+# 192.168.1.1,home-router,home-lan,lan;router;private
+# 192.0.2.20,example.com,external-docs,docs;domain;example
+# 198.51.100.20,example.net,external-docs,docs;domain;example
+# 203.0.113.20,example.org,external-docs,docs;domain;example
