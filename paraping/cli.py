@@ -107,6 +107,31 @@ def _compute_initial_timeline_width(host_labels: List[str], term_size: Any, pane
         return 1
 
 
+def _compute_runtime_timeline_width(state: Dict[str, Any], term_size: Any) -> int:
+    """
+    Compute the current timeline width from live terminal/layout state.
+
+    This is used to keep v2 timeline buffers aligned with runtime terminal
+    resizing so history capacity does not remain stuck at startup width.
+    """
+    normalized_size = _normalize_term_size(term_size)
+    if normalized_size is None:
+        return 1
+
+    status_box_height = 3 if normalized_size.lines >= 4 and normalized_size.columns >= 2 else 1
+    panel_height = max(1, normalized_size.lines - status_box_height)
+    main_width, main_height, _, _, _ = compute_panel_sizes(normalized_size.columns, panel_height, state["panel_position"])
+    mode_label = state["modes"][state["mode_index"]]
+    include_asn = should_show_asn(state["host_infos"], mode_label, state["show_asn"], normalized_size.columns, asn_width=8)
+    display_names = build_display_names(state["host_infos"], mode_label, include_asn, asn_width=8)
+    host_labels = list(display_names.values()) or [info["alias"] for info in state["host_infos"]]
+    _, _, timeline_width, _ = compute_main_layout(host_labels, main_width, main_height, header_lines=2)
+    try:
+        return max(1, int(timeline_width))
+    except (TypeError, ValueError):
+        return 1
+
+
 def _configure_logging(
     log_level: str,
     log_file: Optional[str],
@@ -916,6 +941,11 @@ def _handle_user_input(
 
 def _update_render_state(state: Dict[str, Any]) -> None:
     """Update DNS/ASN/ping data, maintain history snapshots, and resolve current render state."""
+    runtime_timeline_width = _compute_runtime_timeline_width(state, get_terminal_size(fallback=(80, 24)))
+    if state["v2_state"].resize_timeline_width(runtime_timeline_width):
+        state["updated"] = True
+        state["force_render"] = True
+
     while True:
         try:
             host, rdns_value = state["rdns_result_queue"].get_nowait()

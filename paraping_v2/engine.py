@@ -93,6 +93,35 @@ class MonitorState:
         self.timelines.pop(host_id, None)
         self.stats.pop(host_id, None)
 
+    def resize_timeline_width(self, width: int) -> bool:
+        """
+        Resize per-host timeline buffers to ``width``.
+
+        Returns:
+            True when buffers were resized, False when no change was required.
+        """
+        width = max(1, int(width))
+        current_width = 1
+        if self.timelines:
+            any_timeline = next(iter(self.timelines.values()))
+            current_width = any_timeline.symbols.maxlen or 1
+        if width == current_width:
+            return False
+
+        for timeline in self.timelines.values():
+            timeline.symbols = deque(timeline.symbols, maxlen=width)
+            timeline.sequence_history = deque(timeline.sequence_history, maxlen=width)
+            timeline.rtt_history = deque(timeline.rtt_history, maxlen=width)
+            timeline.time_history = deque(timeline.time_history, maxlen=width)
+            timeline.ttl_history = deque(timeline.ttl_history, maxlen=width)
+            # Rebuild pending indices because shrinking shifts element positions.
+            pending: Dict[int, int] = {}
+            for index, (symbol, sequence) in enumerate(zip(timeline.symbols, timeline.sequence_history)):
+                if symbol == self._symbols["sent"] and sequence is not None:
+                    pending[sequence] = index
+            timeline.pending_by_sequence = pending
+        return True
+
     def apply_event(self, event: PingEvent) -> None:
         """Apply one ping event to timeline and aggregate stats."""
         timeline = self.timelines[event.host_id]
