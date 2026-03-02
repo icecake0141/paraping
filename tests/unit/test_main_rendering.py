@@ -78,9 +78,10 @@ class TestHelpView(unittest.TestCase):
 
     def test_help_view_contains_close_hint(self):
         """Help view should include close hint text."""
-        lines = render_help_view(60, 20)
+        lines = render_help_view(60, 24)
         combined = "\n".join(lines)
         self.assertIn("H: show help", combined)
+        self.assertIn("L: force full redraw", combined)
         self.assertIn("P: toggle Dormant Mode", combined)
         self.assertIn("Press any key to close", combined)
 

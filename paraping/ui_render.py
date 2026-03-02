@@ -1347,6 +1347,7 @@ def render_help_view(width: int, height: int, boxed: bool = False) -> List[str]:
         "  T: cycle group key (none/asn/site/tag)",
         "  p: pause display | P: toggle Dormant Mode",
         "  R/s: reload hosts / save snapshot",
+        "  L: force full redraw",
         "  <-/-> + up/down: page/list navigation",
         "  ESC: exit fullscreen graph | q: quit",
         "  H: show help (Press any key to close)",
@@ -1819,13 +1820,56 @@ def render_display(
         current_line = combined_lines[index] if index < len(combined_lines) else ""
         if previous_line == current_line and index < len(combined_lines):
             continue
-        output_chunks.append(f"\x1b[{index + 1};1H\x1b[2K{current_line}")
+        if previous_line is None:
+            output_chunks.append(f"\x1b[{index + 1};1H\x1b[2K{current_line}")
+            continue
+        if not current_line:
+            output_chunks.append(f"\x1b[{index + 1};1H\x1b[2K")
+            continue
+        diff_start = _find_safe_diff_start(previous_line, current_line)
+        if diff_start <= 0:
+            output_chunks.append(f"\x1b[{index + 1};1H{current_line}\x1b[K")
+            continue
+        col = visible_len(current_line[:diff_start]) + 1
+        output_chunks.append(f"\x1b[{index + 1};{col}H{current_line[diff_start:]}\x1b[K")
 
     if output_chunks:
         sys.stdout.write("".join(output_chunks))
         sys.stdout.flush()
 
     LAST_RENDER_LINES = combined_lines
+
+
+def reset_render_cache() -> None:
+    """Force the next render call to redraw the full frame."""
+    global LAST_RENDER_LINES
+    LAST_RENDER_LINES = None
+
+
+def _find_safe_diff_start(previous_line: str, current_line: str) -> int:
+    """Return a safe raw-string offset where line contents diverge."""
+    max_common = min(len(previous_line), len(current_line))
+    index = 0
+    while index < max_common and previous_line[index] == current_line[index]:
+        index += 1
+    if index <= 0:
+        return 0
+    safe_previous = _rewind_to_escape_boundary(previous_line, index)
+    safe_current = _rewind_to_escape_boundary(current_line, index)
+    return min(safe_previous, safe_current)
+
+
+def _rewind_to_escape_boundary(text: str, index: int) -> int:
+    """Rewind index if it points inside an ANSI escape sequence."""
+    if index <= 0 or index > len(text):
+        return max(0, min(index, len(text)))
+    esc_index = text.rfind("\x1b", 0, index)
+    if esc_index == -1:
+        return index
+    sequence_end = text.find("m", esc_index, index)
+    if sequence_end == -1:
+        return esc_index
+    return index
 
 
 # ============================================================================

@@ -525,6 +525,26 @@ class TestCLIInputHandling(unittest.TestCase):
         self.assertTrue(state["force_render"])
         self.assertTrue(state["updated"])
 
+    @patch("paraping.cli.reset_render_cache")
+    def test_handle_user_input_full_redraw_hotkey(self, mock_reset_render_cache):
+        """`L` should request a full redraw and force a render pass."""
+        state = {
+            "show_help": False,
+            "host_select_active": False,
+            "graph_host_id": None,
+            "status_message": None,
+            "force_render": False,
+            "updated": False,
+        }
+
+        skip_iteration = _handle_user_input("L", MagicMock(slow_threshold=0.5), state)
+
+        self.assertFalse(skip_iteration)
+        mock_reset_render_cache.assert_called_once_with()
+        self.assertEqual(state["status_message"], "Full redraw requested")
+        self.assertTrue(state["force_render"])
+        self.assertTrue(state["updated"])
+
 
 if __name__ == "__main__":
     unittest.main()

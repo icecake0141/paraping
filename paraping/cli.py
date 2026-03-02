@@ -62,6 +62,7 @@ from paraping.ui_render import (
     format_timestamp,
     get_terminal_size,
     prepare_terminal_for_exit,
+    reset_render_cache,
     render_display,
     render_fullscreen_rtt_graph,
     render_help_view,
@@ -700,6 +701,11 @@ def _handle_user_input(
             state["status_message"] = _apply_manual_reload(args, state, scheduler, ping_lock, sequence_tracker)
         state["updated"] = True
         state["force_render"] = True
+    elif key == "L":
+        reset_render_cache()
+        state["status_message"] = "Full redraw requested"
+        state["force_render"] = True
+        state["updated"] = True
     elif key == "n":
         state["mode_index"] = (state["mode_index"] + 1) % len(state["modes"])
         state["cached_page_step"] = None
@@ -1182,7 +1188,7 @@ def run(args: argparse.Namespace) -> None:
         "next_host_id": (max((info["id"] for info in setup["host_infos"]), default=-1) + 1),
         "updated": True,
         "last_render": 0.0,
-        "refresh_interval": 0.15,
+        "refresh_interval": 0.10,
         "expect_completion": args.count > 0,
         "rdns_request_queue": queue.Queue(),
         "rdns_result_queue": queue.Queue(),
