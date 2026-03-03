@@ -26,6 +26,7 @@ Welcome to the ParaPing documentation hub. This directory contains comprehensive
 
 ### Product Overview
 - [Specification](specification.md) - Scope, core capabilities, runtime/security model, and platform notes
+- [Usage Guide](usage.md) - CLI options, input formats, and interactive key controls
 
 ### Component Documentation
 - [Ping Helper](ping_helper.md) - Detailed documentation for the privileged ICMP helper binary
@@ -44,7 +45,8 @@ Welcome to the ParaPing documentation hub. This directory contains comprehensive
 ## Quick Links
 
 ### For Users
-- [Main README](../README.md) - Project overview and usage instructions (available in English and Japanese)
+- [Main README](../README.md) - Project overview and installation quick start (English/Japanese)
+- [Usage Guide](usage.md) - Detailed runtime usage and interactive controls
 
 ### For Contributors
 - [Contributing Guidelines](CONTRIBUTING.md) - Development guidelines and PR requirements
@@ -99,6 +101,7 @@ ParaPingドキュメントハブへようこそ。このディレクトリには
 
 ### プロダクト概要
 - [仕様](specification.md) - スコープ、主要機能、実行要件、セキュリティ/プラットフォーム注意点
+- [使い方ガイド](usage.md) - CLI オプション、入力形式、インタラクティブキー操作
 
 ### コンポーネントドキュメント
 - [Pingヘルパー](ping_helper.md) - 特権ICMPヘルパーバイナリの詳細ドキュメント
@@ -117,7 +120,8 @@ ParaPingドキュメントハブへようこそ。このディレクトリには
 ## クイックリンク
 
 ### ユーザー向け
-- [メインREADME](../README.md) - プロジェクト概要と使用方法（英語と日本語 / English and Japanese）
+- [メインREADME](../README.md) - プロジェクト概要とインストール手順（英語と日本語 / English and Japanese）
+- [使い方ガイド](usage.md) - 実行時オプションとインタラクティブ操作の詳細
 
 ### コントリビューター向け
 - [コントリビューティングガイドライン](CONTRIBUTING.md) - 開発ガイドラインとPR要件
