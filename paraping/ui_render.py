@@ -31,8 +31,8 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from paraping.stats import (
     build_summary_all_suffix,
     build_summary_suffix,
-    compute_group_summary_data,
     compute_fail_streak,
+    compute_group_summary_data,
     compute_summary_data,
     latest_rtt_value,
     natural_sort_key,
@@ -304,6 +304,36 @@ def compute_panel_sizes(
     return term_width, term_height, 0, 0, "none"
 
 
+def _summary_render_width(width: int, boxed: bool) -> int:
+    """Compute summary render width accounting for boxed borders."""
+    if width <= 0:
+        return 0
+    if boxed and width >= 2:
+        return width - 2
+    return width
+
+
+def compute_summary_height_bounds(
+    summary_data: Sequence[Dict[str, Any]],
+    summary_mode: str,
+    prefer_all: bool,
+    width: int,
+    boxed: bool,
+) -> Tuple[int, int]:
+    """Return (content_height, minimal_height) for the summary panel."""
+    render_width = _summary_render_width(width, boxed)
+    if render_width <= 0:
+        return 0, 0
+    allow_all = prefer_all and can_render_full_summary(summary_data, render_width)
+    show_legend = ((summary_mode == "rates" and not allow_all) or allow_all) and bool(summary_data)
+    content_height = 2 + (1 if show_legend else 0) + len(summary_data)
+    minimal_height = 2 + (1 if show_legend else 0) + (1 if summary_data else 0)
+    if boxed and width >= 2:
+        content_height += 2
+        minimal_height = max(3, minimal_height + 2)
+    return content_height, minimal_height
+
+
 def resolve_boxed_dimensions(width: int, height: int, boxed: bool) -> Tuple[int, int, bool]:
     """Resolve dimensions for boxed content."""
     if not boxed or width < 2 or height < 3:
@@ -342,6 +372,8 @@ def compute_host_scroll_bounds(
     filter_mode: str,
     slow_threshold: float,
     show_asn: bool,
+    summary_mode: str = "rates",
+    summary_scope: str = "host",
     group_by: str = "none",
     group_sort_enabled: bool = False,
     asn_width: int = 8,
@@ -351,10 +383,20 @@ def compute_host_scroll_bounds(
     term_size = get_terminal_size(fallback=(80, 24))
     term_width = term_size.columns
     term_height = term_size.lines
+    min_main_height = 5
+    gap_size = 1
+    use_panel_boxes = True
+    status_box_height = 3 if term_height >= 4 and term_width >= 2 else 1
+    panel_height = max(1, term_height - status_box_height)
 
     include_asn = should_show_asn(host_infos, mode_label, show_asn, term_width, asn_width=asn_width)
     display_names = build_display_names(host_infos, mode_label, include_asn, asn_width)
-    main_width, main_height, _, _, _ = compute_panel_sizes(term_width, term_height, panel_position)
+    main_width, main_height, _, _, _ = compute_panel_sizes(
+        term_width,
+        panel_height,
+        panel_position,
+        min_main_height=min_main_height,
+    )
     display_entries = build_display_entries(
         host_infos,
         display_names,
@@ -367,6 +409,55 @@ def compute_host_scroll_bounds(
         group_by=group_by,
         group_sort_enabled=group_sort_enabled,
     )
+    active_host_infos = [info for info in host_infos if info.get("active", True)]
+    active_host_ids = {info["id"] for info in active_host_infos}
+    ordered_host_ids = [host_id for host_id, _label in display_entries if host_id in active_host_ids]
+    summary_data = compute_summary_data(
+        active_host_infos,
+        display_names,
+        buffers,
+        stats,
+        symbols,
+        ordered_host_ids=ordered_host_ids,
+    )
+    group_summary_data: List[Dict[str, Any]] = []
+    if group_by != "none":
+        group_order: List[str] = []
+        host_group_labels = {info["id"]: resolve_primary_group_label(info, group_by) for info in active_host_infos}
+        for host_id in ordered_host_ids:
+            label = host_group_labels.get(host_id)
+            if label and label not in group_order:
+                group_order.append(label)
+        group_summary_data = compute_group_summary_data(
+            active_host_infos,
+            display_names,
+            buffers,
+            stats,
+            symbols,
+            group_by=group_by,
+            ordered_group_labels=group_order,
+        )
+    summary_source = group_summary_data if summary_scope == "group" and group_by != "none" else summary_data
+    if panel_position in ("top", "bottom"):
+        _, _, summary_width, summary_height, _ = compute_panel_sizes(
+            term_width,
+            panel_height,
+            panel_position,
+            min_main_height=min_main_height,
+        )
+        summary_render_width = _summary_render_width(summary_width, use_panel_boxes)
+        summary_all = can_render_full_summary(summary_source, summary_render_width)
+        content_height, minimal_height = compute_summary_height_bounds(
+            summary_source,
+            summary_mode,
+            summary_all,
+            summary_width,
+            boxed=use_panel_boxes,
+        )
+        max_summary_height = max(0, panel_height - min_main_height - gap_size)
+        summary_height = min(summary_height, content_height, max_summary_height)
+        summary_height = max(summary_height, min(minimal_height, max_summary_height))
+        main_height = max(min_main_height, panel_height - summary_height - gap_size)
     host_labels = [entry[1] for entry in display_entries]
     if not host_labels:
         host_labels = [info["alias"] for info in host_infos]
@@ -566,7 +657,7 @@ def build_display_names(host_infos: Sequence[Dict[str, Any]], mode: str, include
     return {info["id"]: format_display_name(info, mode, include_asn, asn_width, base_label_width) for info in host_infos}
 
 
-def build_display_entries(
+def build_display_entries(  # noqa: C901
     host_infos: Sequence[Dict[str, Any]],
     display_names: Dict[int, str],
     buffers: Dict[int, Dict[str, Any]],
@@ -944,7 +1035,9 @@ def render_timeline_view(
         show_group_headers=show_group_headers,
         host_group_labels=host_group_labels,
     )
-    host_labels = [label_overrides.get(entry[0], str(entry[1]) if len(entry) >= 2 else str(entry[0])) for entry in display_entries]
+    host_labels = [
+        label_overrides.get(entry[0], str(entry[1]) if len(entry) >= 2 else str(entry[0])) for entry in display_entries
+    ]
     # Account for time axis line when calculating visible hosts
     # header_lines + 1 for the time axis line
     render_width, label_width, timeline_width, visible_hosts = compute_main_layout(
@@ -1022,7 +1115,9 @@ def render_sparkline_view(
         show_group_headers=show_group_headers,
         host_group_labels=host_group_labels,
     )
-    host_labels = [label_overrides.get(entry[0], str(entry[1]) if len(entry) >= 2 else str(entry[0])) for entry in display_entries]
+    host_labels = [
+        label_overrides.get(entry[0], str(entry[1]) if len(entry) >= 2 else str(entry[0])) for entry in display_entries
+    ]
     # Account for time axis line when calculating visible hosts
     # header_lines + 1 for the time axis line
     render_width, label_width, timeline_width, visible_hosts = compute_main_layout(
@@ -1145,7 +1240,9 @@ def render_square_view(
         show_group_headers=show_group_headers,
         host_group_labels=host_group_labels,
     )
-    host_labels = [label_overrides.get(entry[0], str(entry[1]) if len(entry) >= 2 else str(entry[0])) for entry in display_entries]
+    host_labels = [
+        label_overrides.get(entry[0], str(entry[1]) if len(entry) >= 2 else str(entry[0])) for entry in display_entries
+    ]
     # Account for time axis line when calculating visible hosts
     # header_lines + 1 for the time axis line
     render_width, label_width, timeline_width, visible_hosts = compute_main_layout(
@@ -1598,20 +1695,9 @@ def build_display_lines(  # noqa: C901
         panel_position,
         min_main_height=min_main_height,
     )
-    if resolved_position in ("top", "bottom") and summary_height > 0:
-        required_main_height = header_lines + len(display_entries)
-        if use_panel_boxes:
-            required_main_height += 2
-        adjusted_main_height = max(min_main_height, min(main_height, required_main_height))
-        if adjusted_main_height < main_height:
-            main_height = adjusted_main_height
-            summary_height = panel_height - main_height - gap_size
     active_host_infos = [info for info in host_infos if info.get("active", True)]
     active_host_ids = {info["id"] for info in active_host_infos}
-    host_group_labels = {
-        info["id"]: resolve_primary_group_label(info, group_by)
-        for info in active_host_infos
-    }
+    host_group_labels = {info["id"]: resolve_primary_group_label(info, group_by) for info in active_host_infos}
     ordered_host_ids = [host_id for host_id, _label in display_entries if host_id in active_host_ids]
     summary_data = compute_summary_data(
         active_host_infos,
@@ -1638,6 +1724,20 @@ def build_display_lines(  # noqa: C901
             ordered_group_labels=group_order,
         )
     summary_source = group_summary_data if summary_scope == "group" and group_by != "none" else summary_data
+    if not summary_fullscreen and resolved_position in ("top", "bottom") and summary_height > 0:
+        summary_render_width = _summary_render_width(summary_width, use_panel_boxes)
+        summary_all_for_height = can_render_full_summary(summary_source, summary_render_width)
+        content_height, minimal_height = compute_summary_height_bounds(
+            summary_source,
+            summary_mode,
+            summary_all_for_height,
+            summary_width,
+            boxed=use_panel_boxes,
+        )
+        max_summary_height = max(0, panel_height - min_main_height - gap_size)
+        summary_height = min(summary_height, content_height, max_summary_height)
+        summary_height = max(summary_height, min(minimal_height, max_summary_height))
+        main_height = max(min_main_height, panel_height - summary_height - gap_size)
     group_header_lines = {
         entry["host"]: f"--- {entry['host']} ({entry.get('member_count', 0)} hosts, loss {entry['loss_rate']:.1f}%) ---"
         for entry in group_summary_data
@@ -1677,10 +1777,8 @@ def build_display_lines(  # noqa: C901
             host_group_labels=host_group_labels,
             group_header_lines=group_header_lines,
         )
-        summary_all = resolved_position in (
-            "top",
-            "bottom",
-        ) and can_render_full_summary(summary_source, summary_width)
+        summary_render_width = _summary_render_width(summary_width, use_panel_boxes)
+        summary_all = resolved_position in ("top", "bottom") and can_render_full_summary(summary_source, summary_render_width)
         summary_lines = render_summary_view(
             summary_source,
             summary_width,

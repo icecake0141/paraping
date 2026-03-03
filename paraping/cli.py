@@ -32,24 +32,10 @@ from typing import Any, Dict, List, Optional, Union
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from paraping.config import load_config
-from paraping.core import (
-    _normalize_term_size,
-    build_host_infos,
-    get_cached_page_step,
-    read_input_file,
-)
-from paraping_v2.constants import HISTORY_DURATION_MINUTES, MAX_HOST_THREADS, SNAPSHOT_INTERVAL_SECONDS
+from paraping.core import _normalize_term_size, build_host_infos, get_cached_page_step, read_input_file
 from paraping.input_keys import read_key
 from paraping.network_asn import asn_worker, should_retry_asn
 from paraping.pinger import rdns_worker, scheduler_driven_worker_ping
-from paraping_v2.engine import MonitorState
-from paraping_v2.history import update_history_buffer_v2
-from paraping_v2.legacy_adapter import project_legacy_state_from_v2
-from paraping_v2.rate_limit import validate_global_rate_limit
-from paraping_v2.render_state import resolve_v2_render_state
-from paraping_v2.scheduler import Scheduler
-from paraping_v2.sequence_tracker import SequenceTracker
-from paraping_v2.shadow import apply_shadow_v2_event
 from paraping.ui_render import (
     build_display_entries,
     build_display_lines,
@@ -72,6 +58,15 @@ from paraping.ui_render import (
     should_show_asn,
     toggle_panel_visibility,
 )
+from paraping_v2.constants import HISTORY_DURATION_MINUTES, MAX_HOST_THREADS, SNAPSHOT_INTERVAL_SECONDS
+from paraping_v2.engine import MonitorState
+from paraping_v2.history import update_history_buffer_v2
+from paraping_v2.legacy_adapter import project_legacy_state_from_v2
+from paraping_v2.rate_limit import validate_global_rate_limit
+from paraping_v2.render_state import resolve_v2_render_state
+from paraping_v2.scheduler import Scheduler
+from paraping_v2.sequence_tracker import SequenceTracker
+from paraping_v2.shadow import apply_shadow_v2_event
 
 REMOVED_HOST_RETENTION_SECONDS = 10.0
 
@@ -922,6 +917,8 @@ def _handle_user_input(
             state["filter_modes"][state["filter_mode_index"]],
             args.slow_threshold,
             state["show_asn"],
+            summary_mode=state["summary_modes"][state["summary_mode_index"]],
+            summary_scope=state["summary_scope_modes"][state["summary_scope_mode_index"]],
             group_by=state["group_by_modes"][state["group_by_mode_index"]],
             group_sort_enabled=state["summary_scope_modes"][state["summary_scope_mode_index"]] == "group",
         )
@@ -1049,6 +1046,8 @@ def _render_frame(args: argparse.Namespace, state: Dict[str, Any]) -> None:
         state["filter_modes"][state["filter_mode_index"]],
         args.slow_threshold,
         state["show_asn"],
+        summary_mode=state["summary_modes"][state["summary_mode_index"]],
+        summary_scope=state["summary_scope_modes"][state["summary_scope_mode_index"]],
         group_by=state["group_by_modes"][state["group_by_mode_index"]],
         group_sort_enabled=state["summary_scope_modes"][state["summary_scope_mode_index"]] == "group",
     )
