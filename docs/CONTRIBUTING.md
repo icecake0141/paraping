@@ -14,6 +14,8 @@ Review required for correctness, security, and licensing.
 
 # Contributing to ParaPing
 
+## English
+
 Thank you for your interest in contributing to ParaPing! This document provides guidelines and instructions for developers.
 
 ## Development Setup

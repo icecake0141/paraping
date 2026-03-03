@@ -14,6 +14,8 @@ Review required for correctness, security, and licensing.
 
 # Keyboard Input Migration to readchar
 
+## English
+
 ## Overview
 
 As of version 1.x, ParaPing migrated keyboard input handling to the [`readchar`](https://github.com/magmax/python-readchar)
@@ -148,3 +150,84 @@ Potential enhancements enabled by readchar:
 **Last Updated**: 2026-01-26
 **Author**: ParaPing Team (with LLM assistance)
 **License**: Apache-2.0
+
+## 日本語
+
+# readchar へのキーボード入力移行
+
+## 概要
+
+ParaPing は 1.x 系でキーボード入力処理を [`readchar`](https://github.com/magmax/python-readchar) に移行しました。
+一方で、一部端末でバッファ済み入力がフラッシュされる問題を避けるため、入力取得自体は引き続き `sys.stdin` の直接読み取りを維持しています。
+
+## 変更点
+
+### 何が変わったか
+
+**移行前（独自実装）:**
+- ANSI エスケープシーケンスを手動解析
+- `select.select()` と `sys.stdin.read()` によるプラットフォーム個別処理
+- `time.monotonic()` を使った独自タイムアウト処理
+- すべて `paraping/input_keys.py` に実装
+
+**移行後（readchar 併用実装）:**
+- ノンブロッキング判定は `select.select()`、入力は `sys.stdin.read(1)` を使用
+- 矢印キー定義は `readchar` の定数と `parse_escape_sequence()` を利用
+- 公開 API と既存のエスケープシーケンス互換性を維持
+
+### API 互換性
+
+公開 API は **完全互換** です。既存コードの変更は不要です。
+
+- `read_key()`: 矢印キー名（`arrow_up` など）、通常文字、または `None` を返す
+- `parse_escape_sequence(seq)`: カスタムシーケンス解析 API として継続
+
+### 主な利点
+
+1. **クロスプラットフォーム対応**: Linux/macOS/Windows 差異を `readchar` が吸収
+2. **保守性向上**: 独自実装コードの削減
+3. **信頼性向上**: 実績のあるライブラリ利用
+4. **拡張容易性**: F1-F12 など追加キー対応がしやすい
+
+## 技術詳細
+
+### 実装方針
+
+以下により、従来のノンブロッキング挙動を維持しています。
+
+1. `select.select()`（ゼロタイムアウト）で入力有無を判定
+2. 入力可能時に `sys.stdin` から 1 バイト読み取り
+3. `parse_escape_sequence()` と `readchar` 定数でキーを正規化
+
+### フォールバック
+
+`readchar` が使えない環境でも、単一バイト入力は直接読み取りで動作します（矢印キー定数は利用不可）。
+
+## テスト
+
+- `parse_escape_sequence()` の既存 9 テストは維持
+- `read_key()` の 11 テストを `sys.stdin.read()` モック前提で更新
+- 例外処理と直接読み取り動作のテストを追加
+
+実行コマンド:
+
+```bash
+make test
+# or
+pytest tests/unit/test_input_keys.py -v
+```
+
+## 依存関係
+
+- **readchar** >= 4.2.1（Apache-2.0）
+  - 既知の重大脆弱性なし
+  - Linux/macOS/Windows 対応
+  - 継続的にメンテナンスされている
+
+インストール:
+
+```bash
+make dev
+# or
+pip install -r requirements.txt
+```

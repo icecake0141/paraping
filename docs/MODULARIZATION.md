@@ -14,6 +14,8 @@ Review required for correctness, security, and licensing.
 
 # ParaPing Modularization Guide
 
+## English
+
 **Last Updated**: 2026-02-28
 **Status**: Historical (Pre-v2 snapshot)
 **Related**: Original Issue #94 (Follow-up to PR #93)
@@ -401,3 +403,30 @@ For questions about modularization strategy or to suggest improvements to this g
   - Documented planned modularization work
   - Listed priority 1 extractions (network_rdns, input_keys, history)
   - Established coverage goals and test organization guidelines
+
+## 日本語
+
+# ParaPing モジュール分割ガイド
+
+この文書は、旧 `main.py` モノリスから `paraping/` パッケージへ分割した履歴と設計方針をまとめた
+**履歴資料（Historical）** です。現行ランタイムの最終的な責務は v2 系へ移行しているため、
+最新状態は [v2_migration_status.md](v2_migration_status.md) を優先してください。
+
+## 要点
+
+- ParaPing は機能ごとに責務分離され、CLI、状態管理、描画、ping 実行、入力処理、統計、ASN 取得などが
+  専用モジュールに整理されています。
+- `main.py` は後方互換の shim として残され、実処理は主に `paraping/*` にあります。
+- テストは `unit / integration / contract` に整理され、モジュールごとのカバレッジ目標が定義されています。
+- `history.py` と `network_rdns.py` は、重複実装の統合余地がある領域として明示されています。
+
+## 運用上の読み方
+
+- アーキテクチャ経緯や責務分割の背景を確認したい場合: 本ドキュメント
+- 現在の v2 互換面・廃止 API・ガードレールテストを確認したい場合:
+  [v2_migration_status.md](v2_migration_status.md)
+
+## 補足
+
+この日本語セクションは、英語本文の要点を短く整理した案内です。詳細（モジュール別カバレッジ表、
+実施手順チェックリスト、履歴更新ログ）は上部の英語セクションを参照してください。

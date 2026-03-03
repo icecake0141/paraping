@@ -1,5 +1,7 @@
 # ParaPing v2 Migration Status
 
+## English
+
 ## Migration Summary
 - Code-path migration is complete for current runtime:
   - CLI/runtime state flow is v2-based.
@@ -79,6 +81,73 @@
   - `paraping.core.update_history_buffer`
   - `paraping.core.resolve_render_state`
 - Current implementation should use:
+  - `paraping_v2.history.create_state_snapshot_v2`
+  - `paraping_v2.history.update_history_buffer_v2`
+  - `paraping_v2.render_state.resolve_v2_render_state`
+
+## 日本語
+
+# ParaPing v2 移行ステータス
+
+## 移行サマリー
+- 現行ランタイムにおけるコードパス移行は完了しています。
+  - CLI / ランタイム状態フローは v2 ベースです。
+  - 旧 history ヘルパーは `main`、`paraping.core`、`paraping_v2` から削除済みです。
+  - ガードレールテストにより、削除済み API / モジュールの再導入を防止しています。
+- 残タスクは運用・ドキュメント保守が中心です。
+
+## 現在の Source of Truth
+- イベント/状態エンジン: `paraping_v2.engine`
+- スケジューラ: `paraping_v2.scheduler`
+- シーケンス管理: `paraping_v2.sequence_tracker`
+- レート制限: `paraping_v2.rate_limit`
+- 描画状態解決: `paraping_v2.render_state`
+- 履歴スナップショット: `paraping_v2.history`
+- ホスト解析/HostInfo 構築: `paraping_v2.hosts`
+- 履歴ページステップキャッシュ: `paraping_v2.paging`
+- 端末サイズ正規化/レイアウト幅抽出: `paraping_v2.term_size`
+
+## 互換レイヤー
+- `paraping.core` は旧関数名を維持しつつ、v2 ヘルパーへ委譲しています。
+- `main.py` はテスト/外部呼び出し向け互換エクスポートを維持します。
+- `paraping_v2.legacy_history` は互換レイヤーの役割完了に伴い削除済みです。
+
+## `main.py` 互換面のルール
+- `main.__all__` を shim モジュールの互換契約として扱います。
+- 遅延エクスポートは `main._LAZY_EXPORTS` + `main.__getattr__` で解決します。
+- `main._LAZY_EXPORTS` のシンボルは `main.__all__` にも存在する必要があります。
+- 新規コードは `main` ではなく `paraping.*` / `paraping_v2.*` を直接 import してください。
+
+## 互換性ガード用テスト
+- `tests/unit/test_main_public_api_surface.py`
+- `tests/unit/test_main_test_usage_surface.py`
+- `tests/unit/test_main_lazy_wrappers.py`
+- `tests/unit/test_main_legacy_history_usage_contract.py`
+- `tests/unit/test_cli_v2_no_legacy_history_refs.py`
+- `tests/unit/test_legacy_api_usage_contract.py`
+- `tests/unit/test_public_api_surface.py`
+- `tests/unit/test_v2_legacy_module_removed.py`
+- `tests/unit/test_no_main_imports_in_package.py`
+- `tests/unit/test_removed_legacy_symbol_imports.py`
+
+## 現在のランタイム経路
+1. Ping 結果を `state["v2_state"]` に適用
+2. `v2_history_buffer` から `resolve_v2_render_state` で描画元を決定
+3. 既存 UI 関数向けに legacy 形状の描画ペイロードへ投影
+
+## 残りの移行ターゲット
+- 非クリティカル文書の古い記述を定期監査
+- 長期 API 方針確定後、互換性寄りのテスト整理を検討
+
+## 廃止ポリシー（現行）
+- 削除済み API:
+  - `main.create_state_snapshot`
+  - `main.update_history_buffer`
+  - `main.resolve_render_state`
+  - `paraping.core.create_state_snapshot`
+  - `paraping.core.update_history_buffer`
+  - `paraping.core.resolve_render_state`
+- 現在の実装で使用すべき API:
   - `paraping_v2.history.create_state_snapshot_v2`
   - `paraping_v2.history.update_history_buffer_v2`
   - `paraping_v2.render_state.resolve_v2_render_state`

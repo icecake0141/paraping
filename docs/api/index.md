@@ -14,6 +14,8 @@ Review required for correctness, security, and licensing.
 
 # ParaPing API Documentation
 
+## English
+
 This directory will contain comprehensive API documentation for ParaPing's Python modules and C helper components.
 
 ## Module Layout
@@ -126,3 +128,90 @@ Planned documentation enhancements:
 - [ ] Performance characteristics and scalability notes
 - [ ] Platform-specific implementation details
 - [ ] Integration guide for embedding ParaPing
+
+## 日本語
+
+# ParaPing API ドキュメント
+
+このディレクトリには、ParaPing の Python モジュールと C ヘルパーの API ドキュメントを配置します。
+
+## モジュール構成
+
+ParaPing は以下のモジュールで構成されています。
+
+### コアモジュール
+
+#### `main.py`
+アプリケーションのエントリポイントと全体オーケストレーション。
+- **目的**: 初期化、CLI 解析、メインイベントループ
+
+#### `scheduler.py`
+タイムラインのドリフトを防ぐ時間駆動スケジューラ。
+- **目的**: interval/stagger を使ってホストごとの次回 ping 時刻を計算
+- **詳細**: [scheduler.md](scheduler.md)
+
+#### `ping_wrapper.py`
+特権 ICMP ヘルパーバイナリの Python ラッパー。
+- **目的**: `ping_helper` との連携、結果解析、エラー処理
+- **関連**: [../ping_helper.md](../ping_helper.md)
+
+### 表示/UI モジュール
+
+#### `ui_render.py`
+ターミナル UI の描画と整形。
+
+#### `input_keys.py`
+キーボード入力処理とインタラクティブ操作。
+
+### ネットワークモジュール
+
+#### `network_rdns.py`
+逆引き DNS 解決。
+
+#### `network_asn.py`
+Team Cymru whois を用いた ASN 取得。
+
+### 統計・履歴
+
+#### `stats.py`
+RTT、ジッタ、成功率などの統計計算。
+
+#### `history.py`
+履歴データの保存とナビゲーション。
+
+## C ヘルパーバイナリ
+
+### `ping_helper.c`
+最小権限で ICMP echo を実行する補助バイナリ。
+- **セキュリティモデル**: capability ベース（`cap_net_raw`）
+- **詳細**: [../ping_helper.md](../ping_helper.md)
+
+## 依存関係
+
+```
+main.py
+├── ping_wrapper.py (ping_helper.c)
+├── ui_render.py
+├── input_keys.py
+├── network_rdns.py
+├── network_asn.py
+├── stats.py
+└── history.py
+```
+
+## 開発状況
+
+本 API ドキュメントは継続整備中です。現時点では以下を参照してください。
+- [../MODULARIZATION.md](../MODULARIZATION.md)
+- 各ソースコードの docstring
+
+## ドキュメントへの貢献
+
+新しいモジュールや関数を追加する際は、次を更新してください。
+1. 本 index への目的追記
+2. 公開関数への docstring 追加
+3. 重要データ構造・アルゴリズムの説明
+4. セキュリティ考慮事項の明記
+5. 利用例の追加
+
+規約は [../CONTRIBUTING.md](../CONTRIBUTING.md) を参照してください。
