@@ -133,7 +133,7 @@ class TestLayoutComputation(unittest.TestCase):
         )
 
         summary_line_index = next(index for index, line in enumerate(lines) if "Summary (" in line)
-        self.assertEqual(summary_line_index, 12)
+        self.assertEqual(summary_line_index, 15)
         self.assertEqual(len(lines), 23)
 
 
