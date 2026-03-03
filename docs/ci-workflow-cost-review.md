@@ -12,6 +12,82 @@ This file was created or modified with the assistance of an AI (Large Language M
 Review required for correctness, security, and licensing.
 -->
 
+## English
+
+# GitHub Actions CI Review (Cost Optimization Perspective)
+
+## Conclusion (Priority Order)
+
+1. **`pr-checks.yml` significantly overlaps with `ci.yml` (`pull_request` trigger), so it should be consolidated or removed.**
+2. **The Dependabot-only workflow can be replaced by conditional logic in the existing CI** to reduce duplicate runs.
+3. **Optimize the test matrix by event type** (PR: single version, push/main: multiple versions).
+4. **Reduce repeated `pytest` executions in the same job** (especially for coverage summary generation).
+
+---
+
+## Redundancy Review by Workflow
+
+### 1) `.github/workflows/ci.yml`
+
+- Runs on both `pull_request` and `push`, and includes lint/test/mypy/coverage.
+- The test job runs a Python `3.10` and `3.11` matrix, increasing PR runtime.
+- `Coverage report by module` reruns `pytest`, which increases cost.
+
+**Cost optimization proposals**
+- Run only `3.10` on PRs; run `3.10/3.11` on `push` (`main`/`master`) via conditions.
+- Generate coverage summary from `coverage xml/json` artifacts to avoid rerunning `pytest`.
+
+### 2) `.github/workflows/pr-checks.yml`
+
+- Reruns lint/mypy/pytest on `pull_request`, heavily overlapping with `ci.yml` PR runs.
+- Manual log redirection to `logs/*.txt` in each step is not strictly required.
+- `native build` uses `continue-on-error: true`, so quality-gate value may be limited relative to cost.
+
+**Cost optimization proposals**
+- Prefer deleting `pr-checks.yml` and moving only required logs/artifacts into `ci.yml`.
+- If retained, narrow execution using `paths` filters (for example, native build only when `src/native/**` changes).
+
+### 3) `.github/workflows/dependabot-test.yml`
+
+- Intent is clear: run tests for Dependabot PRs only.
+- However, `ci.yml` also runs on `pull_request`, which can cause duplicate runs for Dependabot PRs.
+- The dependency-install branch logic (poetry/requirements) is broader than current project needs.
+
+**Cost optimization proposals**
+- Either exclude Dependabot from `ci.yml` (`if: github.actor != 'dependabot[bot]'`) and keep the dedicated workflow,
+  or
+- Remove the dedicated workflow and consolidate conditions in `ci.yml`.
+
+---
+
+## Quick Wins (Easy to Apply)
+
+1. **Stop duplicate PR runs**
+   - Remove or disable `pr-checks.yml`.
+2. **Add concurrency control**
+   - Cancel outdated runs on the same PR branch.
+3. **Add `paths` filters**
+   - Skip heavy tests when only docs are changed.
+4. **Reduce repeated `pytest` calls**
+   - Remove the second `pytest` run used only for coverage summary.
+
+---
+
+## Recommended Target Setup (Example)
+
+- Make `ci.yml` the primary workflow.
+- On `pull_request`:
+  - lint + mypy + unit tests (Python 3.10 only)
+- On `push` to `main`/`master`:
+  - lint + mypy + unit tests (Python 3.10/3.11)
+  - coverage upload
+- Native build:
+  - Run only when `src/native/**` or `Makefile` changes
+
+This setup can reduce GitHub Actions runtime minutes while keeping quality gates effective.
+
+## 日本語
+
 # GitHub Actions CI レビュー（コスト最適化観点）
 
 ## 結論（優先度順）
