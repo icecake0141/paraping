@@ -12,50 +12,108 @@ This file was created or modified with the assistance of an AI (Large Language M
 Review required for correctness, security, and licensing.
 -->
 
+## English
+
 # Testing Guide
 
-## 1. Test Structure
+## Test Structure
 
 - `tests/unit/`: unit tests
 - `tests/integration/`: integration tests
 - `tests/contract/`: contract/compatibility tests
 
-## 2. Quick Run
+## Quick Runs
 
 ```bash
+# default suite
+make test
+
+# full suite with verbose output
 pytest tests/ -v
+
+# coverage report
+pytest tests/ -v --cov=. --cov-report=term-missing --cov-report=xml
 ```
 
-## 3. Coverage Run
-
-```bash
-pytest tests/ -v --cov=. --cov-report=term-missing
-```
-
-## 4. Selective Run Examples
+## Selective Runs
 
 ```bash
 pytest tests/unit/test_cli.py -v
 pytest tests/integration/test_multi_host_integration.py -v
+pytest tests/contract/test_ping_helper_contract.py -v
 ```
 
-## 5. Recommended Pre-PR Checks
+## Recommended Pre-PR Checks
 
 ```bash
-# blocking checks
+# style and static checks (informational aggregate)
+make lint
+
+# strict blocking checks used by CI policy
 flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
 pylint . --fail-under=9.0
+mypy
 
-# full test suite
-pytest tests/ -v --cov=. --cov-report=term-missing
+# tests with coverage
+pytest tests/ -v --cov=. --cov-report=term-missing --cov-report=xml
 ```
 
-## 6. Notes
+## Related Documents
 
-- Add tests with behavior changes and bug fixes.
-- Keep CI checks green before opening or updating a PR.
-
-## 7. Related Documents
-
-- [Contributing](../CONTRIBUTING.md)
+- [Contributing (docs)](CONTRIBUTING.md)
+- [Specification](specification.md)
 - [Docs Index](index.md)
+
+---
+
+## 日本語
+
+# テストガイド
+
+## テスト構成
+
+- `tests/unit/`: ユニットテスト
+- `tests/integration/`: 統合テスト
+- `tests/contract/`: 契約/互換テスト
+
+## クイック実行
+
+```bash
+# デフォルト実行
+make test
+
+# 詳細表示で全体実行
+pytest tests/ -v
+
+# カバレッジ付き実行
+pytest tests/ -v --cov=. --cov-report=term-missing --cov-report=xml
+```
+
+## 個別実行
+
+```bash
+pytest tests/unit/test_cli.py -v
+pytest tests/integration/test_multi_host_integration.py -v
+pytest tests/contract/test_ping_helper_contract.py -v
+```
+
+## PR 前の推奨チェック
+
+```bash
+# スタイル/静的チェック（総合）
+make lint
+
+# CI で重視される厳格チェック
+flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+pylint . --fail-under=9.0
+mypy
+
+# カバレッジ付きテスト
+pytest tests/ -v --cov=. --cov-report=term-missing --cov-report=xml
+```
+
+## 関連ドキュメント
+
+- [Contributing（docs）](CONTRIBUTING.md)
+- [仕様](specification.md)
+- [ドキュメント一覧](index.md)

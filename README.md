@@ -52,9 +52,10 @@ make run ARGS='--help'
 ### Documentation
 
 - [Specification](docs/specification.md)
+- [Usage Guide](docs/usage.md)
 - [Testing](docs/testing.md)
 - [Docs Index](docs/index.md)
-- [Contributing](CONTRIBUTING.md)
+- [Contributing](docs/CONTRIBUTING.md)
 
 ### License
 
@@ -97,9 +98,10 @@ make run ARGS='--help'
 ### ドキュメント
 
 - [仕様 / Specification](docs/specification.md)
+- [使い方 / Usage Guide](docs/usage.md)
 - [テスト / Testing](docs/testing.md)
 - [ドキュメント一覧 / Docs Index](docs/index.md)
-- [コントリビュート / Contributing](CONTRIBUTING.md)
+- [コントリビュート / Contributing](docs/CONTRIBUTING.md)
 
 ### ライセンス
 
