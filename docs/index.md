@@ -22,6 +22,10 @@ Welcome to the ParaPing documentation hub. This directory contains comprehensive
 
 ### Setup & Environment
 - [Environment Setup (Advanced)](environment_setup.md) - Advanced development environment setup for feature branch work using automated scripts
+- [Testing Guide](testing.md) - Test layout, execution commands, and pre-PR checks
+
+### Product Overview
+- [Specification](specification.md) - Scope, core capabilities, runtime/security model, and platform notes
 
 ### Component Documentation
 - [Ping Helper](ping_helper.md) - Detailed documentation for the privileged ICMP helper binary
@@ -91,6 +95,10 @@ ParaPingドキュメントハブへようこそ。このディレクトリには
 
 ### セットアップと環境
 - [環境セットアップ（上級者向け）](environment_setup.md) - 自動化スクリプトを使用したフィーチャーブランチ作業のための上級開発環境セットアップ
+- [テストガイド](testing.md) - テスト構成、実行コマンド、PR前チェック
+
+### プロダクト概要
+- [仕様](specification.md) - スコープ、主要機能、実行要件、セキュリティ/プラットフォーム注意点
 
 ### コンポーネントドキュメント
 - [Pingヘルパー](ping_helper.md) - 特権ICMPヘルパーバイナリの詳細ドキュメント
