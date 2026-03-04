@@ -143,6 +143,17 @@ def latest_status_from_timeline(timeline: Sequence[str], symbols: Dict[str, str]
     return status_from_symbol(timeline[-1], symbols)
 
 
+def host_label_status(status: Optional[str]) -> Optional[str]:
+    """Map timeline status to host-label color status.
+
+    Pending state is intentionally rendered without host-label coloring to
+    reduce visible flicker at the start of each monitoring cycle.
+    """
+    if status == "pending":
+        return None
+    return status
+
+
 # ============================================================================
 # Color/Timeline Building Functions
 # ============================================================================
@@ -1073,7 +1084,7 @@ def render_timeline_view(
         status = latest_status_from_timeline(timeline_symbols, symbols)
         if is_removed:
             status = "pending"
-        colored_label = colorize_text(label, status, use_color)
+        colored_label = colorize_text(label, host_label_status(status), use_color)
         lines.append(format_status_line(colored_label, timeline, label_width))
 
     # Add time axis at the bottom of the timeline area
@@ -1155,7 +1166,7 @@ def render_sparkline_view(
         status = latest_status_from_timeline(status_symbols, symbols)
         if is_removed:
             status = "pending"
-        colored_label = colorize_text(label, status, use_color)
+        colored_label = colorize_text(label, host_label_status(status), use_color)
         lines.append(format_status_line(colored_label, sparkline, label_width))
 
     # Add time axis at the bottom of the sparkline area
@@ -1281,7 +1292,7 @@ def render_square_view(
         status = latest_status_from_timeline(timeline_symbols, symbols)
         if is_removed:
             status = "pending"
-        colored_label = colorize_text(label, status, use_color)
+        colored_label = colorize_text(label, host_label_status(status), use_color)
         lines.append(format_status_line(colored_label, square_timeline, label_width))
 
     # Add time axis at the bottom of the square timeline area

@@ -544,6 +544,15 @@ class TestColorAndNonTTY(unittest.TestCase):
         combined = "\n".join(lines)
         self.assertIn("\x1b[", combined)
 
+    def test_render_timeline_view_pending_does_not_color_host_label(self):
+        """Pending latest status should keep host label uncolored to reduce flicker."""
+        entries = [(0, "host1")]
+        buffers = _make_buffers([0], timeline_data=["-"])
+        lines = render_timeline_view(entries, buffers, _SYMBOLS, width=60, height=10, header="H", use_color=True)
+        host_line = next((line for line in lines if "host1" in line), "")
+        label_segment = host_line.split(" | ", 1)[0]
+        self.assertNotIn("\x1b[", label_segment)
+
     def test_render_timeline_view_group_tree_prefixes(self):
         """Grouped timeline view should prefix host labels with tree branches."""
         entries = [(0, "example.com"), (1, "example.net"), (2, "internal.example")]
