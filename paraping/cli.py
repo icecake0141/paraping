@@ -48,11 +48,11 @@ from paraping.ui_render import (
     format_timestamp,
     get_terminal_size,
     prepare_terminal_for_exit,
-    reset_render_cache,
     render_display,
     render_fullscreen_rtt_graph,
     render_help_view,
     render_host_selection_view,
+    reset_render_cache,
     ring_bell,
     should_flash_on_fail,
     should_show_asn,
@@ -126,6 +126,38 @@ def _compute_runtime_timeline_width(state: Dict[str, Any], term_size: Any) -> in
         return max(1, int(timeline_width))
     except (TypeError, ValueError):
         return 1
+
+
+def _check_terminal_resize_and_request_redraw(state: Dict[str, Any], now_monotonic: float) -> None:
+    """
+    Periodically detect terminal size changes and request a full redraw.
+
+    This intentionally runs at low frequency (default: once per second) to
+    keep overhead low while still recovering from resize-related render
+    artifacts.
+    """
+    next_check = float(state.get("next_resize_check_time", 0.0))
+    if now_monotonic < next_check:
+        return
+
+    check_interval = max(0.1, float(state.get("resize_check_interval", 1.0)))
+    state["next_resize_check_time"] = now_monotonic + check_interval
+
+    current_size = _normalize_term_size(get_terminal_size(fallback=(80, 24)))
+    previous_size = _normalize_term_size(state.get("last_observed_term_size"))
+    state["last_observed_term_size"] = current_size
+
+    if current_size is None or previous_size is None:
+        return
+    if current_size.columns == previous_size.columns and current_size.lines == previous_size.lines:
+        return
+
+    # Match hotkey `L` behavior for resize recovery.
+    reset_render_cache()
+    state["cached_page_step"] = None
+    state["last_term_size"] = None
+    state["force_render"] = True
+    state["updated"] = True
 
 
 def _configure_logging(
@@ -944,6 +976,8 @@ def _handle_user_input(
 
 def _update_render_state(state: Dict[str, Any]) -> None:
     """Update DNS/ASN/ping data, maintain history snapshots, and resolve current render state."""
+    _check_terminal_resize_and_request_redraw(state, time.monotonic())
+
     runtime_timeline_width = _compute_runtime_timeline_width(state, get_terminal_size(fallback=(80, 24)))
     if state["v2_state"].resize_timeline_width(runtime_timeline_width):
         state["updated"] = True
@@ -1165,6 +1199,8 @@ def run(args: argparse.Namespace) -> None:
         f"count={count_label}, interval={args.interval}s, slow-threshold={args.slow_threshold}s"
     )
     initial_render_buffers, initial_render_stats = project_legacy_state_from_v2(setup["v2_state"], setup["symbols"])
+    initial_term_size = get_terminal_size(fallback=(80, 24))
+    now_monotonic = time.monotonic()
     state = {
         **setup,
         "modes": ["ip", "rdns", "alias"],
@@ -1218,6 +1254,9 @@ def run(args: argparse.Namespace) -> None:
         "updated": True,
         "last_render": 0.0,
         "refresh_interval": 0.10,
+        "last_observed_term_size": initial_term_size,
+        "next_resize_check_time": now_monotonic + 1.0,
+        "resize_check_interval": 1.0,
         "expect_completion": args.count > 0,
         "rdns_request_queue": queue.Queue(),
         "rdns_result_queue": queue.Queue(),
