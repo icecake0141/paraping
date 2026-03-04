@@ -18,11 +18,11 @@ This module tests the command-line interface parsing and entrypoint logic
 without performing actual network operations.
 """
 
-import os
-import io
-import sys
 import argparse
+import io
 import logging
+import os
+import sys
 import threading
 import unittest
 from unittest.mock import MagicMock, patch
@@ -30,7 +30,14 @@ from unittest.mock import MagicMock, patch
 # Add parent directory to path to import paraping
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from paraping.cli import _configure_logging, _handle_user_input, _setup_hosts_and_state, handle_options, main
+from paraping.cli import (
+    _check_terminal_resize_and_request_redraw,
+    _configure_logging,
+    _handle_user_input,
+    _setup_hosts_and_state,
+    handle_options,
+    main,
+)
 
 
 class TestCLIArgumentParsing(unittest.TestCase):
@@ -544,6 +551,81 @@ class TestCLIInputHandling(unittest.TestCase):
         self.assertEqual(state["status_message"], "Full redraw requested")
         self.assertTrue(state["force_render"])
         self.assertTrue(state["updated"])
+
+
+class TestCLITerminalResizeCheck(unittest.TestCase):
+    """Test low-frequency terminal resize detection and full redraw requests."""
+
+    @patch("paraping.cli.reset_render_cache")
+    @patch("paraping.cli.get_terminal_size")
+    def test_resize_check_skips_until_interval(self, mock_get_terminal_size, mock_reset_render_cache):
+        """Should not check terminal size again before the next check timestamp."""
+        state = {
+            "next_resize_check_time": 10.0,
+            "resize_check_interval": 1.0,
+            "last_observed_term_size": os.terminal_size((80, 24)),
+            "force_render": False,
+            "updated": False,
+            "cached_page_step": 5,
+            "last_term_size": object(),
+        }
+
+        _check_terminal_resize_and_request_redraw(state, now_monotonic=9.5)
+
+        mock_get_terminal_size.assert_not_called()
+        mock_reset_render_cache.assert_not_called()
+        self.assertFalse(state["force_render"])
+        self.assertFalse(state["updated"])
+        self.assertEqual(state["cached_page_step"], 5)
+
+    @patch("paraping.cli.reset_render_cache")
+    @patch("paraping.cli.get_terminal_size")
+    def test_resize_check_requests_full_redraw_on_size_change(self, mock_get_terminal_size, mock_reset_render_cache):
+        """Size changes should invalidate caches and force the next frame to full redraw."""
+        mock_get_terminal_size.return_value = os.terminal_size((120, 40))
+        state = {
+            "next_resize_check_time": 0.0,
+            "resize_check_interval": 1.0,
+            "last_observed_term_size": os.terminal_size((80, 24)),
+            "force_render": False,
+            "updated": False,
+            "cached_page_step": 5,
+            "last_term_size": object(),
+        }
+
+        _check_terminal_resize_and_request_redraw(state, now_monotonic=5.0)
+
+        mock_get_terminal_size.assert_called_once_with(fallback=(80, 24))
+        mock_reset_render_cache.assert_called_once_with()
+        self.assertEqual(state["next_resize_check_time"], 6.0)
+        self.assertTrue(state["force_render"])
+        self.assertTrue(state["updated"])
+        self.assertIsNone(state["cached_page_step"])
+        self.assertIsNone(state["last_term_size"])
+
+    @patch("paraping.cli.reset_render_cache")
+    @patch("paraping.cli.get_terminal_size")
+    def test_resize_check_noop_when_size_unchanged(self, mock_get_terminal_size, mock_reset_render_cache):
+        """Same terminal size should not trigger full redraw."""
+        mock_get_terminal_size.return_value = os.terminal_size((80, 24))
+        state = {
+            "next_resize_check_time": 0.0,
+            "resize_check_interval": 1.0,
+            "last_observed_term_size": os.terminal_size((80, 24)),
+            "force_render": False,
+            "updated": False,
+            "cached_page_step": 5,
+            "last_term_size": object(),
+        }
+
+        _check_terminal_resize_and_request_redraw(state, now_monotonic=2.0)
+
+        mock_get_terminal_size.assert_called_once_with(fallback=(80, 24))
+        mock_reset_render_cache.assert_not_called()
+        self.assertEqual(state["next_resize_check_time"], 3.0)
+        self.assertFalse(state["force_render"])
+        self.assertFalse(state["updated"])
+        self.assertEqual(state["cached_page_step"], 5)
 
 
 if __name__ == "__main__":
