@@ -24,7 +24,7 @@ import select
 import sys
 import termios
 import tty
-from typing import Generator, Optional
+from typing import Any, Generator, Optional, cast
 
 try:
     import readchar
@@ -38,7 +38,7 @@ except ImportError:  # pragma: no cover - dependency fallback path
             LEFT = "<LEFT>"
             RIGHT = "<RIGHT>"
 
-    readchar = _ReadcharFallback()
+    readchar = cast(Any, _ReadcharFallback())
 
 # Constants for arrow key reading
 # Increased from 0.05 to 0.1 seconds to handle slow terminals/remote connections
