@@ -1123,6 +1123,12 @@ class TestScrollOverflow(unittest.TestCase):
         self.assertIsInstance(lines, list)
         self.assertEqual(len(lines), 14)
 
+    def test_timeline_overflow_indicator_visible_without_spare_line(self):
+        """Overflow indicator should be shown even when host rows exactly fill height."""
+        entries, buffers = self._many_entries_and_buffers()
+        lines = render_timeline_view(entries, buffers, _SYMBOLS, width=80, height=8, header="H", boxed=False)
+        self.assertTrue(any("host(s) not shown" in line for line in lines))
+
     def test_sparkline_scroll_overflow_indicator(self):
         """Boxed sparkline with more hosts than fit exercises overflow code path."""
         entries, buffers = self._many_entries_and_buffers()
