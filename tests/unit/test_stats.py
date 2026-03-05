@@ -20,7 +20,7 @@ import unittest
 # Add parent directory to path to import paraping
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from paraping.stats import natural_sort_key, resolve_group_labels
+from paraping.stats import is_hierarchical_group_by, natural_sort_key, resolve_group_labels
 
 
 class TestNaturalSortKey(unittest.TestCase):
@@ -41,6 +41,26 @@ class TestResolveGroupLabels(unittest.TestCase):
         host_info = {"tags": ["prod2", "1st", "prod10", "alpha", "2nd"]}
         labels = resolve_group_labels(host_info, "tag")
         self.assertEqual(labels, ["tag:1st", "tag:2nd", "tag:alpha", "tag:prod2", "tag:prod10"])
+
+    def test_tag_index_group_uses_config_order(self) -> None:
+        """tagN grouping should use input tag order and select one position."""
+        host_info = {"tags": ["prod", "api", "blue"]}
+        self.assertEqual(resolve_group_labels(host_info, "tag1"), ["tag:prod"])
+        self.assertEqual(resolve_group_labels(host_info, "tag2"), ["tag:api"])
+        self.assertEqual(resolve_group_labels(host_info, "tag3"), ["tag:blue"])
+        self.assertEqual(resolve_group_labels(host_info, "tag4"), ["tag:unknown"])
+
+    def test_hierarchical_group_modes_only_use_tag1(self) -> None:
+        """Hierarchical grouping should join site and first tag only."""
+        host_info = {"site": "Tokyo", "tags": ["prod", "api", "blue"]}
+        self.assertEqual(resolve_group_labels(host_info, "site>tag1"), ["site:Tokyo > tag:prod"])
+        self.assertEqual(resolve_group_labels(host_info, "tag1>site"), ["tag:prod > site:Tokyo"])
+
+    def test_is_hierarchical_group_by(self) -> None:
+        """Hierarchy mode detection should match only supported two-level keys."""
+        self.assertTrue(is_hierarchical_group_by("site>tag1"))
+        self.assertTrue(is_hierarchical_group_by("tag1>site"))
+        self.assertFalse(is_hierarchical_group_by("tag1"))
 
 
 if __name__ == "__main__":

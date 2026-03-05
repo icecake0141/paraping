@@ -20,6 +20,7 @@ import argparse
 import logging
 import os
 import queue
+import re
 import sys
 import termios
 import threading
@@ -201,6 +202,41 @@ _HARDCODED_DEFAULTS: Dict[str, Any] = {
 }
 
 
+def _count_entry_tags(host_info: Dict[str, Any]) -> int:
+    """Count non-empty tag values in one host record."""
+    tags = host_info.get("tags") or []
+    if not isinstance(tags, list):
+        tags = [tags]
+    return sum(1 for tag in tags if str(tag).strip())
+
+
+def _build_group_by_modes(host_infos: List[Dict[str, Any]]) -> List[str]:
+    """Build group-key cycle modes, including tagN and hierarchical modes."""
+    max_tag_count = max((_count_entry_tags(info) for info in host_infos), default=0)
+    tag_count = max(1, max_tag_count)
+    tag_modes = [f"tag{index}" for index in range(1, tag_count + 1)]
+    return ["none", "asn", "site", *tag_modes, "site>tag1", "tag1>site"]
+
+
+def _sync_group_by_modes(state: Dict[str, Any], preferred_group_by: Optional[str] = None) -> None:
+    """Refresh group-key modes from host data while preserving the current selection."""
+    current_group_by = preferred_group_by
+    if current_group_by is None:
+        modes = state.get("group_by_modes") or []
+        mode_index = int(state.get("group_by_mode_index", 0))
+        if modes:
+            current_group_by = str(modes[mode_index % len(modes)])
+    if current_group_by == "tag":
+        current_group_by = "tag1"
+
+    modes = _build_group_by_modes(state.get("host_infos", []))
+    state["group_by_modes"] = modes
+    if current_group_by in modes:
+        state["group_by_mode_index"] = modes.index(current_group_by)
+    else:
+        state["group_by_mode_index"] = 0
+
+
 def _apply_config_to_args(args: argparse.Namespace, config: Dict[str, Any]) -> None:
     """
     Overlay config file values onto a parsed argument namespace.
@@ -287,8 +323,7 @@ def handle_options() -> argparse.Namespace:
         "--group-by",
         type=str,
         default=None,
-        choices=["none", "asn", "site", "tag"],
-        help="Group key for summary and host grouping (none|asn|site|tag)",
+        help="Group key for summary and host grouping " "(none|asn|site|tag|tagN|site>tag1|tag1>site)",
     )
     parser.add_argument(
         "-P",
@@ -382,6 +417,10 @@ def handle_options() -> argparse.Namespace:
         parser.error("--timeout must be a positive integer.")
     if not 0.1 <= args.interval <= 60.0:
         parser.error("--interval must be between 0.1 and 60.0 seconds.")
+    if args.group_by not in ("none", "asn", "site", "tag", "site>tag1", "tag1>site") and not re.match(
+        r"^tag\d+$", args.group_by
+    ):
+        parser.error("--group-by must be one of none|asn|site|tag|tagN|site>tag1|tag1>site")
     return args
 
 
@@ -473,7 +512,7 @@ def _rebuild_host_info_map(host_infos: List[Dict[str, Any]]) -> Dict[str, List[D
     return host_info_map
 
 
-def _build_host_info_from_entry(entry: Dict[str, str], host_id: int) -> Dict[str, Any]:
+def _build_host_info_from_entry(entry: Dict[str, Any], host_id: int) -> Dict[str, Any]:
     """Create a host info record from parsed input entry."""
     host = entry.get("host") or entry.get("ip") or ""
     alias = entry.get("alias") or host
@@ -483,6 +522,8 @@ def _build_host_info_from_entry(entry: Dict[str, str], host_id: int) -> Dict[str
         "host": host,
         "alias": alias,
         "ip": ip_address,
+        "site": entry.get("site") or "",
+        "tags": list(entry.get("tags") or []),
         "rdns": None,
         "rdns_pending": False,
         "asn": None,
@@ -589,6 +630,8 @@ def _apply_manual_reload(
             info["host"] = entry.get("host") or info["host"]
             info["alias"] = entry.get("alias") or info["alias"]
             info["ip"] = ip_address
+            info["site"] = entry.get("site") or ""
+            info["tags"] = list(entry.get("tags") or [])
             if not info.get("active", True):
                 info["active"] = True
                 info["removed"] = False
@@ -625,6 +668,7 @@ def _apply_manual_reload(
         added_count += 1
 
     state["host_info_map"] = _rebuild_host_info_map(state["host_infos"])
+    _sync_group_by_modes(state)
     state["cached_page_step"] = None
     state["updated"] = True
     state["force_render"] = True
@@ -657,6 +701,7 @@ def _purge_expired_removed_hosts(state: Dict[str, Any]) -> None:
         if state.get("graph_host_id") == host_id:
             state["graph_host_id"] = None
     state["host_info_map"] = _rebuild_host_info_map(state["host_infos"])
+    _sync_group_by_modes(state)
     state["cached_page_step"] = None
     state["updated"] = True
 
@@ -1212,7 +1257,7 @@ def run(args: argparse.Namespace) -> None:
         "summary_mode_index": 0,
         "summary_scope_modes": ["host", "group"],
         "summary_scope_mode_index": 0,
-        "group_by_modes": ["none", "asn", "site", "tag"],
+        "group_by_modes": _build_group_by_modes(setup["host_infos"]),
         "group_by_mode_index": 0,
         "summary_fullscreen": False,
         "sort_modes": ["config", "failures", "streak", "latency", "host"],
@@ -1265,8 +1310,7 @@ def run(args: argparse.Namespace) -> None:
         "worker_stop": threading.Event(),
     }
     initial_group_by = getattr(args, "group_by", "none")
-    if initial_group_by in state["group_by_modes"]:
-        state["group_by_mode_index"] = state["group_by_modes"].index(initial_group_by)
+    _sync_group_by_modes(state, preferred_group_by=initial_group_by)
     for info in state["host_infos"]:
         info.setdefault("active", True)
         info.setdefault("removed", False)
