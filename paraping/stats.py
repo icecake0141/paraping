@@ -248,17 +248,17 @@ def latest_rtt_value(rtt_history: Deque[Optional[float]]) -> Optional[float]:
     return rtt_history[-1]
 
 
-def natural_sort_key(value: str) -> Tuple[Any, ...]:
-    """Build a natural-sort key where numeric chunks are compared as integers."""
+def natural_sort_key(value: str) -> Tuple[Tuple[int, Any], ...]:
+    """Build a natural-sort key that remains comparable across mixed chunk types."""
     parts = re.split(r"(\d+)", value)
-    key: List[Any] = []
+    key: List[Tuple[int, Any]] = []
     for part in parts:
         if not part:
             continue
         if part.isdigit():
-            key.append(int(part))
+            key.append((0, int(part)))
         else:
-            key.append(part.lower())
+            key.append((1, part.lower()))
     return tuple(key)
 
 
