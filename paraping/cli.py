@@ -32,7 +32,13 @@ from typing import Any, Dict, List, Optional, Union
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from paraping.config import load_config
-from paraping.core import _normalize_term_size, build_host_infos, get_cached_page_step, read_input_file
+from paraping.core import (
+    _normalize_term_size,
+    build_host_infos,
+    get_cached_page_step,
+    read_input_file,
+    read_input_file_with_report,
+)
 from paraping.input_keys import read_key
 from paraping.network_asn import asn_worker, should_retry_asn
 from paraping.pinger import rdns_worker, scheduler_driven_worker_ping
@@ -401,7 +407,16 @@ def _setup_hosts_and_state(args: argparse.Namespace) -> Optional[Dict[str, Any]]
     if args.hosts:
         all_hosts.extend({"host": host, "alias": host} for host in args.hosts)
     if args.input:
-        all_hosts.extend(read_input_file(args.input))
+        parsed_hosts, parse_report = read_input_file_with_report(args.input)
+        if parse_report.has_errors:
+            print(f"Error: {args.input} contains {parse_report.error_count} format error(s).", file=sys.stderr)
+            for issue in parse_report.issues:
+                if issue.severity != "error":
+                    continue
+                line_label = issue.line_number if issue.line_number > 0 else "-"
+                print(f"{args.input}:{line_label}: {issue.reason} | {issue.raw_line}", file=sys.stderr)
+            sys.exit(1)
+        all_hosts.extend(parsed_hosts)
     if not all_hosts:
         print("Error: No hosts specified. Provide hosts as arguments or use -f/--input option.")
         return None

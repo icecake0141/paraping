@@ -2,7 +2,13 @@
 
 from unittest.mock import patch
 
-from paraping_v2.hosts import build_host_infos_v2, parse_host_file_line_v2, read_input_file_v2
+from paraping_v2.hosts import (
+    HostInputReport,
+    build_host_infos_v2,
+    parse_host_file_line_v2,
+    read_input_file_v2,
+    read_input_file_with_report_v2,
+)
 
 
 class _LoggerStub:
@@ -43,6 +49,33 @@ def test_parse_host_file_line_v2_skips_header_row() -> None:
     logger = _LoggerStub()
     result = parse_host_file_line_v2("host,alias,site,tags", 1, "hosts.txt", logger)
     assert result is None
+
+
+def test_read_input_file_with_report_v2_collects_format_errors() -> None:
+    logger = _LoggerStub()
+    with patch(
+        "builtins.open",
+        create=True,
+    ) as mock_open_fn:
+        mock_open_fn.return_value.__enter__.return_value = iter(
+            [
+                "192.0.2.10,ok-a\n",
+                "bad line\n",
+                "192.0.2.11,\n",
+                "999.999.999.999,bad-ip\n",
+                "192.0.2.12,ok-b\n",
+            ]
+        )
+        entries, report = read_input_file_with_report_v2("hosts.txt", logger)
+
+    assert len(entries) == 2
+    assert isinstance(report, HostInputReport)
+    assert report.has_errors is True
+    assert report.error_count == 3
+    assert report.warning_count == 0
+    assert [issue.line_number for issue in report.issues] == [2, 3, 4]
+    assert report.issues[0].raw_line == "bad line"
+    assert "Expected format" in report.issues[0].reason
 
 
 @patch("socket.getaddrinfo")
