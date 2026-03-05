@@ -347,6 +347,44 @@ class TestCLIRateLimitValidation(unittest.TestCase):
 class TestCLISetupValidation(unittest.TestCase):
     """Test setup-time validation behavior."""
 
+    @patch("paraping.cli.read_input_file_with_report")
+    def test_setup_exits_when_input_file_has_format_errors(self, mock_read_with_report):
+        """Input file format errors should print report and exit with status 1."""
+        bad_report = MagicMock()
+        bad_report.has_errors = True
+        bad_report.error_count = 2
+        bad_report.issues = [
+            MagicMock(
+                severity="error",
+                line_number=2,
+                reason="Expected format 'IP,alias' or 'IP,alias,site,tags'.",
+                raw_line="bad line",
+            ),
+            MagicMock(severity="error", line_number=4, reason="IP address and alias are required.", raw_line="192.0.2.1,"),
+        ]
+        mock_read_with_report.return_value = ([], bad_report)
+        args = argparse.Namespace(
+            count=0,
+            timeout=1,
+            interval=1.0,
+            hosts=[],
+            input="hosts.txt",
+            timezone=None,
+            snapshot_timezone="utc",
+            panel_position="right",
+            ping_helper="./bin/ping_helper",
+        )
+        stderr = io.StringIO()
+        with patch("sys.stderr", stderr):
+            with self.assertRaises(SystemExit) as cm:
+                _setup_hosts_and_state(args)
+
+        self.assertEqual(cm.exception.code, 1)
+        output = stderr.getvalue()
+        self.assertIn("Error: hosts.txt contains 2 format error(s).", output)
+        self.assertIn("hosts.txt:2: Expected format", output)
+        self.assertIn("hosts.txt:4: IP address and alias are required. | 192.0.2.1,", output)
+
     @patch("paraping.cli.os.path.exists", return_value=False)
     @patch("paraping.cli.build_host_infos", return_value=([{"id": 0, "host": "1.1.1.1", "alias": "h"}], {"1.1.1.1": []}))
     @patch("paraping.cli.get_terminal_size")

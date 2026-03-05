@@ -21,22 +21,18 @@ import logging
 import socket  # noqa: F401 - compatibility for tests patching paraping.core.socket
 from typing import Any, Dict, List, Optional, Protocol, Tuple, Union
 
-from paraping_v2.rate_limit import (
-    MAX_GLOBAL_PINGS_PER_SECOND,
-    validate_global_rate_limit as validate_global_rate_limit_v2,
-)
+from paraping_v2.constants import HISTORY_DURATION_MINUTES, MAX_HOST_THREADS, SNAPSHOT_INTERVAL_SECONDS
 from paraping_v2.hosts import (
+    HostInputReport,
     build_host_infos_v2,
     parse_host_file_line_v2,
     read_input_file_v2,
+    read_input_file_with_report_v2,
 )
 from paraping_v2.paging import compute_history_page_step_v2, get_cached_page_step_v2
+from paraping_v2.rate_limit import MAX_GLOBAL_PINGS_PER_SECOND
+from paraping_v2.rate_limit import validate_global_rate_limit as validate_global_rate_limit_v2
 from paraping_v2.term_size import extract_timeline_width_from_layout_v2, normalize_term_size_v2
-from paraping_v2.constants import (
-    HISTORY_DURATION_MINUTES,
-    MAX_HOST_THREADS,
-    SNAPSHOT_INTERVAL_SECONDS,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +104,19 @@ def read_input_file(input_file: str) -> List[Dict[str, Any]]:
         List of host info dictionaries
     """
     return read_input_file_v2(input_file=input_file, logger=logger)
+
+
+def read_input_file_with_report(input_file: str) -> Tuple[List[Dict[str, Any]], HostInputReport]:
+    """
+    Read and parse hosts from an input file, returning structured diagnostics.
+
+    Args:
+        input_file: Path to the file containing host entries
+
+    Returns:
+        Tuple of (parsed host entries, parse report)
+    """
+    return read_input_file_with_report_v2(input_file=input_file, logger=logger)
 
 
 def compute_history_page_step(
@@ -213,6 +222,7 @@ __all__ = [
     "_extract_timeline_width_from_layout",
     "parse_host_file_line",
     "read_input_file",
+    "read_input_file_with_report",
     "compute_history_page_step",
     "get_cached_page_step",
     "build_host_infos",
