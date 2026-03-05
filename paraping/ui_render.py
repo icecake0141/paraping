@@ -1054,9 +1054,11 @@ def render_timeline_view(
     render_width, label_width, timeline_width, visible_hosts = compute_main_layout(
         host_labels, render_width, render_height, header_lines + 1
     )
-    max_offset = max(0, len(display_entries) - visible_hosts)
+    reserve_overflow_line = len(display_entries) > visible_hosts
+    host_capacity = max(1, visible_hosts - 1) if reserve_overflow_line else visible_hosts
+    max_offset = max(0, len(display_entries) - host_capacity)
     scroll_offset = min(max(scroll_offset, 0), max_offset)
-    truncated_entries = display_entries[scroll_offset : scroll_offset + visible_hosts]
+    truncated_entries = display_entries[scroll_offset : scroll_offset + host_capacity]
 
     resize_buffers(buffers, timeline_width, symbols)
 
@@ -1091,7 +1093,7 @@ def render_timeline_view(
     time_axis = build_time_axis(timeline_width, label_width, interval_seconds=interval_seconds)
     lines.append(time_axis)
 
-    if len(display_entries) > len(truncated_entries) and len(lines) < height:
+    if len(display_entries) > len(truncated_entries):
         remaining = len(display_entries) - len(truncated_entries)
         lines.append(f"... ({remaining} host(s) not shown)")
 
@@ -1134,9 +1136,11 @@ def render_sparkline_view(
     render_width, label_width, timeline_width, visible_hosts = compute_main_layout(
         host_labels, render_width, render_height, header_lines + 1
     )
-    max_offset = max(0, len(display_entries) - visible_hosts)
+    reserve_overflow_line = len(display_entries) > visible_hosts
+    host_capacity = max(1, visible_hosts - 1) if reserve_overflow_line else visible_hosts
+    max_offset = max(0, len(display_entries) - host_capacity)
     scroll_offset = min(max(scroll_offset, 0), max_offset)
-    truncated_entries = display_entries[scroll_offset : scroll_offset + visible_hosts]
+    truncated_entries = display_entries[scroll_offset : scroll_offset + host_capacity]
 
     resize_buffers(buffers, timeline_width, symbols)
 
@@ -1173,7 +1177,7 @@ def render_sparkline_view(
     time_axis = build_time_axis(timeline_width, label_width, interval_seconds=interval_seconds)
     lines.append(time_axis)
 
-    if len(display_entries) > len(truncated_entries) and len(lines) < height:
+    if len(display_entries) > len(truncated_entries):
         remaining = len(display_entries) - len(truncated_entries)
         lines.append(f"... ({remaining} host(s) not shown)")
 
@@ -1259,9 +1263,11 @@ def render_square_view(
     render_width, label_width, timeline_width, visible_hosts = compute_main_layout(
         host_labels, render_width, render_height, header_lines + 1
     )
-    max_offset = max(0, len(display_entries) - visible_hosts)
+    reserve_overflow_line = len(display_entries) > visible_hosts
+    host_capacity = max(1, visible_hosts - 1) if reserve_overflow_line else visible_hosts
+    max_offset = max(0, len(display_entries) - host_capacity)
     scroll_offset = min(max(scroll_offset, 0), max_offset)
-    truncated_entries = display_entries[scroll_offset : scroll_offset + visible_hosts]
+    truncated_entries = display_entries[scroll_offset : scroll_offset + host_capacity]
 
     resize_buffers(buffers, timeline_width, symbols)
 
@@ -1299,7 +1305,7 @@ def render_square_view(
     time_axis = build_time_axis(timeline_width, label_width, interval_seconds=interval_seconds)
     lines.append(time_axis)
 
-    if len(display_entries) > len(truncated_entries) and len(lines) < height:
+    if len(display_entries) > len(truncated_entries):
         remaining = len(display_entries) - len(truncated_entries)
         lines.append(f"... ({remaining} host(s) not shown)")
 
