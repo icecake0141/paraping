@@ -58,6 +58,15 @@ _TEST_PATCH_REFS = (os, queue, select, socket, sys, termios, threading, tty, Thr
 # Keep references for tests that patch main.<module> symbols.
 
 _LAZY_EXPORTS = {
+    # Core
+    "read_input_file": ("paraping.core", "read_input_file"),
+    "parse_host_file_line": ("paraping.core", "parse_host_file_line"),
+    "compute_history_page_step": ("paraping.core", "compute_history_page_step"),
+    "get_cached_page_step": ("paraping.core", "get_cached_page_step"),
+    "build_host_infos": ("paraping.core", "build_host_infos"),
+    "MAX_HOST_THREADS": ("paraping.core", "MAX_HOST_THREADS"),
+    "HISTORY_DURATION_MINUTES": ("paraping.core", "HISTORY_DURATION_MINUTES"),
+    "SNAPSHOT_INTERVAL_SECONDS": ("paraping.core", "SNAPSHOT_INTERVAL_SECONDS"),
     # Network ASN (kept for compatibility)
     "resolve_asn": ("paraping.network_asn", "resolve_asn"),
     "asn_worker": ("paraping.network_asn", "asn_worker"),
