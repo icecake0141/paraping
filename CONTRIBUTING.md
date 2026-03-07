@@ -90,3 +90,12 @@ Before opening a PR, please ensure:
 - [ ] `make test` passes locally.
 - [ ] New behaviour is covered by tests.
 - [ ] Relevant documentation is updated.
+
+## GitHub Actions Security Checklist
+
+When a PR changes files under `.github/workflows/`, also ensure:
+
+- [ ] Do not use `pull_request_target` with `actions/checkout` referencing `${{ github.event.pull_request.head.sha }}`.
+- [ ] Do not interpolate `${{ github.head_ref }}` or `${{ github.event.* }}` directly in `run:`; pass via `env:` and quote shell variables.
+- [ ] Keep `permissions:` minimal (`contents: read` by default; grant write scopes only to workflows that require them).
+- [ ] Do not pass `${{ secrets.* }}` or `${{ github.token }}` to outbound commands such as `curl`, `wget`, `nc`, or `bash -c`.
