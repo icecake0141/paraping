@@ -38,6 +38,7 @@ from paraping.ui_render import (  # noqa: E402
     build_colored_timeline,
     build_display_entries,
     build_display_names,
+    build_kitt_gradient_bar,
     build_status_line,
     build_status_metrics,
     build_time_axis,
@@ -1406,6 +1407,43 @@ class TestActivityIndicator(unittest.TestCase):
         self.assertEqual(len(lines), 5)
         self.assertIn("Knight Rider [Gradient]", lines[0])
 
+    def test_kitt_gradient_speed_scales_with_error_hosts(self):
+        """Gradient style should move faster as fail-host ratio increases."""
+        early = datetime.fromtimestamp(0.00, tz=timezone.utc)
+        later = datetime.fromtimestamp(0.50, tz=timezone.utc)
+        low_early = build_kitt_gradient_bar(40, early, use_color=False, error_hosts=0, total_hosts=10)
+        low_later = build_kitt_gradient_bar(40, later, use_color=False, error_hosts=0, total_hosts=10)
+        high_early = build_kitt_gradient_bar(40, early, use_color=False, error_hosts=8, total_hosts=10)
+        high_later = build_kitt_gradient_bar(40, later, use_color=False, error_hosts=8, total_hosts=10)
+
+        def _band_center(text):
+            active = [idx for idx, ch in enumerate(text) if ch != " "]
+            self.assertTrue(active)
+            return sum(active) / len(active)
+
+        low_shift = abs(_band_center(low_later) - _band_center(low_early))
+        high_shift = abs(_band_center(high_later) - _band_center(high_early))
+        self.assertGreater(high_shift, low_shift)
+
+    def test_kitt_gradient_palette_stage_thresholds(self):
+        """Gradient palette should follow green/yellow/orange/red thresholds."""
+        now = datetime.fromtimestamp(1.0, tz=timezone.utc)
+        green = build_kitt_gradient_bar(30, now, use_color=True, error_hosts=0, total_hosts=10)
+        yellow = build_kitt_gradient_bar(30, now, use_color=True, error_hosts=1, total_hosts=10)
+        orange = build_kitt_gradient_bar(30, now, use_color=True, error_hosts=3, total_hosts=10)
+        red = build_kitt_gradient_bar(30, now, use_color=True, error_hosts=7, total_hosts=10)
+        self.assertIn("\x1b[32m", green)
+        self.assertIn("\x1b[33m", yellow)
+        self.assertIn("\x1b[38;5;208m", orange)
+        self.assertIn("\x1b[31m", red)
+
+    def test_kitt_gradient_uses_soft_and_strong_colors(self):
+        """Gradient should use strong peak color and softer trail color."""
+        now = datetime.fromtimestamp(1.0, tz=timezone.utc)
+        colored = build_kitt_gradient_bar(40, now, use_color=True, error_hosts=7, total_hosts=10)
+        self.assertIn("\x1b[31m", colored)
+        self.assertIn("\x1b[2;31m", colored)
+
 
 class TestBuildDisplayEntries(unittest.TestCase):
     """Test build_display_entries sorting and filtering."""
@@ -1915,6 +1953,45 @@ class TestBuildDisplayLines(unittest.TestCase):
             kitt_style="gradient",
         )
         self.assertIsInstance(result, list)
+
+    @patch("paraping.ui_render.get_terminal_size", return_value=os.terminal_size((100, 30)))
+    def test_build_display_lines_kitt_gradient_responds_to_fail_host_count(self, _mock_term_size):
+        """Gradient band should reflect current fail-host count through palette changes."""
+        host_infos, buffers, stats = self._setup(3)
+        now = datetime.fromtimestamp(1.0, tz=timezone.utc)
+
+        # Low severity: no host currently failing.
+        for hid in range(3):
+            buffers[hid]["timeline"] = deque(["."], maxlen=10)
+        low = self._call_build_display_lines(
+            host_infos,
+            buffers,
+            stats,
+            panel_position="none",
+            kitt_mode_enabled=True,
+            kitt_style="gradient",
+            use_color=True,
+            now_utc=now,
+        )
+
+        # High severity: most hosts currently failing.
+        for hid in (0, 1):
+            buffers[hid]["timeline"] = deque(["x"], maxlen=10)
+        high = self._call_build_display_lines(
+            host_infos,
+            buffers,
+            stats,
+            panel_position="none",
+            kitt_mode_enabled=True,
+            kitt_style="gradient",
+            use_color=True,
+            now_utc=now,
+        )
+
+        low_text = "\n".join(low)
+        high_text = "\n".join(high)
+        self.assertIn("\x1b[32m", low_text)
+        self.assertIn("\x1b[31m", high_text)
 
 
 class TestMiscFunctions(unittest.TestCase):

@@ -280,6 +280,39 @@ def build_kitt_scanner_bar(
     return "".join(chars)
 
 
+def _compute_error_ratio(error_hosts: int, total_hosts: int) -> float:
+    """Normalize fail-host count into a [0.0, 1.0] ratio."""
+    if total_hosts <= 0:
+        return 0.0
+    bounded_error_hosts = min(max(0, error_hosts), total_hosts)
+    return bounded_error_hosts / total_hosts
+
+
+def _resolve_kitt_speed_hz(error_ratio: float) -> float:
+    """Resolve Knight Rider gradient movement speed from error ratio."""
+    min_speed_hz = 2.0
+    max_speed_hz = 14.0
+    bounded_ratio = min(max(error_ratio, 0.0), 1.0)
+    return min_speed_hz + (max_speed_hz - min_speed_hz) * bounded_ratio
+
+
+def _resolve_kitt_peak_level(error_ratio: float, levels: int) -> int:
+    """Resolve the maximum gradient level that represents current severity."""
+    bounded_ratio = min(max(error_ratio, 0.0), 1.0)
+    return min(levels, max(1, int(round(1 + (levels - 1) * bounded_ratio))))
+
+
+def _resolve_kitt_palette(error_ratio: float) -> Tuple[str, str]:
+    """Resolve strong/soft ANSI colors for Knight Rider gradient severity."""
+    if error_ratio <= 0.0:
+        return "\x1b[32m", "\x1b[2;32m"
+    if error_ratio <= 0.20:
+        return "\x1b[33m", "\x1b[2;33m"
+    if error_ratio <= 0.50:
+        return "\x1b[38;5;208m", "\x1b[38;5;214m"
+    return "\x1b[31m", "\x1b[2;31m"
+
+
 def build_kitt_gradient_bar(
     width: int,
     now_utc: datetime,
@@ -287,30 +320,39 @@ def build_kitt_gradient_bar(
     speed_hz: int = 10,
     band_width: int = 12,
     phase_offset: int = 0,
+    error_hosts: int = 0,
+    total_hosts: int = 0,
 ) -> str:
     """Build a flowing gradient-like Knight Rider bar."""
     if width <= 0:
         return ""
+    del speed_hz  # Gradient style speed is severity-driven.
+    del band_width  # Gradient width is severity-driven.
+    error_ratio = _compute_error_ratio(error_hosts, total_hosts)
+    effective_speed_hz = _resolve_kitt_speed_hz(error_ratio)
     span = max(1, width - 1)
     cycle = span * 2
-    tick = int(now_utc.timestamp() * speed_hz) + phase_offset
+    tick = int(now_utc.timestamp() * effective_speed_hz) + phase_offset
     position = tick % cycle
     if position > span:
         position = cycle - position
 
     gradient_chars = [" ", "░", "▒", "▓", "█", "▓", "▒", "░", " "]
     levels = len(gradient_chars) - 1
+    peak_level = _resolve_kitt_peak_level(error_ratio, levels)
+    strong_color, soft_color = _resolve_kitt_palette(error_ratio)
+    effective_band_width = max(4, int(round(6 + (1.0 - error_ratio) * 8)))
     chars: List[str] = []
     for index in range(width):
         distance = abs(index - position)
-        if distance >= band_width:
+        if distance >= effective_band_width:
             chars.append(" ")
             continue
-        ratio = 1.0 - (distance / max(1, band_width))
-        level = min(levels, max(1, int(round(ratio * levels))))
+        ratio = 1.0 - (distance / max(1, effective_band_width))
+        level = min(peak_level, max(1, int(round(ratio * peak_level))))
         char = gradient_chars[level]
         if use_color and char != " ":
-            color = "\x1b[91m" if level >= levels - 1 else "\x1b[31m"
+            color = strong_color if distance == 0 else soft_color
             chars.append(f"{color}{char}{ANSI_RESET}")
         else:
             chars.append(char)
@@ -323,6 +365,8 @@ def render_kitt_bottom_band(
     style: str,
     now_utc: datetime,
     use_color: bool,
+    error_hosts: int = 0,
+    total_hosts: int = 0,
 ) -> List[str]:
     """Render the lower Knight Rider accent area."""
     if width <= 0 or height <= 0:
@@ -337,7 +381,14 @@ def render_kitt_bottom_band(
     for row in range(body_height):
         phase = row * 2
         if normalized_style == "gradient":
-            bar = build_kitt_gradient_bar(width, now_utc, use_color, phase_offset=phase)
+            bar = build_kitt_gradient_bar(
+                width,
+                now_utc,
+                use_color,
+                phase_offset=phase,
+                error_hosts=error_hosts,
+                total_hosts=total_hosts,
+            )
         else:
             bar = build_kitt_scanner_bar(width, now_utc, use_color, phase_offset=phase)
         lines.append(pad_visible(bar, width))
@@ -2065,6 +2116,14 @@ def build_display_lines(  # noqa: C901
         summary_height = max(summary_height, min(minimal_height, max_summary_height))
         main_height = max(min_main_height, panel_height - summary_height - gap_size)
     group_header_lines = build_group_header_line_map(active_host_infos, ordered_host_ids, group_by, group_summary_data)
+    kitt_total_hosts = len(active_host_infos)
+    fail_symbol = symbols.get("fail")
+    kitt_error_hosts = 0
+    if fail_symbol:
+        for info in active_host_infos:
+            timeline = buffers.get(info["id"], {}).get("timeline")
+            if timeline and timeline[-1] == fail_symbol:
+                kitt_error_hosts += 1
     if kitt_mode_enabled and not summary_fullscreen and not show_help and panel_height >= 8:
         desired_band_height = max(3, panel_height // 4)
         max_band_height = max(0, main_height - min_main_height)
@@ -2146,6 +2205,8 @@ def build_display_lines(  # noqa: C901
             kitt_style,
             now_utc,
             use_color,
+            error_hosts=kitt_error_hosts,
+            total_hosts=kitt_total_hosts,
         )
         combined_lines.extend(kitt_lines)
 
