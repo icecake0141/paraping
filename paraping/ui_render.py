@@ -36,7 +36,9 @@ from paraping.stats import (
     compute_summary_data,
     latest_rtt_value,
     natural_sort_key,
+    resolve_group_labels,
     resolve_primary_group_label,
+    resolve_site_tag1_labels,
 )
 
 # ANSI and display constants (imported from main)
@@ -715,7 +717,82 @@ def build_display_entries(  # noqa: C901
                 }
             )
 
-    if group_sort_enabled and group_by != "none":
+    if group_sort_enabled and group_by == "site>tag1":
+        site_tag_groups: Dict[str, Dict[str, List[Dict[str, Any]]]] = {}
+        for item in entries:
+            labels = resolve_site_tag1_labels(info_by_id[item["host_id"]])
+            site_tag_groups.setdefault(labels["site_label"], {}).setdefault(labels["tag1_label"], []).append(item)
+
+        def _ratio(group_entries: Sequence[Dict[str, Any]]) -> float:
+            total = sum(entry["total"] for entry in group_entries)
+            return sum(entry["fail_count"] for entry in group_entries) / max(1, total)
+
+        def _max_latency(group_entries: Sequence[Dict[str, Any]]) -> float:
+            return max((entry["latest_rtt"] or -1.0) for entry in group_entries)
+
+        def _max_streak(group_entries: Sequence[Dict[str, Any]]) -> int:
+            return max(entry["fail_streak"] for entry in group_entries)
+
+        site_order = list(site_tag_groups.keys())
+        if sort_mode in ("config", "host"):
+            site_order.sort(key=natural_sort_key)
+        elif sort_mode == "failures":
+            site_order.sort(
+                key=lambda site_label: (
+                    _ratio([entry for entries_by_tag in site_tag_groups[site_label].values() for entry in entries_by_tag]),
+                    site_label,
+                ),
+                reverse=True,
+            )
+        elif sort_mode == "latency":
+            site_order.sort(
+                key=lambda site_label: (
+                    _max_latency(
+                        [entry for entries_by_tag in site_tag_groups[site_label].values() for entry in entries_by_tag]
+                    ),
+                    site_label,
+                ),
+                reverse=True,
+            )
+        elif sort_mode == "streak":
+            site_order.sort(
+                key=lambda site_label: (
+                    _max_streak(
+                        [entry for entries_by_tag in site_tag_groups[site_label].values() for entry in entries_by_tag]
+                    ),
+                    site_label,
+                ),
+                reverse=True,
+            )
+
+        ordered_entries: List[Dict[str, Any]] = []
+        for site_label in site_order:
+            tags_for_site = site_tag_groups[site_label]
+            tag_order = list(tags_for_site.keys())
+            if sort_mode in ("config", "host"):
+                tag_order.sort(key=natural_sort_key)
+            elif sort_mode == "failures":
+                tag_order.sort(key=lambda tag_label: (_ratio(tags_for_site[tag_label]), tag_label), reverse=True)
+            elif sort_mode == "latency":
+                tag_order.sort(key=lambda tag_label: (_max_latency(tags_for_site[tag_label]), tag_label), reverse=True)
+            elif sort_mode == "streak":
+                tag_order.sort(key=lambda tag_label: (_max_streak(tags_for_site[tag_label]), tag_label), reverse=True)
+
+            for tag_label in tag_order:
+                group_entries = tags_for_site[tag_label]
+                if sort_mode == "config":
+                    group_entries.sort(key=lambda item: item["host_id"])
+                elif sort_mode == "failures":
+                    group_entries.sort(key=lambda item: (item["fail_count"], item["label"]), reverse=True)
+                elif sort_mode == "streak":
+                    group_entries.sort(key=lambda item: (item["fail_streak"], item["label"]), reverse=True)
+                elif sort_mode == "latency":
+                    group_entries.sort(key=lambda item: ((item["latest_rtt"] or -1.0), item["label"]), reverse=True)
+                elif sort_mode == "host":
+                    group_entries.sort(key=lambda item: item["label"])
+                ordered_entries.extend(group_entries)
+        entries = ordered_entries
+    elif group_sort_enabled and group_by != "none":
         groups: Dict[str, List[Dict[str, Any]]] = {}
         for item in entries:
             group_label = resolve_primary_group_label(info_by_id[item["host_id"]], group_by)
@@ -806,11 +883,13 @@ def format_summary_line(entry: Dict[str, Any], width: int, summary_mode: str, pr
     if status_suffix is None:
         status_suffix = build_summary_suffix(entry, summary_mode)
 
+    indent = "  " * max(0, int(entry.get("indent_level", 0)))
+    host_text = f"{indent}{entry['host']}"
     available_for_host = width - len(status_suffix)
     if available_for_host > 0:
-        host_display = entry["host"][:available_for_host]
+        host_display = host_text[:available_for_host]
     else:
-        host_display = entry["host"]
+        host_display = host_text
 
     full_line = f"{host_display}{status_suffix}"
     return full_line[:width]
@@ -997,15 +1076,17 @@ def build_group_tree_label_map(
     display_entries: Sequence[Tuple[Any, ...]],
     show_group_headers: bool = False,
     host_group_labels: Optional[Dict[int, str]] = None,
+    host_tree_labels: Optional[Dict[int, str]] = None,
 ) -> Dict[int, str]:
     """Build host label overrides with tree branch markers for grouped rendering."""
-    if not show_group_headers or not host_group_labels:
+    tree_labels = host_tree_labels if host_tree_labels is not None else host_group_labels
+    if not show_group_headers or not tree_labels:
         return {}
 
     label_map: Dict[int, str] = {}
     for index, entry in enumerate(display_entries):
         host = entry[0]
-        group_label = host_group_labels.get(host)
+        group_label = tree_labels.get(host)
         if not group_label:
             continue
 
@@ -1013,7 +1094,7 @@ def build_group_tree_label_map(
         next_same_group = False
         if index + 1 < len(display_entries):
             next_host = display_entries[index + 1][0]
-            next_same_group = host_group_labels.get(next_host) == group_label
+            next_same_group = tree_labels.get(next_host) == group_label
 
         branch = "├ " if next_same_group else "└ "
         label_map[host] = f"{branch}{label}"
@@ -1035,6 +1116,9 @@ def render_timeline_view(
     show_group_headers: bool = False,
     host_group_labels: Optional[Dict[int, str]] = None,
     group_header_lines: Optional[Dict[str, str]] = None,
+    host_subgroup_labels: Optional[Dict[int, str]] = None,
+    subgroup_header_lines: Optional[Dict[str, str]] = None,
+    hierarchical_group_headers: bool = False,
 ) -> List[str]:
     """Render the timeline view."""
     if width <= 0 or height <= 0:
@@ -1045,6 +1129,7 @@ def render_timeline_view(
         display_entries,
         show_group_headers=show_group_headers,
         host_group_labels=host_group_labels,
+        host_tree_labels=host_subgroup_labels if hierarchical_group_headers else None,
     )
     host_labels = [
         label_overrides.get(entry[0], str(entry[1]) if len(entry) >= 2 else str(entry[0])) for entry in display_entries
@@ -1064,6 +1149,7 @@ def render_timeline_view(
     lines.append(header)
     lines.append("".join("-" for _ in range(render_width)))
     current_group = None
+    current_subgroup = None
     for entry in truncated_entries:
         host = entry[0]
         base_label = str(entry[1]) if len(entry) >= 2 else str(entry[0])
@@ -1072,12 +1158,23 @@ def render_timeline_view(
         host_group_label = host_group_labels.get(host) if host_group_labels else None
         if show_group_headers and host_group_label and host_group_label != current_group:
             current_group = host_group_label
+            current_subgroup = None
             header_line = (
                 group_header_lines.get(host_group_label, f"--- {host_group_label} ---")
                 if group_header_lines
                 else f"--- {host_group_label} ---"
             )
             lines.append(header_line[:render_width])
+        if hierarchical_group_headers:
+            host_subgroup_label = host_subgroup_labels.get(host) if host_subgroup_labels else None
+            if show_group_headers and host_subgroup_label and host_subgroup_label != current_subgroup:
+                current_subgroup = host_subgroup_label
+                subgroup_line = (
+                    subgroup_header_lines.get(host_subgroup_label, f"--- {host_subgroup_label} ---")
+                    if subgroup_header_lines
+                    else f"--- {host_subgroup_label} ---"
+                )
+                lines.append(subgroup_line[:render_width])
         timeline_symbols = list(buffers[host]["timeline"])
         timeline = build_colored_timeline(timeline_symbols, symbols, use_color)
         timeline = rjust_visible(timeline, timeline_width)
@@ -1115,6 +1212,9 @@ def render_sparkline_view(
     show_group_headers: bool = False,
     host_group_labels: Optional[Dict[int, str]] = None,
     group_header_lines: Optional[Dict[str, str]] = None,
+    host_subgroup_labels: Optional[Dict[int, str]] = None,
+    subgroup_header_lines: Optional[Dict[str, str]] = None,
+    hierarchical_group_headers: bool = False,
 ) -> List[str]:
     """Render the sparkline view."""
     if width <= 0 or height <= 0:
@@ -1125,6 +1225,7 @@ def render_sparkline_view(
         display_entries,
         show_group_headers=show_group_headers,
         host_group_labels=host_group_labels,
+        host_tree_labels=host_subgroup_labels if hierarchical_group_headers else None,
     )
     host_labels = [
         label_overrides.get(entry[0], str(entry[1]) if len(entry) >= 2 else str(entry[0])) for entry in display_entries
@@ -1144,6 +1245,7 @@ def render_sparkline_view(
     lines.append(header)
     lines.append("".join("-" for _ in range(render_width)))
     current_group = None
+    current_subgroup = None
     for entry in truncated_entries:
         host = entry[0]
         base_label = str(entry[1]) if len(entry) >= 2 else str(entry[0])
@@ -1152,12 +1254,23 @@ def render_sparkline_view(
         host_group_label = host_group_labels.get(host) if host_group_labels else None
         if show_group_headers and host_group_label and host_group_label != current_group:
             current_group = host_group_label
+            current_subgroup = None
             header_line = (
                 group_header_lines.get(host_group_label, f"--- {host_group_label} ---")
                 if group_header_lines
                 else f"--- {host_group_label} ---"
             )
             lines.append(header_line[:render_width])
+        if hierarchical_group_headers:
+            host_subgroup_label = host_subgroup_labels.get(host) if host_subgroup_labels else None
+            if show_group_headers and host_subgroup_label and host_subgroup_label != current_subgroup:
+                current_subgroup = host_subgroup_label
+                subgroup_line = (
+                    subgroup_header_lines.get(host_subgroup_label, f"--- {host_subgroup_label} ---")
+                    if subgroup_header_lines
+                    else f"--- {host_subgroup_label} ---"
+                )
+                lines.append(subgroup_line[:render_width])
         rtt_values = list(buffers[host]["rtt_history"])[-timeline_width:]
         status_symbols = list(buffers[host]["timeline"])[-timeline_width:]
         sparkline = build_sparkline(rtt_values, status_symbols, symbols["fail"])
@@ -1240,6 +1353,9 @@ def render_square_view(
     show_group_headers: bool = False,
     host_group_labels: Optional[Dict[int, str]] = None,
     group_header_lines: Optional[Dict[str, str]] = None,
+    host_subgroup_labels: Optional[Dict[int, str]] = None,
+    subgroup_header_lines: Optional[Dict[str, str]] = None,
+    hierarchical_group_headers: bool = False,
 ) -> List[str]:
     """Render the square view as a time-series (horizontal sequence of colored squares)."""
     if width <= 0 or height <= 0:
@@ -1250,6 +1366,7 @@ def render_square_view(
         display_entries,
         show_group_headers=show_group_headers,
         host_group_labels=host_group_labels,
+        host_tree_labels=host_subgroup_labels if hierarchical_group_headers else None,
     )
     host_labels = [
         label_overrides.get(entry[0], str(entry[1]) if len(entry) >= 2 else str(entry[0])) for entry in display_entries
@@ -1270,6 +1387,7 @@ def render_square_view(
     lines.append("".join("-" for _ in range(render_width)))
 
     current_group = None
+    current_subgroup = None
     for entry in truncated_entries:
         host = entry[0]
         base_label = str(entry[1]) if len(entry) >= 2 else str(entry[0])
@@ -1278,12 +1396,23 @@ def render_square_view(
         host_group_label = host_group_labels.get(host) if host_group_labels else None
         if show_group_headers and host_group_label and host_group_label != current_group:
             current_group = host_group_label
+            current_subgroup = None
             header_line = (
                 group_header_lines.get(host_group_label, f"--- {host_group_label} ---")
                 if group_header_lines
                 else f"--- {host_group_label} ---"
             )
             lines.append(header_line[:render_width])
+        if hierarchical_group_headers:
+            host_subgroup_label = host_subgroup_labels.get(host) if host_subgroup_labels else None
+            if show_group_headers and host_subgroup_label and host_subgroup_label != current_subgroup:
+                current_subgroup = host_subgroup_label
+                subgroup_line = (
+                    subgroup_header_lines.get(host_subgroup_label, f"--- {host_subgroup_label} ---")
+                    if subgroup_header_lines
+                    else f"--- {host_subgroup_label} ---"
+                )
+                lines.append(subgroup_line[:render_width])
         timeline_symbols = list(buffers[host]["timeline"])
         # Build colored square timeline from all timeline symbols
         square_timeline = build_colored_square_timeline(timeline_symbols, symbols, use_color)
@@ -1328,6 +1457,9 @@ def render_main_view(
     show_group_headers: bool = False,
     host_group_labels: Optional[Dict[int, str]] = None,
     group_header_lines: Optional[Dict[str, str]] = None,
+    host_subgroup_labels: Optional[Dict[int, str]] = None,
+    subgroup_header_lines: Optional[Dict[str, str]] = None,
+    hierarchical_group_headers: bool = False,
 ) -> List[str]:
     """Render the main view (timeline, sparkline, or square)."""
     pause_label = "DORMANT" if dormant else ("PAUSED" if paused else "LIVE")
@@ -1357,6 +1489,9 @@ def render_main_view(
             show_group_headers=show_group_headers,
             host_group_labels=host_group_labels,
             group_header_lines=group_header_lines,
+            host_subgroup_labels=host_subgroup_labels,
+            subgroup_header_lines=subgroup_header_lines,
+            hierarchical_group_headers=hierarchical_group_headers,
         )
     if display_mode == "square":
         return render_square_view(
@@ -1374,6 +1509,9 @@ def render_main_view(
             show_group_headers=show_group_headers,
             host_group_labels=host_group_labels,
             group_header_lines=group_header_lines,
+            host_subgroup_labels=host_subgroup_labels,
+            subgroup_header_lines=subgroup_header_lines,
+            hierarchical_group_headers=hierarchical_group_headers,
         )
     return render_timeline_view(
         display_entries,
@@ -1390,6 +1528,9 @@ def render_main_view(
         show_group_headers=show_group_headers,
         host_group_labels=host_group_labels,
         group_header_lines=group_header_lines,
+        host_subgroup_labels=host_subgroup_labels,
+        subgroup_header_lines=subgroup_header_lines,
+        hierarchical_group_headers=hierarchical_group_headers,
     )
 
 
@@ -1452,7 +1593,7 @@ def render_help_view(width: int, height: int, boxed: bool = False) -> List[str]:
         "  w: toggle summary panel (on/off)",
         "  W: cycle summary panel position",
         "  G: toggle summary scope (host/group)",
-        "  T: cycle group key (none/asn/site/tag)",
+        "  T: cycle group key (none/asn/site/tag/site>tag1)",
         "  p: pause display | P: toggle Dormant Mode",
         "  R/s: reload hosts / save snapshot",
         "  L: force full redraw",
@@ -1709,6 +1850,13 @@ def build_display_lines(  # noqa: C901
     active_host_infos = [info for info in host_infos if info.get("active", True)]
     active_host_ids = {info["id"] for info in active_host_infos}
     host_group_labels = {info["id"]: resolve_primary_group_label(info, group_by) for info in active_host_infos}
+    host_subgroup_labels: Dict[int, str] = {}
+    if group_by == "site>tag1":
+        host_subgroup_labels = {
+            info["id"]: resolve_group_labels(info, group_by)[0]
+            for info in active_host_infos
+            if resolve_group_labels(info, group_by)
+        }
     ordered_host_ids = [host_id for host_id, _label in display_entries if host_id in active_host_ids]
     summary_data = compute_summary_data(
         active_host_infos,
@@ -1721,8 +1869,9 @@ def build_display_lines(  # noqa: C901
     group_summary_data: List[Dict[str, Any]] = []
     if group_by != "none":
         group_order: List[str] = []
+        group_label_source = host_subgroup_labels if group_by == "site>tag1" else host_group_labels
         for host_id in ordered_host_ids:
-            label = host_group_labels.get(host_id)
+            label = group_label_source.get(host_id)
             if label and label not in group_order:
                 group_order.append(label)
         group_summary_data = compute_group_summary_data(
@@ -1749,10 +1898,27 @@ def build_display_lines(  # noqa: C901
         summary_height = min(summary_height, content_height, max_summary_height)
         summary_height = max(summary_height, min(minimal_height, max_summary_height))
         main_height = max(min_main_height, panel_height - summary_height - gap_size)
-    group_header_lines = {
-        entry["host"]: f"--- {entry['host']} ({entry.get('member_count', 0)} hosts, loss {entry['loss_rate']:.1f}%) ---"
-        for entry in group_summary_data
-    }
+    if group_by == "site>tag1":
+        group_header_lines = {
+            entry["group_label"]: (
+                f"--- {entry['host']} ({entry.get('member_count', 0)} hosts, loss {entry['loss_rate']:.1f}%) ---"
+            )
+            for entry in group_summary_data
+            if entry.get("row_kind") == "site"
+        }
+        subgroup_header_lines = {
+            entry["group_label"]: (
+                f"  --- {entry['host']} ({entry.get('member_count', 0)} hosts, loss {entry['loss_rate']:.1f}%) ---"
+            )
+            for entry in group_summary_data
+            if entry.get("row_kind") == "tag1"
+        }
+    else:
+        group_header_lines = {
+            entry["host"]: f"--- {entry['host']} ({entry.get('member_count', 0)} hosts, loss {entry['loss_rate']:.1f}%) ---"
+            for entry in group_summary_data
+        }
+        subgroup_header_lines = {}
     summary_all = False
     main_lines = []
     summary_lines = []
@@ -1787,6 +1953,9 @@ def build_display_lines(  # noqa: C901
             show_group_headers=summary_scope == "group" and group_by != "none",
             host_group_labels=host_group_labels,
             group_header_lines=group_header_lines,
+            host_subgroup_labels=host_subgroup_labels if group_by == "site>tag1" else None,
+            subgroup_header_lines=subgroup_header_lines if group_by == "site>tag1" else None,
+            hierarchical_group_headers=group_by == "site>tag1",
         )
         summary_render_width = _summary_render_width(summary_width, use_panel_boxes)
         summary_all = resolved_position in ("top", "bottom") and can_render_full_summary(summary_source, summary_render_width)

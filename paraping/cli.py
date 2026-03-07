@@ -287,8 +287,8 @@ def handle_options() -> argparse.Namespace:
         "--group-by",
         type=str,
         default=None,
-        choices=["none", "asn", "site", "tag"],
-        help="Group key for summary and host grouping (none|asn|site|tag)",
+        choices=["none", "asn", "site", "tag", "site>tag1"],
+        help="Group key for summary and host grouping (none|asn|site|tag|site>tag1)",
     )
     parser.add_argument(
         "-P",
@@ -1212,7 +1212,7 @@ def run(args: argparse.Namespace) -> None:
         "summary_mode_index": 0,
         "summary_scope_modes": ["host", "group"],
         "summary_scope_mode_index": 0,
-        "group_by_modes": ["none", "asn", "site", "tag"],
+        "group_by_modes": ["none", "asn", "site", "tag", "site>tag1"],
         "group_by_mode_index": 0,
         "summary_fullscreen": False,
         "sort_modes": ["config", "failures", "streak", "latency", "host"],

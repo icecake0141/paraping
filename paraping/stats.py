@@ -279,13 +279,37 @@ def resolve_group_labels(host_info: Dict[str, Any], group_by: str) -> List[str]:
         if not normalized:
             return ["tag:unknown"]
         return [f"tag:{tag}" for tag in normalized]
+    if group_by == "site>tag1":
+        labels = resolve_site_tag1_labels(host_info)
+        return [labels["composite_label"]]
     return ["all"]
 
 
 def resolve_primary_group_label(host_info: Dict[str, Any], group_by: str) -> str:
     """Resolve the primary group label used for host-row ordering."""
+    if group_by == "site>tag1":
+        return resolve_site_tag1_labels(host_info)["site_label"]
     labels = resolve_group_labels(host_info, group_by)
     return labels[0] if labels else "unknown"
+
+
+def resolve_site_tag1_labels(host_info: Dict[str, Any]) -> Dict[str, str]:
+    """Resolve hierarchical labels used by `site>tag1` grouping mode."""
+    site_value = str(host_info.get("site") or "").strip()
+    site_label = f"site:{site_value}" if site_value else "site:unknown"
+
+    raw_tags = host_info.get("tags") or []
+    if isinstance(raw_tags, list):
+        first_tag = str(raw_tags[0]).strip() if raw_tags else ""
+    else:
+        first_tag = str(raw_tags).strip()
+    tag1_label = f"tag1:{first_tag}" if first_tag else "tag1:unknown"
+
+    return {
+        "site_label": site_label,
+        "tag1_label": tag1_label,
+        "composite_label": f"{site_label}>{tag1_label}",
+    }
 
 
 def compute_group_summary_data(
@@ -303,11 +327,17 @@ def compute_group_summary_data(
 
     success_symbols = {symbols["success"], symbols["slow"]}
     groups: Dict[str, Dict[str, Any]] = {}
+    hierarchy_labels: Dict[str, Dict[str, str]] = {}
 
     for info in host_infos:
         host_id = info["id"]
         host_stats = stats[host_id]
-        labels = resolve_group_labels(info, group_by)
+        if group_by == "site>tag1":
+            labels_map = resolve_site_tag1_labels(info)
+            hierarchy_labels[labels_map["composite_label"]] = labels_map
+            labels = [labels_map["site_label"], labels_map["composite_label"]]
+        else:
+            labels = resolve_group_labels(info, group_by)
         timeline = list(buffers[host_id]["timeline"])
         latest_symbol = timeline[-1] if timeline else None
         fail_streak = compute_fail_streak(timeline, symbols["fail"])
@@ -391,7 +421,9 @@ def compute_group_summary_data(
         group["member_count"] = len(group["_member_ids"])
         summary.append(
             {
-                "host": label,
+                "host": (
+                    hierarchy_labels[label]["tag1_label"] if group_by == "site>tag1" and label in hierarchy_labels else label
+                ),
                 "sent": group["sent"],
                 "received": group["received"],
                 "lost": group["lost"],
@@ -404,12 +436,47 @@ def compute_group_summary_data(
                 "stddev_ms": group["stddev_ms"],
                 "latest_ttl": group["latest_ttl"],
                 "member_count": group["member_count"],
+                "row_kind": (
+                    "tag1"
+                    if group_by == "site>tag1" and label in hierarchy_labels
+                    else ("site" if group_by == "site>tag1" else "group")
+                ),
+                "indent_level": 1 if group_by == "site>tag1" and label in hierarchy_labels else 0,
+                "parent_label": (
+                    hierarchy_labels[label]["site_label"] if group_by == "site>tag1" and label in hierarchy_labels else None
+                ),
+                "group_label": label,
             }
         )
 
     if ordered_group_labels is not None:
         order_index = {label: index for index, label in enumerate(ordered_group_labels)}
-        summary.sort(key=lambda entry: order_index.get(entry["host"], len(order_index)))
+        if group_by == "site>tag1":
+            site_order: List[str] = []
+            for composite in ordered_group_labels:
+                labels = hierarchy_labels.get(composite)
+                if not labels:
+                    continue
+                site_label = labels["site_label"]
+                if site_label not in site_order:
+                    site_order.append(site_label)
+            site_order_index = {label: index for index, label in enumerate(site_order)}
+
+            def _sort_site_tag1(entry: Dict[str, Any]) -> Tuple[int, int, int]:
+                row_kind = entry.get("row_kind")
+                group_label = entry.get("group_label", entry["host"])
+                if row_kind == "site":
+                    return (site_order_index.get(group_label, len(site_order_index)), -1, -1)
+                parent_label = entry.get("parent_label")
+                return (
+                    site_order_index.get(parent_label, len(site_order_index)),
+                    0,
+                    order_index.get(group_label, len(order_index)),
+                )
+
+            summary.sort(key=_sort_site_tag1)
+        else:
+            summary.sort(key=lambda entry: order_index.get(entry["host"], len(order_index)))
     else:
         summary.sort(key=lambda entry: natural_sort_key(entry["host"]))
     return summary

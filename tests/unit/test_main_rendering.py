@@ -18,7 +18,7 @@ import os
 import sys
 import unittest
 from collections import deque
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Add parent directory to path to import main
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
@@ -31,6 +31,7 @@ from main import (  # noqa: E402
     render_square_view,
     render_status_box,
 )
+from paraping.stats import resolve_site_tag1_labels  # noqa: E402
 from paraping.ui_render import (  # noqa: E402
     build_colored_sparkline,
     build_colored_timeline,
@@ -360,9 +361,14 @@ def _make_stats(host_ids, fail_count=0):
     """Helper to build a full stats dict for testing."""
     return {
         i: {
-            "success": 5, "fail": fail_count, "slow": 0, "pending": 0,
+            "success": 5,
+            "fail": fail_count,
+            "slow": 0,
+            "pending": 0,
             "total": 5 + fail_count,
-            "rtt_count": 5, "rtt_sum": 0.05, "rtt_sum_sq": 0.005,
+            "rtt_count": 5,
+            "rtt_sum": 0.05,
+            "rtt_sum_sq": 0.005,
         }
         for i in host_ids
     }
@@ -372,10 +378,16 @@ def _make_summary_entry(host="h1"):
     """Build a summary data entry with all required fields."""
     return {
         "host": host,
-        "sent": 10, "received": 9, "lost": 1,
-        "success_rate": 90.0, "loss_rate": 10.0,
-        "streak_type": None, "streak_length": 0,
-        "avg_rtt_ms": 15.0, "jitter_ms": 1.0, "stddev_ms": 0.5,
+        "sent": 10,
+        "received": 9,
+        "lost": 1,
+        "success_rate": 90.0,
+        "loss_rate": 10.0,
+        "streak_type": None,
+        "streak_length": 0,
+        "avg_rtt_ms": 15.0,
+        "jitter_ms": 1.0,
+        "stddev_ms": 0.5,
         "latest_ttl": 64,
     }
 
@@ -576,6 +588,49 @@ class TestColorAndNonTTY(unittest.TestCase):
         self.assertIn("└ example.net", combined)
         self.assertIn("└ internal.example", combined)
 
+    def test_render_views_site_tag1_hierarchical_headers(self):
+        """site>tag1 should render site header once with nested tag1 headers."""
+        entries = [(0, "h0"), (1, "h1"), (2, "h2")]
+        buffers = _make_buffers([0, 1, 2], timeline_data=["."])
+        host_group_labels = {0: "site:tokyo", 1: "site:tokyo", 2: "site:osaka"}
+        host_subgroup_labels = {
+            0: "site:tokyo>tag1:web",
+            1: "site:tokyo>tag1:db",
+            2: "site:osaka>tag1:web",
+        }
+        group_header_lines = {
+            "site:tokyo": "--- site:tokyo (2 hosts, loss 0.0%) ---",
+            "site:osaka": "--- site:osaka (1 hosts, loss 0.0%) ---",
+        }
+        subgroup_header_lines = {
+            "site:tokyo>tag1:web": "  --- tag1:web (1 hosts, loss 0.0%) ---",
+            "site:tokyo>tag1:db": "  --- tag1:db (1 hosts, loss 0.0%) ---",
+            "site:osaka>tag1:web": "  --- tag1:web (1 hosts, loss 0.0%) ---",
+        }
+
+        for render_fn in (render_timeline_view, render_sparkline_view, render_square_view):
+            lines = render_fn(
+                entries,
+                buffers,
+                _SYMBOLS,
+                width=100,
+                height=20,
+                header="H",
+                show_group_headers=True,
+                host_group_labels=host_group_labels,
+                group_header_lines=group_header_lines,
+                host_subgroup_labels=host_subgroup_labels,
+                subgroup_header_lines=subgroup_header_lines,
+                hierarchical_group_headers=True,
+            )
+            combined = "\n".join(lines)
+            self.assertEqual(combined.count("--- site:tokyo"), 1)
+            self.assertIn("  --- tag1:web", combined)
+            self.assertIn("  --- tag1:db", combined)
+            self.assertIn("└ h0", combined)
+            self.assertIn("└ h1", combined)
+            self.assertIn("└ h2", combined)
+
     def test_truncate_visible_preserves_ansi(self):
         """truncate_visible must count only visible chars and keep ANSI codes."""
         colored = "\x1b[31mabcdef\x1b[0m"
@@ -745,9 +800,7 @@ class TestComputeLayout(unittest.TestCase):
 
     def test_compute_main_layout_basic(self):
         """compute_main_layout should return sane values for standard terminal."""
-        width, label_width, timeline_width, visible_hosts = compute_main_layout(
-            ["host1", "host2"], width=80, height=24
-        )
+        width, label_width, timeline_width, visible_hosts = compute_main_layout(["host1", "host2"], width=80, height=24)
         self.assertGreater(timeline_width, 0)
         self.assertGreater(label_width, 0)
         self.assertGreater(visible_hosts, 0)
@@ -755,9 +808,7 @@ class TestComputeLayout(unittest.TestCase):
 
     def test_compute_main_layout_narrow(self):
         """compute_main_layout should return at least 1 for timeline_width."""
-        width, label_width, timeline_width, visible_hosts = compute_main_layout(
-            ["longhost"], width=20, height=6
-        )
+        width, label_width, timeline_width, visible_hosts = compute_main_layout(["longhost"], width=20, height=6)
         self.assertGreaterEqual(timeline_width, 1)
         self.assertGreaterEqual(visible_hosts, 1)
 
@@ -884,8 +935,16 @@ class TestDisplayFormatting(unittest.TestCase):
     """Test display name and line formatting functions."""
 
     def _make_host_info(self, host_id=0, ip="1.2.3.4", alias="myhost", rdns=None):
-        return {"id": host_id, "ip": ip, "alias": alias, "host": alias,
-                "rdns": rdns, "rdns_pending": False, "asn": None, "asn_pending": False}
+        return {
+            "id": host_id,
+            "ip": ip,
+            "alias": alias,
+            "host": alias,
+            "rdns": rdns,
+            "rdns_pending": False,
+            "asn": None,
+            "asn_pending": False,
+        }
 
     def test_resolve_display_name_ip(self):
         info = self._make_host_info(ip="10.0.0.1")
@@ -964,9 +1023,14 @@ class TestFullscreenRttGraph(unittest.TestCase):
         rtt_values = [0.01, 0.02, None, 0.015, 0.018]
         time_history = [1.0, 2.0, 3.0, 4.0, 5.0]
         lines = render_fullscreen_rtt_graph(
-            "host1", rtt_values, time_history,
-            width=80, height=24, display_mode="line",
-            paused=False, timestamp="2025-01-01 00:00:00 (UTC)"
+            "host1",
+            rtt_values,
+            time_history,
+            width=80,
+            height=24,
+            display_mode="line",
+            paused=False,
+            timestamp="2025-01-01 00:00:00 (UTC)",
         )
         self.assertIsInstance(lines, list)
         self.assertGreater(len(lines), 0)
@@ -974,18 +1038,14 @@ class TestFullscreenRttGraph(unittest.TestCase):
     def test_render_fullscreen_rtt_minimum_size(self):
         """Fullscreen RTT graph at 20x6 should not crash."""
         lines = render_fullscreen_rtt_graph(
-            "host1", [], [],
-            width=20, height=6, display_mode="line",
-            paused=False, timestamp="2025-01-01 00:00:00 (UTC)"
+            "host1", [], [], width=20, height=6, display_mode="line", paused=False, timestamp="2025-01-01 00:00:00 (UTC)"
         )
         self.assertIsInstance(lines, list)
 
     def test_render_fullscreen_rtt_no_samples(self):
         """Fullscreen RTT graph with no RTT data should render n/a message."""
         lines = render_fullscreen_rtt_graph(
-            "myhost", [], [],
-            width=80, height=20, display_mode="bar",
-            paused=True, timestamp="2025-01-01 00:00:00 (UTC)"
+            "myhost", [], [], width=80, height=20, display_mode="bar", paused=True, timestamp="2025-01-01 00:00:00 (UTC)"
         )
         combined = "\n".join(lines)
         self.assertIn("n/a", combined)
@@ -993,18 +1053,14 @@ class TestFullscreenRttGraph(unittest.TestCase):
     def test_render_fullscreen_rtt_zero_size_returns_empty(self):
         """Fullscreen RTT graph with zero dimensions returns empty list."""
         lines = render_fullscreen_rtt_graph(
-            "host1", [0.01], [1.0],
-            width=0, height=10, display_mode="line",
-            paused=False, timestamp="ts"
+            "host1", [0.01], [1.0], width=0, height=10, display_mode="line", paused=False, timestamp="ts"
         )
         self.assertEqual(lines, [])
 
     def test_render_fullscreen_rtt_dormant(self):
         """Fullscreen RTT graph with dormant=True should show DORMANT."""
         lines = render_fullscreen_rtt_graph(
-            "host1", [0.01], [1.0],
-            width=80, height=20, display_mode="line",
-            paused=False, timestamp="ts", dormant=True
+            "host1", [0.01], [1.0], width=80, height=20, display_mode="line", paused=False, timestamp="ts", dormant=True
         )
         combined = "\n".join(lines)
         self.assertIn("DORMANT", combined)
@@ -1025,10 +1081,16 @@ class TestRenderMainView(unittest.TestCase):
         """render_main_view should dispatch to timeline rendering."""
         entries, buffers = self._entries_and_buffers()
         lines = render_main_view(
-            entries, buffers, _SYMBOLS,
-            width=80, height=24,
-            mode_label="ip", display_mode="timeline",
-            paused=False, timestamp="ts", now_utc=self._now()
+            entries,
+            buffers,
+            _SYMBOLS,
+            width=80,
+            height=24,
+            mode_label="ip",
+            display_mode="timeline",
+            paused=False,
+            timestamp="ts",
+            now_utc=self._now(),
         )
         self.assertIsInstance(lines, list)
         self.assertGreater(len(lines), 0)
@@ -1037,10 +1099,16 @@ class TestRenderMainView(unittest.TestCase):
         """render_main_view should dispatch to sparkline rendering."""
         entries, buffers = self._entries_and_buffers()
         lines = render_main_view(
-            entries, buffers, _SYMBOLS,
-            width=80, height=24,
-            mode_label="ip", display_mode="sparkline",
-            paused=False, timestamp="ts", now_utc=self._now()
+            entries,
+            buffers,
+            _SYMBOLS,
+            width=80,
+            height=24,
+            mode_label="ip",
+            display_mode="sparkline",
+            paused=False,
+            timestamp="ts",
+            now_utc=self._now(),
         )
         self.assertIsInstance(lines, list)
 
@@ -1048,10 +1116,16 @@ class TestRenderMainView(unittest.TestCase):
         """render_main_view should dispatch to square rendering."""
         entries, buffers = self._entries_and_buffers()
         lines = render_main_view(
-            entries, buffers, _SYMBOLS,
-            width=80, height=24,
-            mode_label="ip", display_mode="square",
-            paused=False, timestamp="ts", now_utc=self._now()
+            entries,
+            buffers,
+            _SYMBOLS,
+            width=80,
+            height=24,
+            mode_label="ip",
+            display_mode="square",
+            paused=False,
+            timestamp="ts",
+            now_utc=self._now(),
         )
         self.assertIsInstance(lines, list)
 
@@ -1059,10 +1133,16 @@ class TestRenderMainView(unittest.TestCase):
         """render_main_view with paused=True should mention PAUSED in header."""
         entries, buffers = self._entries_and_buffers()
         lines = render_main_view(
-            entries, buffers, _SYMBOLS,
-            width=80, height=24,
-            mode_label="ip", display_mode="timeline",
-            paused=True, timestamp="ts", now_utc=self._now()
+            entries,
+            buffers,
+            _SYMBOLS,
+            width=80,
+            height=24,
+            mode_label="ip",
+            display_mode="timeline",
+            paused=True,
+            timestamp="ts",
+            now_utc=self._now(),
         )
         combined = "\n".join(lines)
         self.assertIn("PAUSED", combined)
@@ -1071,11 +1151,17 @@ class TestRenderMainView(unittest.TestCase):
         """render_main_view with dormant=True should mention DORMANT in header."""
         entries, buffers = self._entries_and_buffers()
         lines = render_main_view(
-            entries, buffers, _SYMBOLS,
-            width=80, height=24,
-            mode_label="ip", display_mode="timeline",
-            paused=False, timestamp="ts", now_utc=self._now(),
-            dormant=True
+            entries,
+            buffers,
+            _SYMBOLS,
+            width=80,
+            height=24,
+            mode_label="ip",
+            display_mode="timeline",
+            paused=False,
+            timestamp="ts",
+            now_utc=self._now(),
+            dormant=True,
         )
         combined = "\n".join(lines)
         self.assertIn("DORMANT", combined)
@@ -1084,10 +1170,16 @@ class TestRenderMainView(unittest.TestCase):
         """render_main_view at 20x6 should not crash."""
         entries, buffers = self._entries_and_buffers()
         lines = render_main_view(
-            entries, buffers, _SYMBOLS,
-            width=20, height=6,
-            mode_label="ip", display_mode="timeline",
-            paused=False, timestamp="ts", now_utc=self._now()
+            entries,
+            buffers,
+            _SYMBOLS,
+            width=20,
+            height=6,
+            mode_label="ip",
+            display_mode="timeline",
+            paused=False,
+            timestamp="ts",
+            now_utc=self._now(),
         )
         self.assertIsInstance(lines, list)
 
@@ -1098,10 +1190,16 @@ class TestRenderMainView(unittest.TestCase):
         entries = [(i, f"host{i}") for i in range(n)]
         buffers = _make_buffers(list(range(n)))
         lines = render_main_view(
-            entries, buffers, _SYMBOLS,
-            width=80, height=8,
-            mode_label="ip", display_mode="timeline",
-            paused=False, timestamp="ts", now_utc=self._now()
+            entries,
+            buffers,
+            _SYMBOLS,
+            width=80,
+            height=8,
+            mode_label="ip",
+            display_mode="timeline",
+            paused=False,
+            timestamp="ts",
+            now_utc=self._now(),
         )
         self.assertIsInstance(lines, list)
 
@@ -1199,6 +1297,7 @@ class TestActivityIndicator(unittest.TestCase):
     def test_build_activity_indicator_zero_width(self):
         """build_activity_indicator with width=0 should return empty string."""
         from paraping.ui_render import build_activity_indicator
+
         now = datetime.now(timezone.utc)
         result = build_activity_indicator(now, width=0)
         self.assertEqual(result, "")
@@ -1206,6 +1305,7 @@ class TestActivityIndicator(unittest.TestCase):
     def test_build_activity_indicator_normal(self):
         """build_activity_indicator should return string of given width."""
         from paraping.ui_render import build_activity_indicator
+
         now = datetime.now(timezone.utc)
         result = build_activity_indicator(now, width=10)
         self.assertEqual(len(result), 10)
@@ -1236,9 +1336,19 @@ class TestBuildDisplayEntries(unittest.TestCase):
     """Test build_display_entries sorting and filtering."""
 
     def _make_host_infos(self, n=3):
-        return [{"id": i, "ip": f"10.0.0.{i}", "alias": f"host{i}",
-                 "host": f"host{i}", "rdns": None, "rdns_pending": False,
-                 "asn": None, "asn_pending": False} for i in range(n)]
+        return [
+            {
+                "id": i,
+                "ip": f"10.0.0.{i}",
+                "alias": f"host{i}",
+                "host": f"host{i}",
+                "rdns": None,
+                "rdns_pending": False,
+                "asn": None,
+                "asn_pending": False,
+            }
+            for i in range(n)
+        ]
 
     def _make_stats(self, n=3, fail_count=0):
         return _make_stats(list(range(n)), fail_count)
@@ -1262,12 +1372,38 @@ class TestBuildDisplayEntries(unittest.TestCase):
         infos = self._make_host_infos(3)
         buffers = _make_buffers([0, 1, 2])
         names = {0: "h0", 1: "h1", 2: "h2"}
-        stats = {0: {"success": 5, "fail": 1, "slow": 0, "pending": 0,
-                     "total": 6, "rtt_count": 5, "rtt_sum": 0.05, "rtt_sum_sq": 0.005},
-                 1: {"success": 5, "fail": 3, "slow": 0, "pending": 0,
-                     "total": 8, "rtt_count": 5, "rtt_sum": 0.05, "rtt_sum_sq": 0.005},
-                 2: {"success": 5, "fail": 2, "slow": 0, "pending": 0,
-                     "total": 7, "rtt_count": 5, "rtt_sum": 0.05, "rtt_sum_sq": 0.005}}
+        stats = {
+            0: {
+                "success": 5,
+                "fail": 1,
+                "slow": 0,
+                "pending": 0,
+                "total": 6,
+                "rtt_count": 5,
+                "rtt_sum": 0.05,
+                "rtt_sum_sq": 0.005,
+            },
+            1: {
+                "success": 5,
+                "fail": 3,
+                "slow": 0,
+                "pending": 0,
+                "total": 8,
+                "rtt_count": 5,
+                "rtt_sum": 0.05,
+                "rtt_sum_sq": 0.005,
+            },
+            2: {
+                "success": 5,
+                "fail": 2,
+                "slow": 0,
+                "pending": 0,
+                "total": 7,
+                "rtt_count": 5,
+                "rtt_sum": 0.05,
+                "rtt_sum_sq": 0.005,
+            },
+        }
         entries = build_display_entries(infos, names, buffers, stats, _SYMBOLS, "failures", "all", 200.0)
         fail_counts = [stats[hid]["fail"] for hid, _ in entries]
         self.assertEqual(fail_counts, sorted(fail_counts, reverse=True))
@@ -1309,12 +1445,38 @@ class TestBuildDisplayEntries(unittest.TestCase):
         infos = self._make_host_infos(3)
         buffers = _make_buffers([0, 1, 2])
         names = {0: "h0", 1: "h1", 2: "h2"}
-        stats = {0: {"success": 5, "fail": 0, "slow": 0, "pending": 0,
-                     "total": 5, "rtt_count": 5, "rtt_sum": 0.05, "rtt_sum_sq": 0.005},
-                 1: {"success": 5, "fail": 2, "slow": 0, "pending": 0,
-                     "total": 7, "rtt_count": 5, "rtt_sum": 0.05, "rtt_sum_sq": 0.005},
-                 2: {"success": 5, "fail": 0, "slow": 0, "pending": 0,
-                     "total": 5, "rtt_count": 5, "rtt_sum": 0.05, "rtt_sum_sq": 0.005}}
+        stats = {
+            0: {
+                "success": 5,
+                "fail": 0,
+                "slow": 0,
+                "pending": 0,
+                "total": 5,
+                "rtt_count": 5,
+                "rtt_sum": 0.05,
+                "rtt_sum_sq": 0.005,
+            },
+            1: {
+                "success": 5,
+                "fail": 2,
+                "slow": 0,
+                "pending": 0,
+                "total": 7,
+                "rtt_count": 5,
+                "rtt_sum": 0.05,
+                "rtt_sum_sq": 0.005,
+            },
+            2: {
+                "success": 5,
+                "fail": 0,
+                "slow": 0,
+                "pending": 0,
+                "total": 5,
+                "rtt_count": 5,
+                "rtt_sum": 0.05,
+                "rtt_sum_sq": 0.005,
+            },
+        }
         entries = build_display_entries(infos, names, buffers, stats, _SYMBOLS, "host", "failures", 200.0)
         ids = [hid for hid, _ in entries]
         self.assertIn(1, ids)
@@ -1387,13 +1549,73 @@ class TestBuildDisplayEntries(unittest.TestCase):
         )
         self.assertEqual([host_id for host_id, _label in entries], [2, 1, 0])
 
+    def test_group_site_tag1_config_sort_uses_first_tag_only(self):
+        """site>tag1 should use only first tag and order by site -> tag1 -> host."""
+        infos = [
+            {
+                "id": 0,
+                "ip": "10.0.0.1",
+                "alias": "h1",
+                "host": "h1",
+                "rdns": None,
+                "rdns_pending": False,
+                "asn": None,
+                "asn_pending": False,
+                "site": "Rack1",
+                "tags": ["z", "a"],
+            },
+            {
+                "id": 1,
+                "ip": "10.0.0.2",
+                "alias": "h2",
+                "host": "h2",
+                "rdns": None,
+                "rdns_pending": False,
+                "asn": None,
+                "asn_pending": False,
+                "site": "Rack1",
+                "tags": ["a"],
+            },
+        ]
+        buffers = _make_buffers([0, 1])
+        names = {0: "h1", 1: "h2"}
+        stats = self._make_stats(2)
+        entries = build_display_entries(
+            infos,
+            names,
+            buffers,
+            stats,
+            _SYMBOLS,
+            "config",
+            "all",
+            200.0,
+            group_by="site>tag1",
+            group_sort_enabled=True,
+        )
+        self.assertEqual([host_id for host_id, _label in entries], [1, 0])
+
+    def test_resolve_site_tag1_labels_defaults_unknown_tag1(self):
+        """site>tag1 label resolution should use tag1:unknown when tags are missing."""
+        labels = resolve_site_tag1_labels({"site": "tokyo", "tags": []})
+        self.assertEqual(labels["site_label"], "site:tokyo")
+        self.assertEqual(labels["tag1_label"], "tag1:unknown")
+        self.assertEqual(labels["composite_label"], "site:tokyo>tag1:unknown")
+
 
 class TestShouldShowAsn(unittest.TestCase):
     """Test should_show_asn function."""
 
     def _host_info(self, alias="host", ip="1.2.3.4"):
-        return {"id": 0, "ip": ip, "alias": alias, "host": alias,
-                "rdns": None, "rdns_pending": False, "asn": "AS1234", "asn_pending": False}
+        return {
+            "id": 0,
+            "ip": ip,
+            "alias": alias,
+            "host": alias,
+            "rdns": None,
+            "rdns_pending": False,
+            "asn": "AS1234",
+            "asn_pending": False,
+        }
 
     def test_show_asn_disabled(self):
         """should_show_asn returns False when show_asn is False."""
@@ -1420,8 +1642,16 @@ class TestBuildDisplayNames(unittest.TestCase):
     """Test build_display_names and format_display_name."""
 
     def _host_info(self, hid=0, alias="host", asn="AS1234"):
-        return {"id": hid, "ip": "1.2.3.4", "alias": alias, "host": alias,
-                "rdns": None, "rdns_pending": False, "asn": asn, "asn_pending": False}
+        return {
+            "id": hid,
+            "ip": "1.2.3.4",
+            "alias": alias,
+            "host": alias,
+            "rdns": None,
+            "rdns_pending": False,
+            "asn": asn,
+            "asn_pending": False,
+        }
 
     def test_build_display_names_without_asn(self):
         """build_display_names returns simple labels when include_asn=False."""
@@ -1469,9 +1699,16 @@ class TestBuildDisplayLines(unittest.TestCase):
     from paraping.ui_render import build_display_lines
 
     def _make_host_info(self, hid, alias):
-        return {"id": hid, "ip": f"10.0.0.{hid}", "alias": alias,
-                "host": alias, "rdns": None, "rdns_pending": False,
-                "asn": None, "asn_pending": False}
+        return {
+            "id": hid,
+            "ip": f"10.0.0.{hid}",
+            "alias": alias,
+            "host": alias,
+            "rdns": None,
+            "rdns_pending": False,
+            "asn": None,
+            "asn_pending": False,
+        }
 
     def _setup(self, n=2):
         host_infos = [self._make_host_info(i, f"host{i}") for i in range(n)]
@@ -1484,6 +1721,7 @@ class TestBuildDisplayLines(unittest.TestCase):
 
     def _call_build_display_lines(self, host_infos, buffers, stats, **kwargs):
         from paraping.ui_render import build_display_lines
+
         defaults = dict(
             symbols=_SYMBOLS,
             panel_position="none",
@@ -1520,76 +1758,58 @@ class TestBuildDisplayLines(unittest.TestCase):
     def test_build_display_lines_summary_fullscreen(self):
         """build_display_lines with summary_fullscreen=True shows summary."""
         host_infos, buffers, stats = self._setup()
-        result = self._call_build_display_lines(
-            host_infos, buffers, stats, summary_fullscreen=True
-        )
+        result = self._call_build_display_lines(host_infos, buffers, stats, summary_fullscreen=True)
         combined = "\n".join(result)
         self.assertIn("Summary", combined)
 
     def test_build_display_lines_panel_right(self):
         """build_display_lines with panel_position=right splits the view."""
         host_infos, buffers, stats = self._setup()
-        result = self._call_build_display_lines(
-            host_infos, buffers, stats, panel_position="right"
-        )
+        result = self._call_build_display_lines(host_infos, buffers, stats, panel_position="right")
         self.assertIsInstance(result, list)
 
     def test_build_display_lines_panel_top(self):
         """build_display_lines with panel_position=top stacks views."""
         host_infos, buffers, stats = self._setup()
-        result = self._call_build_display_lines(
-            host_infos, buffers, stats, panel_position="top"
-        )
+        result = self._call_build_display_lines(host_infos, buffers, stats, panel_position="top")
         self.assertIsInstance(result, list)
 
     def test_build_display_lines_panel_bottom(self):
         """build_display_lines with panel_position=bottom stacks views."""
         host_infos, buffers, stats = self._setup()
-        result = self._call_build_display_lines(
-            host_infos, buffers, stats, panel_position="bottom"
-        )
+        result = self._call_build_display_lines(host_infos, buffers, stats, panel_position="bottom")
         self.assertIsInstance(result, list)
 
     def test_build_display_lines_panel_left(self):
         """build_display_lines with panel_position=left splits view."""
         host_infos, buffers, stats = self._setup()
-        result = self._call_build_display_lines(
-            host_infos, buffers, stats, panel_position="left"
-        )
+        result = self._call_build_display_lines(host_infos, buffers, stats, panel_position="left")
         self.assertIsInstance(result, list)
 
     def test_build_display_lines_with_status_message(self):
         """build_display_lines with status_message produces output without error."""
         host_infos, buffers, stats = self._setup()
-        result = self._call_build_display_lines(
-            host_infos, buffers, stats, status_message="test message"
-        )
+        result = self._call_build_display_lines(host_infos, buffers, stats, status_message="test message")
         self.assertIsInstance(result, list)
         self.assertGreater(len(result), 0)
 
     def test_build_display_lines_dormant(self):
         """build_display_lines with dormant=True shows DORMANT in status."""
         host_infos, buffers, stats = self._setup()
-        result = self._call_build_display_lines(
-            host_infos, buffers, stats, dormant=True
-        )
+        result = self._call_build_display_lines(host_infos, buffers, stats, dormant=True)
         combined = "\n".join(result)
         self.assertIn("DORMANT", combined)
 
     def test_build_display_lines_sparkline_mode(self):
         """build_display_lines with display_mode=sparkline uses sparkline view."""
         host_infos, buffers, stats = self._setup()
-        result = self._call_build_display_lines(
-            host_infos, buffers, stats, display_mode="sparkline"
-        )
+        result = self._call_build_display_lines(host_infos, buffers, stats, display_mode="sparkline")
         self.assertIsInstance(result, list)
 
     def test_build_display_lines_square_mode(self):
         """build_display_lines with display_mode=square uses square view."""
         host_infos, buffers, stats = self._setup()
-        result = self._call_build_display_lines(
-            host_infos, buffers, stats, display_mode="square"
-        )
+        result = self._call_build_display_lines(host_infos, buffers, stats, display_mode="square")
         self.assertIsInstance(result, list)
 
 
@@ -1622,8 +1842,18 @@ class TestMiscFunctions(unittest.TestCase):
 
     def test_build_status_metrics_with_data(self):
         """build_status_metrics should count successes and errors from stats."""
-        infos = [{"id": 0, "ip": "1.2.3.4", "alias": "h0", "host": "h0",
-                  "rdns": None, "rdns_pending": False, "asn": None, "asn_pending": False}]
+        infos = [
+            {
+                "id": 0,
+                "ip": "1.2.3.4",
+                "alias": "h0",
+                "host": "h0",
+                "rdns": None,
+                "rdns_pending": False,
+                "asn": None,
+                "asn_pending": False,
+            }
+        ]
         stats = {0: {"success": 8, "fail": 2, "slow": 1, "pending": 0}}
         result = build_status_metrics(infos, stats)
         self.assertIn("Hosts: 1", result)
@@ -1658,6 +1888,7 @@ class TestMiscFunctions(unittest.TestCase):
     def test_build_sparkline_no_rtt_values(self):
         """build_sparkline with all-None RTT values uses status symbols."""
         from paraping.ui_render import build_sparkline
+
         result = build_sparkline([None, None], [".", "x"], "x")
         self.assertIsInstance(result, str)
         self.assertEqual(len(result), 2)
@@ -1665,12 +1896,14 @@ class TestMiscFunctions(unittest.TestCase):
     def test_build_sparkline_empty(self):
         """build_sparkline with empty rtt_values uses status symbols."""
         from paraping.ui_render import build_sparkline
+
         result = build_sparkline([], [], "x")
         self.assertIsInstance(result, str)
 
     def test_build_sparkline_with_none_in_numeric_path(self):
         """build_sparkline with None mixed in rtt_values uses index 0 for None."""
         from paraping.ui_render import build_sparkline
+
         result = build_sparkline([10.0, None, 20.0], [".", "x", "."], "x")
         self.assertIsInstance(result, str)
         self.assertEqual(len(result), 3)
@@ -1699,6 +1932,13 @@ class TestMiscFunctions(unittest.TestCase):
         result = format_summary_line(entry, width=1, summary_mode="ttl")
         self.assertLessEqual(len(result), 1)
 
+    def test_format_summary_line_applies_indent_level(self):
+        """Summary lines should indent hierarchical rows via indent_level."""
+        entry = _make_summary_entry("tag1:web")
+        entry["indent_level"] = 1
+        result = format_summary_line(entry, width=80, summary_mode="rates")
+        self.assertTrue(result.startswith("  tag1:web"))
+
     def test_render_host_selection_view_zero_size(self):
         """render_host_selection_view with zero size returns empty list."""
         result = render_host_selection_view([(0, "h")], 0, 0, 10, "ip")
@@ -1709,30 +1949,34 @@ class TestMiscFunctions(unittest.TestCase):
     def test_prepare_terminal_for_exit_non_tty(self):
         """prepare_terminal_for_exit should do nothing when not a TTY."""
         from paraping.ui_render import prepare_terminal_for_exit
+
         # In test environment, stdout is not a TTY - should return silently
         prepare_terminal_for_exit()  # Should not raise
 
     def test_flash_screen_non_tty(self):
         """flash_screen should do nothing when not a TTY."""
         from paraping.ui_render import flash_screen
+
         flash_screen()  # Should not raise
 
     def test_ring_bell_non_tty(self):
         """ring_bell should do nothing when not a TTY."""
         from paraping.ui_render import ring_bell
+
         ring_bell()  # Should not raise
 
     def test_resolve_display_name_rdns_none_fallback(self):
         """resolve_display_name with rdns=None falls back to IP."""
         from paraping.ui_render import resolve_display_name
-        info = {"id": 0, "ip": "1.2.3.4", "alias": "host",
-                "rdns": None, "rdns_pending": False}
+
+        info = {"id": 0, "ip": "1.2.3.4", "alias": "host", "rdns": None, "rdns_pending": False}
         result = resolve_display_name(info, "rdns")
         self.assertEqual(result, "1.2.3.4")
 
     def test_format_asn_label_pending(self):
         """format_asn_label with asn_pending=True returns resolving text."""
         from paraping.ui_render import format_asn_label
+
         info = {"asn": None, "asn_pending": True}
         result = format_asn_label(info, asn_width=15)
         self.assertIn("resolving", result)
@@ -1744,32 +1988,39 @@ class TestEstimatePingRate(unittest.TestCase):
     def test_parse_positive_float_valid(self):
         """_parse_positive_float returns float for valid positive string."""
         from paraping.ui_render import _parse_positive_float
+
         self.assertEqual(_parse_positive_float("1.5"), 1.5)
 
     def test_parse_positive_float_none(self):
         """_parse_positive_float returns None for None input."""
         from paraping.ui_render import _parse_positive_float
+
         self.assertIsNone(_parse_positive_float(None))
 
     def test_parse_positive_float_invalid_string(self):
         """_parse_positive_float returns None for non-numeric string."""
         from paraping.ui_render import _parse_positive_float
+
         self.assertIsNone(_parse_positive_float("not_a_number"))
 
     def test_parse_positive_float_zero(self):
         """_parse_positive_float returns None for zero."""
         from paraping.ui_render import _parse_positive_float
+
         self.assertIsNone(_parse_positive_float("0"))
 
     def test_parse_positive_float_negative(self):
         """_parse_positive_float returns None for negative values."""
         from paraping.ui_render import _parse_positive_float
+
         self.assertIsNone(_parse_positive_float("-1.0"))
 
     def test_estimate_ping_rate_env_override(self):
         """estimate_ping_rate uses PARAPING_PING_RATE env var when set."""
-        from paraping.ui_render import estimate_ping_rate
         import os
+
+        from paraping.ui_render import estimate_ping_rate
+
         os.environ["PARAPING_PING_RATE"] = "5.0"
         try:
             result = estimate_ping_rate(10, 1.0)
@@ -1780,13 +2031,16 @@ class TestEstimatePingRate(unittest.TestCase):
     def test_estimate_ping_rate_zero_interval(self):
         """estimate_ping_rate returns None for zero interval."""
         from paraping.ui_render import estimate_ping_rate
+
         result = estimate_ping_rate(10, 0.0)
         self.assertIsNone(result)
 
     def test_estimate_ping_rate_interval_env(self):
         """estimate_ping_rate uses PARAPING_PING_INTERVAL env var when set."""
-        from paraping.ui_render import estimate_ping_rate
         import os
+
+        from paraping.ui_render import estimate_ping_rate
+
         os.environ["PARAPING_PING_INTERVAL"] = "2.0"
         try:
             result = estimate_ping_rate(4, 1.0)
