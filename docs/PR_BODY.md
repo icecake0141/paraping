@@ -132,11 +132,11 @@ make build
 
 ### Pre-commit Hooks
 
-**Run all pre-commit hooks:**
+**Optional full-repository pre-commit run (recommended periodically):**
 ```bash
 pre-commit run --all-files
 ```
-Expected: All hooks pass
+Expected: Use this as a full-audit signal; required commit gate is `git commit` hooks on staged changes.
 
 ## PR Checklist
 
@@ -153,7 +153,7 @@ Expected: All hooks pass
 - [ ] Tests pass locally (command: `pytest tests/ -v --cov=. --cov-report=term-missing`)
 - [ ] Static analysis/type checks pass (if applicable)
 - [ ] Formatting applied (command: `black . --check && isort . --check-only`)
-- [ ] Pre-commit hooks pass (command: `pre-commit run --all-files`)
+- [ ] Optional full-repository pre-commit check completed (command: `pre-commit run --all-files`)
 
 ### CI/CD
 - [ ] CI build passes
@@ -341,11 +341,11 @@ make build
 
 ### プリコミットフック
 
-**すべてのプリコミットフックを実行：**
+**任意の全体実行（定期的に推奨）：**
 ```bash
 pre-commit run --all-files
 ```
-期待値：すべてのフックが合格
+期待値：全体監査の目安として利用。必須ゲートは `git commit` 時のステージ済み差分フック。
 
 ## PRチェックリスト
 
@@ -364,7 +364,7 @@ pre-commit run --all-files
 - [ ] テストがローカルで合格（コマンド：`pytest tests/ -v --cov=. --cov-report=term-missing`）
 - [ ] 静的解析/型チェックが合格（該当する場合）
 - [ ] フォーマット適用（コマンド：`black . --check && isort . --check-only`）
-- [ ] プリコミットフックが合格（コマンド：`pre-commit run --all-files`）
+- [ ] 任意の全体プリコミットチェックを実施（コマンド：`pre-commit run --all-files`）
 
 ### CI/CD
 

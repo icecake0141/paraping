@@ -25,7 +25,6 @@ ignore-patterns=
 # Disable certain warnings to align with project standards
 disable=
     too-many-arguments,
-    too-many-positional-arguments,
     too-many-locals,
     too-many-branches,
     too-many-statements,

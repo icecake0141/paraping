@@ -39,8 +39,8 @@ source .venv/bin/activate
 
 ## Pre-commit Hooks
 
-Once installed the hooks run automatically on `git commit`. To run them
-manually against all files at any time:
+Once installed the hooks run automatically on `git commit` (required quality
+gate on staged changes). To run a full-repository audit manually, as needed:
 
 ```bash
 pre-commit run --all-files
@@ -86,7 +86,7 @@ make test
 
 Before opening a PR, please ensure:
 
-- [ ] `pre-commit run --all-files` passes with no errors.
+- [ ] Optional (recommended periodically): `pre-commit run --all-files`.
 - [ ] `make test` passes locally.
 - [ ] New behaviour is covered by tests.
 - [ ] Relevant documentation is updated.
