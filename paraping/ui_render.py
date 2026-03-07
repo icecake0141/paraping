@@ -846,8 +846,8 @@ def build_time_axis(
     """
     Build a time axis string for the timeline/sparkline view.
 
-    The axis shows time labels (e.g., "10", "20", "30") at regular intervals,
-    representing seconds from the leftmost (oldest) to rightmost (newest) column.
+    The axis shows time labels (e.g., "30", "20", "10") at regular intervals,
+    representing seconds-ago values that decrease from left to right.
 
     Args:
         timeline_width: Width of the timeline area in characters
@@ -861,19 +861,20 @@ def build_time_axis(
     if timeline_width <= 0:
         return ""
 
-    # Build the axis from left to right with increasing time values
-    # The leftmost column represents the oldest time, rightmost is newest (now)
+    # Build the axis from left to right with decreasing "seconds ago" values.
+    # The leftmost column is oldest, and the rightmost column is newest (0s ago).
     axis_chars = [" "] * timeline_width
 
     # Place labels at regular intervals, checking for overlaps
     for i in range(timeline_width):
-        # Time from left (for label purposes)
-        time_from_left = i * interval_seconds
+        # Time from right (seconds ago), so rightmost column is 0s.
+        time_from_right = (timeline_width - 1 - i) * interval_seconds
 
         # Check if this position should have a label
-        # We want labels at 0, label_period, 2*label_period, etc. from the left
-        if i > 0 and abs(time_from_left % label_period_seconds) < interval_seconds:
-            label_value = int(time_from_left)
+        # We want labels at label_period, 2*label_period, ... from the right.
+        # 0 is intentionally omitted.
+        if i > 0 and abs(time_from_right % label_period_seconds) < interval_seconds and time_from_right >= interval_seconds:
+            label_value = int(time_from_right)
             label_str = str(label_value)
 
             # Check if label fits and doesn't overlap with existing labels
