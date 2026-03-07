@@ -747,14 +747,15 @@ def build_display_entries(  # noqa: C901
             site_tag_groups.setdefault(site_label, {}).setdefault(tag_group_label, []).append(item)
 
         def _ratio(group_entries: Sequence[Dict[str, Any]]) -> float:
-            total = sum(entry["total"] for entry in group_entries)
-            return sum(entry["fail_count"] for entry in group_entries) / max(1, total)
+            total = int(sum(entry["total"] for entry in group_entries))
+            failures = int(sum(entry["fail_count"] for entry in group_entries))
+            return failures / max(1, total)
 
         def _max_latency(group_entries: Sequence[Dict[str, Any]]) -> float:
-            return max((entry["latest_rtt"] or -1.0) for entry in group_entries)
+            return float(max((entry["latest_rtt"] or -1.0) for entry in group_entries))
 
         def _max_streak(group_entries: Sequence[Dict[str, Any]]) -> int:
-            return max(entry["fail_streak"] for entry in group_entries)
+            return int(max(entry["fail_streak"] for entry in group_entries))
 
         site_order = list(site_tag_groups.keys())
         if sort_mode in ("config", "host"):
@@ -784,7 +785,7 @@ def build_display_entries(  # noqa: C901
                 reverse=True,
             )
 
-        ordered_entries: List[Dict[str, Any]] = []
+        site_ordered_entries: List[Dict[str, Any]] = []
         for site_label in site_order:
             tags_for_site = site_tag_groups[site_label]
             tag_order = list(tags_for_site.keys())
@@ -809,8 +810,8 @@ def build_display_entries(  # noqa: C901
                     group_entries.sort(key=lambda item: ((item["latest_rtt"] or -1.0), item["label"]), reverse=True)
                 elif sort_mode == "host":
                     group_entries.sort(key=lambda item: item["label"])
-                ordered_entries.extend(group_entries)
-        entries = ordered_entries
+                site_ordered_entries.extend(group_entries)
+        entries = site_ordered_entries
     elif group_sort_enabled and group_by != "none":
         groups: Dict[str, List[Dict[str, Any]]] = {}
         for item in entries:
@@ -1140,14 +1141,14 @@ def build_group_header_line_map(
             if isinstance(parent, str):
                 tag_by_site.setdefault(parent, []).append(entry)
 
-        header_lines: Dict[str, List[str]] = {}
+        site_header_lines: Dict[str, List[str]] = {}
         info_by_id = {info["id"]: info for info in active_host_infos}
         for host_id in ordered_host_ids:
             info = info_by_id.get(host_id)
             if info is None:
                 continue
             site_label = resolve_primary_group_label(info, group_by)
-            if site_label in header_lines:
+            if site_label in site_header_lines:
                 continue
             site_entry = site_summary.get(site_label, {})
             site_member_count = int(site_entry.get("member_count", 0))
@@ -1157,8 +1158,8 @@ def build_group_header_line_map(
                 tag_member_count = int(tag_entry.get("member_count", 0))
                 tag_loss_rate = float(tag_entry.get("loss_rate", 0.0))
                 lines.append(f"  --- {tag_entry['host']} ({tag_member_count} hosts, loss {tag_loss_rate:.1f}%) ---")
-            header_lines[site_label] = lines
-        return header_lines
+            site_header_lines[site_label] = lines
+        return site_header_lines
 
     summary_by_label = {entry["host"]: entry for entry in group_summary_data}
     info_by_id = {info["id"]: info for info in active_host_infos}

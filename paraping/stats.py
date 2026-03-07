@@ -523,8 +523,9 @@ def compute_group_summary_data(
                 if row_kind == "site":
                     return (site_order_index.get(group_label, len(site_order_index)), -1, -1)
                 parent_label = entry.get("parent_label")
+                parent_site_label = parent_label if isinstance(parent_label, str) else ""
                 return (
-                    site_order_index.get(parent_label, len(site_order_index)),
+                    site_order_index.get(parent_site_label, len(site_order_index)),
                     0,
                     order_index.get(group_label, len(order_index)),
                 )
