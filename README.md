@@ -29,6 +29,10 @@ ParaPing is an interactive terminal monitor that runs ICMP ping in parallel for 
 
 Detailed specifications, usage guides, and testing procedures are separated under `docs/`.
 
+Common startup defaults can be controlled from CLI options such as
+`--display-name`, `--view`, `--summary-mode`, `--summary-scope`,
+`--show-asn/--no-show-asn`, and `--color/--no-color`.
+
 ### Installation
 
 #### Quick Start
@@ -74,6 +78,10 @@ ParaPing は、複数ホストに対する ICMP ping を並列実行し、ター
 - Linux では `ping_helper` + `cap_net_raw` による最小権限運用
 
 詳細な仕様、使い方、テスト手順は `docs/` に分離しています。
+
+起動時の初期表示は `--display-name`、`--view`、`--summary-mode`、
+`--summary-scope`、`--show-asn/--no-show-asn`、`--color/--no-color`
+などで指定できます。
 
 ### インストール
 

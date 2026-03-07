@@ -24,26 +24,17 @@ import logging
 import os
 from typing import Any, Dict, List, Optional
 
+from paraping.cli_options import build_config_field_types
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_CONFIG_PATH = os.path.expanduser("~/.paraping.conf")
 
-# Mapping of config field names to their expected Python types
-_CONFIG_FIELD_TYPES: Dict[str, type] = {
-    "interval": float,
-    "timeout": int,
-    "slow_threshold": float,
-    "timezone": str,
-    "color": bool,
-    "flash_on_fail": bool,
-    "bell_on_fail": bool,
-    "panel_position": str,
-    "pause_mode": str,
-    "ping_helper": str,
-    "log_level": str,
-    "log_file": str,
-    "snapshot_timezone": str,
-}
+# Mapping of config field names to their expected Python types.
+# Derived from CLI option specs to keep parser/config surface aligned.
+_CONFIG_FIELD_TYPES: Dict[str, type] = build_config_field_types()
+# Backward-compatible legacy key (renamed to ui_log_errors in CLI).
+_CONFIG_FIELD_TYPES["verbose_ui_errors"] = bool
 
 _BOOL_TRUE_VALUES = frozenset(("true", "yes", "1", "on"))
 _BOOL_FALSE_VALUES = frozenset(("false", "no", "0", "off"))
@@ -146,9 +137,7 @@ def load_yaml_config(path: str) -> Dict[str, Any]:
     try:
         import yaml  # type: ignore[import-untyped]  # pylint: disable=import-outside-toplevel
     except ImportError as exc:
-        raise ImportError(
-            "PyYAML is required for YAML config files. Install it with: pip install pyyaml"
-        ) from exc
+        raise ImportError("PyYAML is required for YAML config files. Install it with: pip install pyyaml") from exc
 
     try:
         with open(path, "r", encoding="utf-8") as fh:

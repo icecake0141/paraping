@@ -33,12 +33,7 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from paraping.cli import _apply_config_to_args, handle_options
-from paraping.config import (
-    _is_yaml_file,
-    load_config,
-    load_ini_config,
-    load_yaml_config,
-)
+from paraping.config import _is_yaml_file, load_config, load_ini_config, load_yaml_config
 
 
 class TestParseBool(unittest.TestCase):
@@ -496,6 +491,36 @@ class TestHandleOptionsWithConfig(unittest.TestCase):
                 self.assertFalse(args.flash_on_fail)
                 self.assertFalse(args.bell_on_fail)
                 self.assertFalse(args.color)
+                self.assertTrue(args.show_asn)
+                self.assertEqual(args.summary_mode, "rates")
+                self.assertEqual(args.summary_scope, "host")
+
+    def test_new_option_values_can_come_from_config(self):
+        """Startup-state options should be configurable from config."""
+        fake_config = {
+            "show_asn": False,
+            "summary_mode": "ttl",
+            "summary_scope": "group",
+            "display_name": "ip",
+            "view": "sparkline",
+        }
+        with patch("sys.argv", ["paraping", "example.com"]):
+            with patch("paraping.cli.load_config", return_value=fake_config):
+                args = handle_options()
+                self.assertFalse(args.show_asn)
+                self.assertEqual(args.summary_mode, "ttl")
+                self.assertEqual(args.summary_scope, "group")
+                self.assertEqual(args.display_name, "ip")
+                self.assertEqual(args.view, "sparkline")
+
+    def test_cli_overrides_new_option_values_from_config(self):
+        """CLI should override config values for new startup-state options."""
+        fake_config = {"show_asn": False, "summary_mode": "ttl"}
+        with patch("sys.argv", ["paraping", "--show-asn", "--summary-mode", "rtt", "example.com"]):
+            with patch("paraping.cli.load_config", return_value=fake_config):
+                args = handle_options()
+                self.assertTrue(args.show_asn)
+                self.assertEqual(args.summary_mode, "rtt")
 
 
 if __name__ == "__main__":

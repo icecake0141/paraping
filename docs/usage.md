@@ -43,14 +43,25 @@ make run ARGS='-f hosts.txt'
 - `-c, --count`: ping count per host (`0` for infinite)
 - `-s, --slow-threshold`: threshold for slow marker
 - `-f, --input`: host input file
-- `--group-by`: `none|asn|site|tag|site>tag1`
+- `--group-by`: `none|asn|site|tag|tagN|site>tag1|tag1>site`
 - `-P, --panel-position`: `right|left|top|bottom|none`
 - `-m, --pause-mode`: `display|ping`
 - `-z, --timezone`: display timezone
 - `-Z, --snapshot-timezone`: snapshot filename timezone (`utc|display`)
-- `-C, --color`: enable color output
-- `-F, --flash-on-fail`: flash on failures
-- `-B, --bell-on-fail`: bell on failures
+- `-C, --color, --no-color`: color output default
+- `-F, --flash-on-fail, --no-flash-on-fail`: failure flash default
+- `-B, --bell-on-fail, --no-bell-on-fail`: failure bell default
+- `--ui-log-errors, --no-ui-log-errors`: TUI log line display default
+- `--show-asn, --no-show-asn`: ASN display default
+- `--display-name`: initial label mode (`ip|rdns|alias`)
+- `--view`: initial main view (`timeline|sparkline|square`)
+- `--summary-mode`: initial summary metric (`rates|rtt|ttl|streak`)
+- `--summary-scope`: initial summary scope (`host|group`)
+- `--sort`: initial sort mode
+- `--filter`: initial filter mode
+- `--kitt, --no-kitt`: Knight Rider mode default
+- `--kitt-style`: Knight Rider style default (`scanner|gradient`)
+- `--summary-fullscreen, --no-summary-fullscreen`: summary fullscreen default
 - `-H, --ping-helper`: helper binary path
 - `--no-config`: skip `~/.paraping.conf`
 
@@ -123,14 +134,25 @@ make run ARGS='-f hosts.txt'
 - `-c, --count`: ホストごとの送信回数（`0` は無限）
 - `-s, --slow-threshold`: 遅延判定しきい値
 - `-f, --input`: ホスト入力ファイル
-- `--group-by`: `none|asn|site|tag|site>tag1`
+- `--group-by`: `none|asn|site|tag|tagN|site>tag1|tag1>site`
 - `-P, --panel-position`: `right|left|top|bottom|none`
 - `-m, --pause-mode`: `display|ping`
 - `-z, --timezone`: 画面表示タイムゾーン
 - `-Z, --snapshot-timezone`: スナップショット名タイムゾーン（`utc|display`）
-- `-C, --color`: 色表示を有効化
-- `-F, --flash-on-fail`: 失敗時フラッシュ
-- `-B, --bell-on-fail`: 失敗時ベル
+- `-C, --color, --no-color`: 色表示の初期状態
+- `-F, --flash-on-fail, --no-flash-on-fail`: 失敗時フラッシュの初期状態
+- `-B, --bell-on-fail, --no-bell-on-fail`: 失敗時ベルの初期状態
+- `--ui-log-errors, --no-ui-log-errors`: TUI上のログ表示初期状態
+- `--show-asn, --no-show-asn`: ASN表示初期状態
+- `--display-name`: 起動時ラベルモード（`ip|rdns|alias`）
+- `--view`: 起動時メイン表示（`timeline|sparkline|square`）
+- `--summary-mode`: 起動時サマリー指標（`rates|rtt|ttl|streak`）
+- `--summary-scope`: 起動時サマリースコープ（`host|group`）
+- `--sort`: 起動時ソートモード
+- `--filter`: 起動時フィルタモード
+- `--kitt, --no-kitt`: Knight Rider モード初期状態
+- `--kitt-style`: Knight Rider スタイル初期状態（`scanner|gradient`）
+- `--summary-fullscreen, --no-summary-fullscreen`: サマリーフルスクリーン初期状態
 - `-H, --ping-helper`: ヘルパーバイナリパス
 - `--no-config`: `~/.paraping.conf` を読み込まない
 

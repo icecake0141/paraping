@@ -153,17 +153,70 @@ class TestCLIArgumentParsing(unittest.TestCase):
             args = handle_options()
             self.assertTrue(args.color)
 
+    def test_handle_options_no_color(self):
+        """BooleanOptionalAction should allow disabling color explicitly."""
+        with patch("sys.argv", ["paraping", "--color", "--no-color", "example.com"]):
+            args = handle_options()
+            self.assertFalse(args.color)
+
     def test_handle_options_verbose_ui_errors_default_false(self):
         """--verbose-ui-errors should default to False."""
         with patch("sys.argv", ["paraping", "example.com"]):
             args = handle_options()
             self.assertFalse(args.verbose_ui_errors)
 
+    def test_handle_options_ui_log_errors_flag(self):
+        """--ui-log-errors should enable UI error logs."""
+        with patch("sys.argv", ["paraping", "--ui-log-errors", "example.com"]):
+            args = handle_options()
+            self.assertTrue(args.ui_log_errors)
+            self.assertTrue(args.verbose_ui_errors)
+
     def test_handle_options_verbose_ui_errors_flag(self):
         """--verbose-ui-errors should enable UI error logs."""
         with patch("sys.argv", ["paraping", "--verbose-ui-errors", "example.com"]):
-            args = handle_options()
+            with self.assertWarns(DeprecationWarning):
+                args = handle_options()
             self.assertTrue(args.verbose_ui_errors)
+            self.assertTrue(args.ui_log_errors)
+
+    def test_handle_options_new_initial_state_options(self):
+        """New startup default options should parse and be available."""
+        with patch(
+            "sys.argv",
+            [
+                "paraping",
+                "--display-name",
+                "ip",
+                "--view",
+                "sparkline",
+                "--summary-mode",
+                "ttl",
+                "--summary-scope",
+                "group",
+                "--sort",
+                "latency",
+                "--filter",
+                "failures",
+                "--no-show-asn",
+                "--kitt",
+                "--kitt-style",
+                "gradient",
+                "--summary-fullscreen",
+                "example.com",
+            ],
+        ):
+            args = handle_options()
+            self.assertEqual(args.display_name, "ip")
+            self.assertEqual(args.view, "sparkline")
+            self.assertEqual(args.summary_mode, "ttl")
+            self.assertEqual(args.summary_scope, "group")
+            self.assertEqual(args.sort, "latency")
+            self.assertEqual(args.filter, "failures")
+            self.assertFalse(args.show_asn)
+            self.assertTrue(args.kitt)
+            self.assertEqual(args.kitt_style, "gradient")
+            self.assertTrue(args.summary_fullscreen)
 
     def test_handle_options_ping_helper_path(self):
         """Test ping helper path option"""
@@ -198,6 +251,7 @@ class TestCLIArgumentParsing(unittest.TestCase):
                 "-s",
                 "0.8",
                 "-v",
+                "--ui-log-errors",
                 "-P",
                 "left",
                 "-m",
@@ -215,12 +269,22 @@ class TestCLIArgumentParsing(unittest.TestCase):
             self.assertEqual(args.interval, 1.5)
             self.assertEqual(args.slow_threshold, 0.8)
             self.assertTrue(args.verbose)
+            self.assertEqual(args.log_level, "DEBUG")
+            self.assertTrue(args.ui_log_errors)
             self.assertEqual(args.panel_position, "left")
             self.assertEqual(args.pause_mode, "ping")
             self.assertTrue(args.flash_on_fail)
             self.assertTrue(args.bell_on_fail)
             self.assertTrue(args.color)
             self.assertEqual(len(args.hosts), 2)
+
+    def test_handle_options_verbose_deprecated_warns(self):
+        """--verbose should warn and map to DEBUG log level."""
+        with patch("sys.argv", ["paraping", "--verbose", "example.com"]):
+            with self.assertWarns(DeprecationWarning):
+                args = handle_options()
+            self.assertTrue(args.verbose)
+            self.assertEqual(args.log_level, "DEBUG")
 
     def test_handle_options_interval_validation_min(self):
         """Test interval validation - minimum value"""
