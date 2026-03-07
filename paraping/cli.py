@@ -825,6 +825,20 @@ def _handle_user_input(
     elif key == "v":
         state["display_mode_index"] = (state["display_mode_index"] + 1) % len(state["display_modes"])
         state["updated"] = True
+    elif key == "k":
+        state["kitt_mode_enabled"] = not state["kitt_mode_enabled"]
+        state["status_message"] = "Knight Rider mode enabled" if state["kitt_mode_enabled"] else "Knight Rider mode disabled"
+        state["force_render"] = True
+        state["updated"] = True
+    elif key == "K":
+        if state["kitt_mode_enabled"]:
+            state["kitt_style_index"] = (state["kitt_style_index"] + 1) % len(state["kitt_style_modes"])
+            current_style = state["kitt_style_modes"][state["kitt_style_index"]]
+            state["status_message"] = f"Knight Rider style: {current_style}"
+        else:
+            state["status_message"] = "Knight Rider mode is off (press 'k' first)"
+        state["force_render"] = True
+        state["updated"] = True
     elif key == "o":
         state["sort_mode_index"] = (state["sort_mode_index"] + 1) % len(state["sort_modes"])
         state["cached_page_step"] = None
@@ -943,6 +957,8 @@ def _handle_user_input(
             summary_scope=state["summary_scope_modes"][state["summary_scope_mode_index"]],
             group_by=state["group_by_modes"][state["group_by_mode_index"]],
             group_sort_enabled=state["summary_scope_modes"][state["summary_scope_mode_index"]] == "group",
+            kitt_mode_enabled=state["kitt_mode_enabled"],
+            kitt_style=state["kitt_style_modes"][state["kitt_style_index"]],
         )
         with open(snapshot_name, "w", encoding="utf-8") as snapshot_file:
             snapshot_file.write("\n".join(snapshot_lines) + "\n")
@@ -1235,6 +1251,8 @@ def _render_frame(args: argparse.Namespace, state: Dict[str, Any]) -> None:
         summary_scope=state["summary_scope_modes"][state["summary_scope_mode_index"]],
         group_by=state["group_by_modes"][state["group_by_mode_index"]],
         group_sort_enabled=state["summary_scope_modes"][state["summary_scope_mode_index"]] == "group",
+        kitt_mode_enabled=state["kitt_mode_enabled"],
+        kitt_style=state["kitt_style_modes"][state["kitt_style_index"]],
     )
     state["last_render"] = now
     state["updated"] = False
@@ -1274,6 +1292,9 @@ def run(args: argparse.Namespace) -> None:
         "summary_scope_mode_index": 0,
         "group_by_modes": _build_group_by_modes(setup["host_infos"]),
         "group_by_mode_index": 0,
+        "kitt_mode_enabled": False,
+        "kitt_style_modes": ["scanner", "gradient"],
+        "kitt_style_index": 0,
         "summary_fullscreen": False,
         "sort_modes": ["config", "failures", "streak", "latency", "host"],
         "sort_mode_index": 0,

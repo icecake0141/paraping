@@ -19,6 +19,7 @@ import sys
 import unittest
 from collections import deque
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 # Add parent directory to path to import main
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
@@ -54,6 +55,7 @@ from paraping.ui_render import (  # noqa: E402
     pad_lines,
     pad_visible,
     render_fullscreen_rtt_graph,
+    render_kitt_bottom_band,
     render_main_view,
     render_sparkline_view,
     render_summary_view,
@@ -83,6 +85,7 @@ class TestHelpView(unittest.TestCase):
         self.assertIn("H: show help", combined)
         self.assertIn("L: force full redraw", combined)
         self.assertIn("P: toggle Dormant Mode", combined)
+        self.assertIn("k: toggle Knight Rider mode", combined)
         self.assertIn("Press any key to close", combined)
 
     def test_help_view_contains_group_hotkeys(self):
@@ -1337,15 +1340,26 @@ class TestActivityIndicator(unittest.TestCase):
         self.assertEqual(result, 0)
 
     def test_compute_activity_indicator_width_expanded(self):
-        """compute_activity_indicator_width with enough space returns expanded width."""
+        """compute_activity_indicator_width should use all remaining space."""
         result = compute_activity_indicator_width(100, "H")
-        self.assertEqual(result, 20)  # ACTIVITY_INDICATOR_EXPANDED_WIDTH
+        self.assertEqual(result, 98)
 
     def test_compute_activity_indicator_width_default(self):
-        """compute_activity_indicator_width with moderate space returns default width."""
-        # header "H" (1 char) + 1 space = 2; remaining = 15 >= 10 (default) but < 20 (expanded)
+        """compute_activity_indicator_width with moderate space returns remaining width."""
         result = compute_activity_indicator_width(17, "H")
-        self.assertEqual(result, 10)  # ACTIVITY_INDICATOR_WIDTH
+        self.assertEqual(result, 15)
+
+    def test_render_kitt_bottom_band_scanner(self):
+        """Knight Rider scanner band should render with a visible title."""
+        lines = render_kitt_bottom_band(60, 5, "scanner", datetime.now(timezone.utc), use_color=False)
+        self.assertEqual(len(lines), 5)
+        self.assertIn("Knight Rider [Scanner]", lines[0])
+
+    def test_render_kitt_bottom_band_gradient(self):
+        """Knight Rider gradient band should render with a visible title."""
+        lines = render_kitt_bottom_band(60, 5, "gradient", datetime.now(timezone.utc), use_color=False)
+        self.assertEqual(len(lines), 5)
+        self.assertIn("Knight Rider [Gradient]", lines[0])
 
 
 class TestBuildDisplayEntries(unittest.TestCase):
@@ -1774,6 +1788,35 @@ class TestBuildDisplayLines(unittest.TestCase):
         """build_display_lines with display_mode=square uses square view."""
         host_infos, buffers, stats = self._setup()
         result = self._call_build_display_lines(host_infos, buffers, stats, display_mode="square")
+        self.assertIsInstance(result, list)
+
+    @patch("paraping.ui_render.get_terminal_size", return_value=os.terminal_size((100, 30)))
+    def test_build_display_lines_kitt_mode_enabled_shows_band(self, _mock_term_size):
+        """Knight Rider mode should include the bottom accent area on large terminals."""
+        host_infos, buffers, stats = self._setup()
+        result = self._call_build_display_lines(
+            host_infos,
+            buffers,
+            stats,
+            panel_position="none",
+            kitt_mode_enabled=True,
+            kitt_style="scanner",
+        )
+        combined = "\n".join(result)
+        self.assertIn("Knight Rider [Scanner]", combined)
+
+    @patch("paraping.ui_render.get_terminal_size", return_value=os.terminal_size((20, 6)))
+    def test_build_display_lines_kitt_mode_small_terminal_graceful(self, _mock_term_size):
+        """Knight Rider mode should gracefully degrade on tiny terminals."""
+        host_infos, buffers, stats = self._setup()
+        result = self._call_build_display_lines(
+            host_infos,
+            buffers,
+            stats,
+            panel_position="none",
+            kitt_mode_enabled=True,
+            kitt_style="gradient",
+        )
         self.assertIsInstance(result, list)
 
 

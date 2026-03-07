@@ -51,7 +51,6 @@ STATUS_COLORS = {
     "pending": "\x1b[90m",  # Dark gray (bright black)
 }
 ACTIVITY_INDICATOR_WIDTH = 10
-ACTIVITY_INDICATOR_EXPANDED_WIDTH = 20
 ACTIVITY_INDICATOR_HEIGHT = 4
 ACTIVITY_INDICATOR_SPEED_HZ = 8
 STATUS_METRICS_SEPARATOR = " | "
@@ -229,19 +228,119 @@ def compute_activity_indicator_width(
     panel_width: int,
     header_text: str,
     default_width: int = ACTIVITY_INDICATOR_WIDTH,
-    expanded_width: int = ACTIVITY_INDICATOR_EXPANDED_WIDTH,
 ) -> int:
     """Compute the width for the activity indicator based on available space."""
+    del default_width  # Reserved for backward-compatible signature/semantics.
     if panel_width <= 0:
         return 0
     remaining = panel_width - visible_len(header_text) - 1
     if remaining <= 0:
         return 0
-    if remaining >= expanded_width:
-        return expanded_width
-    if remaining >= default_width:
-        return default_width
     return remaining
+
+
+def build_kitt_scanner_bar(
+    width: int,
+    now_utc: datetime,
+    use_color: bool,
+    speed_hz: int = 12,
+    trail_width: int = 6,
+    phase_offset: int = 0,
+) -> str:
+    """Build a Knight Rider-style moving scanner bar."""
+    if width <= 0:
+        return ""
+    span = max(1, width - 1)
+    cycle = span * 2
+    tick = int(now_utc.timestamp() * speed_hz) + phase_offset
+    position = tick % cycle
+    if position > span:
+        position = cycle - position
+
+    chars: List[str] = []
+    for index in range(width):
+        distance = abs(index - position)
+        if distance > trail_width:
+            chars.append(" ")
+            continue
+        if distance == 0:
+            base = "█"
+            color = "\x1b[91m"
+        elif distance <= 2:
+            base = "▓"
+            color = "\x1b[31m"
+        elif distance <= 4:
+            base = "▒"
+            color = "\x1b[31m"
+        else:
+            base = "░"
+            color = "\x1b[90m"
+        chars.append(f"{color}{base}{ANSI_RESET}" if use_color else base)
+    return "".join(chars)
+
+
+def build_kitt_gradient_bar(
+    width: int,
+    now_utc: datetime,
+    use_color: bool,
+    speed_hz: int = 10,
+    band_width: int = 12,
+    phase_offset: int = 0,
+) -> str:
+    """Build a flowing gradient-like Knight Rider bar."""
+    if width <= 0:
+        return ""
+    span = max(1, width - 1)
+    cycle = span * 2
+    tick = int(now_utc.timestamp() * speed_hz) + phase_offset
+    position = tick % cycle
+    if position > span:
+        position = cycle - position
+
+    gradient_chars = [" ", "░", "▒", "▓", "█", "▓", "▒", "░", " "]
+    levels = len(gradient_chars) - 1
+    chars: List[str] = []
+    for index in range(width):
+        distance = abs(index - position)
+        if distance >= band_width:
+            chars.append(" ")
+            continue
+        ratio = 1.0 - (distance / max(1, band_width))
+        level = min(levels, max(1, int(round(ratio * levels))))
+        char = gradient_chars[level]
+        if use_color and char != " ":
+            color = "\x1b[91m" if level >= levels - 1 else "\x1b[31m"
+            chars.append(f"{color}{char}{ANSI_RESET}")
+        else:
+            chars.append(char)
+    return "".join(chars)
+
+
+def render_kitt_bottom_band(
+    width: int,
+    height: int,
+    style: str,
+    now_utc: datetime,
+    use_color: bool,
+) -> List[str]:
+    """Render the lower Knight Rider accent area."""
+    if width <= 0 or height <= 0:
+        return []
+    if height < 3:
+        return []
+
+    normalized_style = style if style in ("scanner", "gradient") else "scanner"
+    style_label = "Scanner" if normalized_style == "scanner" else "Gradient"
+    lines = [f"Knight Rider [{style_label}]".ljust(width)[:width], "-" * width]
+    body_height = max(1, height - 2)
+    for row in range(body_height):
+        phase = row * 2
+        if normalized_style == "gradient":
+            bar = build_kitt_gradient_bar(width, now_utc, use_color, phase_offset=phase)
+        else:
+            bar = build_kitt_scanner_bar(width, now_utc, use_color, phase_offset=phase)
+        lines.append(pad_visible(bar, width))
+    return pad_lines(lines, width, height)
 
 
 # ============================================================================
@@ -1400,15 +1499,25 @@ def render_main_view(
     host_group_labels: Optional[Dict[int, str]] = None,
     group_header_lines: Optional[Mapping[str, Union[str, List[str]]]] = None,
     group_by: str = "none",
+    kitt_mode_enabled: bool = False,
+    kitt_style: str = "scanner",
 ) -> List[str]:
     """Render the main view (timeline, sparkline, or square)."""
+    del kitt_style  # Main-panel style remains unchanged; bottom band handles style rendering.
     pause_label = "DORMANT" if dormant else ("PAUSED" if paused else "LIVE")
     header_base = f"ParaPing - {pause_label} results [{mode_label} | {display_mode}] {timestamp}"
     activity_indicator = ""
     if not paused:
         indicator_width = compute_activity_indicator_width(width, header_base)
         if indicator_width > 0:
-            activity_indicator = build_activity_indicator(now_utc, width=indicator_width)
+            indicator_height = ACTIVITY_INDICATOR_HEIGHT + (2 if kitt_mode_enabled else 0)
+            indicator_speed = ACTIVITY_INDICATOR_SPEED_HZ + (4 if kitt_mode_enabled else 0)
+            activity_indicator = build_activity_indicator(
+                now_utc,
+                width=indicator_width,
+                max_height=indicator_height,
+                speed_hz=indicator_speed,
+            )
     if activity_indicator:
         header = f"{header_base} {activity_indicator}"
     else:
@@ -1528,6 +1637,8 @@ def render_help_view(width: int, height: int, boxed: bool = False) -> List[str]:
         "  W: cycle summary panel position",
         "  G: toggle summary scope (host/group)",
         "  T: cycle group key (none/asn/site/tag1..tagN/site>tag1/tag1>site)",
+        "  k: toggle Knight Rider mode",
+        "  K: cycle Knight Rider style (scanner/gradient)",
         "  p: pause display | P: toggle Dormant Mode",
         "  R/s: reload hosts / save snapshot",
         "  L: force full redraw",
@@ -1737,6 +1848,8 @@ def build_display_lines(  # noqa: C901
     summary_scope: str = "host",
     group_by: str = "none",
     group_sort_enabled: bool = False,
+    kitt_mode_enabled: bool = False,
+    kitt_style: str = "scanner",
 ) -> List[str]:
     """Build all display lines for the current state."""
     # Algorithm overview:
@@ -1810,6 +1923,7 @@ def build_display_lines(  # noqa: C901
             ordered_group_labels=group_order,
         )
     summary_source = group_summary_data if summary_scope == "group" and group_by != "none" else summary_data
+    kitt_band_height = 0
     if not summary_fullscreen and resolved_position in ("top", "bottom") and summary_height > 0:
         summary_render_width = _summary_render_width(summary_width, use_panel_boxes)
         summary_all_for_height = can_render_full_summary(summary_source, summary_render_width)
@@ -1825,6 +1939,12 @@ def build_display_lines(  # noqa: C901
         summary_height = max(summary_height, min(minimal_height, max_summary_height))
         main_height = max(min_main_height, panel_height - summary_height - gap_size)
     group_header_lines = build_group_header_line_map(active_host_infos, ordered_host_ids, group_by, group_summary_data)
+    if kitt_mode_enabled and not summary_fullscreen and not show_help and panel_height >= 8:
+        desired_band_height = max(3, panel_height // 4)
+        max_band_height = max(0, main_height - min_main_height)
+        if max_band_height >= 3:
+            kitt_band_height = min(desired_band_height, max_band_height)
+            main_height = max(min_main_height, main_height - kitt_band_height)
     summary_all = False
     main_lines = []
     summary_lines = []
@@ -1859,6 +1979,8 @@ def build_display_lines(  # noqa: C901
             show_group_headers=summary_scope == "group" and group_by != "none",
             host_group_labels=host_group_labels,
             group_header_lines=group_header_lines,
+            kitt_mode_enabled=kitt_mode_enabled,
+            kitt_style=kitt_style,
             group_by=group_by,
         )
         summary_render_width = _summary_render_width(summary_width, use_panel_boxes)
@@ -1890,6 +2012,15 @@ def build_display_lines(  # noqa: C901
         combined_lines = main_lines + [""] + summary_lines
     else:
         combined_lines = main_lines
+    if kitt_mode_enabled and kitt_band_height > 0 and not show_help and not summary_fullscreen:
+        kitt_lines = render_kitt_bottom_band(
+            term_width,
+            kitt_band_height,
+            kitt_style,
+            now_utc,
+            use_color,
+        )
+        combined_lines.extend(kitt_lines)
 
     status_metrics = build_status_metrics(active_host_infos, stats, interval_seconds=interval_seconds)
     status_details = f"{status_metrics} | {status_message}" if status_message else status_metrics
@@ -1946,6 +2077,8 @@ def render_display(  # noqa: C901
     summary_scope: str = "host",
     group_by: str = "none",
     group_sort_enabled: bool = False,
+    kitt_mode_enabled: bool = False,
+    kitt_style: str = "scanner",
 ) -> None:
     """Render the complete display to the terminal."""
     global LAST_RENDER_LINES
@@ -1981,6 +2114,8 @@ def render_display(  # noqa: C901
             summary_scope=summary_scope,
             group_by=group_by,
             group_sort_enabled=group_sort_enabled,
+            kitt_mode_enabled=kitt_mode_enabled,
+            kitt_style=kitt_style,
         )
     if not combined_lines:
         return
