@@ -50,9 +50,11 @@ repos:
     hooks:
       - id: pylint
         args: ['--fail-under=9.0']
+        files: '^(paraping/|paraping_v2/|main\.py$|paraping\.py$)'
 
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.8.0
     hooks:
       - id: mypy
-        additional_dependencies: []
+        additional_dependencies: [types-PyYAML]
+        files: '^paraping/'
