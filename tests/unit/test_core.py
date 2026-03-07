@@ -34,6 +34,7 @@ from paraping.core import (
     build_host_infos,
     parse_host_file_line,
     read_input_file,
+    read_input_file_with_report,
 )
 
 
@@ -182,6 +183,22 @@ class TestReadInputFile(unittest.TestCase):
 
         self.assertEqual(result, [])
         self.assertTrue(records)
+
+
+class TestReadInputFileWithReport(unittest.TestCase):
+    """Test cases for read_input_file_with_report compatibility wrapper."""
+
+    @patch("paraping.core.read_input_file_with_report_v2")
+    def test_read_input_file_with_report_delegates_to_v2(self, mock_read_with_report):
+        """Wrapper should delegate directly to v2 implementation."""
+        mock_report = object()
+        mock_read_with_report.return_value = ([{"host": "192.0.2.1", "alias": "h1", "ip": "192.0.2.1"}], mock_report)
+
+        hosts, report = read_input_file_with_report("hosts.txt")
+
+        self.assertEqual(len(hosts), 1)
+        self.assertIs(report, mock_report)
+        mock_read_with_report.assert_called_once_with(input_file="hosts.txt", logger=unittest.mock.ANY)
 
 
 class TestBuildHostInfos(unittest.TestCase):

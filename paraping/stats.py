@@ -22,6 +22,10 @@ import math
 import re
 from typing import Any, Deque, Dict, List, Optional, Sequence, Tuple
 
+TAG_INDEX_GROUP_RE = re.compile(r"^tag(\d+)$")
+HIER_GROUP_SITE_TAG1 = "site>tag1"
+HIER_GROUP_TAG1_SITE = "tag1>site"
+
 
 def compute_fail_streak(timeline: Sequence[str], fail_symbol: str) -> int:
     """
@@ -248,40 +252,91 @@ def latest_rtt_value(rtt_history: Deque[Optional[float]]) -> Optional[float]:
     return rtt_history[-1]
 
 
-def natural_sort_key(value: str) -> Tuple[Any, ...]:
-    """Build a natural-sort key where numeric chunks are compared as integers."""
+def natural_sort_key(value: str) -> Tuple[Tuple[int, Any], ...]:
+    """Build a natural-sort key that remains comparable across mixed chunk types."""
     parts = re.split(r"(\d+)", value)
-    key: List[Any] = []
+    key: List[Tuple[int, Any]] = []
     for part in parts:
         if not part:
             continue
         if part.isdigit():
-            key.append(int(part))
+            key.append((0, int(part)))
         else:
-            key.append(part.lower())
+            key.append((1, part.lower()))
     return tuple(key)
+
+
+def normalize_host_tags(host_info: Dict[str, Any]) -> List[str]:
+    """Return de-duplicated host tags in config order, with whitespace removed."""
+    tags = host_info.get("tags") or []
+    if not isinstance(tags, list):
+        tags = [tags]
+    normalized: List[str] = []
+    seen = set()
+    for tag in tags:
+        value = str(tag).strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        normalized.append(value)
+    return normalized
+
+
+def resolve_site_group_label(host_info: Dict[str, Any]) -> str:
+    """Resolve a site-based group label for one host."""
+    site_value = str(host_info.get("site") or "").strip()
+    return f"site:{site_value}" if site_value else "site:unknown"
+
+
+def resolve_tag_index_group_label(host_info: Dict[str, Any], tag_index: int) -> str:
+    """Resolve a positional tag label (1-based) for one host."""
+    normalized = normalize_host_tags(host_info)
+    if tag_index < 1 or tag_index > len(normalized):
+        return "tag:unknown"
+    return f"tag:{normalized[tag_index - 1]}"
+
+
+def is_hierarchical_group_by(group_by: str) -> bool:
+    """Return True when group mode is one of the two-level hierarchy modes."""
+    return group_by in (HIER_GROUP_SITE_TAG1, HIER_GROUP_TAG1_SITE)
+
+
+def resolve_group_components(host_info: Dict[str, Any], group_by: str) -> List[str]:
+    """Resolve display components for a group mode (1 item for flat, 2 for hierarchy)."""
+    if group_by == "asn":
+        asn_value = host_info.get("asn")
+        return [f"ASN:{asn_value}" if asn_value not in (None, "") else "ASN:unknown"]
+    if group_by == "site":
+        return [resolve_site_group_label(host_info)]
+    if group_by == HIER_GROUP_SITE_TAG1:
+        return [resolve_site_group_label(host_info), resolve_tag_index_group_label(host_info, 1)]
+    if group_by == HIER_GROUP_TAG1_SITE:
+        return [resolve_tag_index_group_label(host_info, 1), resolve_site_group_label(host_info)]
+    tag_index_match = TAG_INDEX_GROUP_RE.match(group_by)
+    if tag_index_match:
+        return [resolve_tag_index_group_label(host_info, int(tag_index_match.group(1)))]
+    if group_by == "tag":
+        labels = resolve_group_labels(host_info, "tag")
+        return [labels[0] if labels else "tag:unknown"]
+    return ["all"]
 
 
 def resolve_group_labels(host_info: Dict[str, Any], group_by: str) -> List[str]:
     """Resolve all group labels for one host based on grouping mode."""
     if group_by == "asn":
-        asn_value = host_info.get("asn")
-        label = f"ASN:{asn_value}" if asn_value not in (None, "") else "ASN:unknown"
-        return [label]
+        return resolve_group_components(host_info, group_by)
     if group_by == "site":
-        site_value = str(host_info.get("site") or "").strip()
-        return [f"site:{site_value}" if site_value else "site:unknown"]
+        return resolve_group_components(host_info, group_by)
+    tag_index_match = TAG_INDEX_GROUP_RE.match(group_by)
+    if tag_index_match:
+        return [resolve_tag_index_group_label(host_info, int(tag_index_match.group(1)))]
+    if is_hierarchical_group_by(group_by):
+        return [" > ".join(resolve_group_components(host_info, group_by))]
     if group_by == "tag":
-        tags = host_info.get("tags") or []
-        if not isinstance(tags, list):
-            tags = [str(tags)]
-        normalized = sorted({str(tag).strip() for tag in tags if str(tag).strip()}, key=natural_sort_key)
+        normalized = sorted(normalize_host_tags(host_info), key=natural_sort_key)
         if not normalized:
             return ["tag:unknown"]
         return [f"tag:{tag}" for tag in normalized]
-    if group_by == "site>tag1":
-        labels = resolve_site_tag1_labels(host_info)
-        return [labels["composite_label"]]
     return ["all"]
 
 
@@ -454,10 +509,10 @@ def compute_group_summary_data(
         if group_by == "site>tag1":
             site_order: List[str] = []
             for composite in ordered_group_labels:
-                labels = hierarchy_labels.get(composite)
-                if not labels:
+                hierarchy = hierarchy_labels.get(composite)
+                if not hierarchy:
                     continue
-                site_label = labels["site_label"]
+                site_label = hierarchy["site_label"]
                 if site_label not in site_order:
                     site_order.append(site_label)
             site_order_index = {label: index for index, label in enumerate(site_order)}
