@@ -177,6 +177,12 @@ class TestCLIArgumentParsing(unittest.TestCase):
             args = handle_options()
             self.assertEqual(args.input, "hosts.txt")
 
+    def test_handle_options_group_by_site_tag1(self):
+        """`--group-by site>tag1` should be accepted."""
+        with patch("sys.argv", ["paraping", "--group-by", "site>tag1", "example.com"]):
+            args = handle_options()
+            self.assertEqual(args.group_by, "site>tag1")
+
     def test_handle_options_combined_flags(self):
         """Test multiple options combined"""
         with patch(
@@ -512,7 +518,7 @@ class TestCLIInputHandling(unittest.TestCase):
             "show_help": False,
             "host_select_active": False,
             "graph_host_id": None,
-            "group_by_modes": ["none", "asn", "site", "tag"],
+            "group_by_modes": ["none", "asn", "site", "tag", "site>tag1"],
             "group_by_mode_index": 0,
             "status_message": None,
             "cached_page_step": 1,

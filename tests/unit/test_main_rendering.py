@@ -32,6 +32,7 @@ from main import (  # noqa: E402
     render_square_view,
     render_status_box,
 )
+from paraping.stats import resolve_site_tag1_labels  # noqa: E402
 from paraping.ui_render import (  # noqa: E402
     build_colored_sparkline,
     build_colored_timeline,
@@ -643,6 +644,50 @@ class TestColorAndNonTTY(unittest.TestCase):
         self.assertIn("├ example.com", combined)
         self.assertIn("└ example.net", combined)
         self.assertIn("└ internal.example", combined)
+
+    def test_render_views_site_tag1_hierarchical_headers(self):
+        """site>tag1 should render site header once with nested tag1 headers."""
+        entries = [(0, "h0"), (1, "h1"), (2, "h2")]
+        buffers = _make_buffers([0, 1, 2], timeline_data=["."])
+        host_group_labels = {0: "site:tokyo", 1: "site:tokyo", 2: "site:osaka"}
+        host_tree_labels = {
+            0: "site:tokyo>tag1:web",
+            1: "site:tokyo>tag1:db",
+            2: "site:osaka>tag1:web",
+        }
+        group_header_lines = {
+            "site:tokyo": [
+                "--- site:tokyo (2 hosts, loss 0.0%) ---",
+                "  --- tag1:web (1 hosts, loss 0.0%) ---",
+                "  --- tag1:db (1 hosts, loss 0.0%) ---",
+            ],
+            "site:osaka": [
+                "--- site:osaka (1 hosts, loss 0.0%) ---",
+                "  --- tag1:web (1 hosts, loss 0.0%) ---",
+            ],
+        }
+
+        for render_fn in (render_timeline_view, render_sparkline_view, render_square_view):
+            lines = render_fn(
+                entries,
+                buffers,
+                _SYMBOLS,
+                width=100,
+                height=20,
+                header="H",
+                show_group_headers=True,
+                host_group_labels=host_group_labels,
+                host_tree_labels=host_tree_labels,
+                group_header_lines=group_header_lines,
+                group_by="site>tag1",
+            )
+            combined = "\n".join(lines)
+            self.assertEqual(combined.count("--- site:tokyo"), 1)
+            self.assertIn("  --- tag1:web", combined)
+            self.assertIn("  --- tag1:db", combined)
+            self.assertIn("└ h0", combined)
+            self.assertIn("└ h1", combined)
+            self.assertIn("└ h2", combined)
 
     def test_truncate_visible_preserves_ansi(self):
         """truncate_visible must count only visible chars and keep ANSI codes."""
@@ -1579,6 +1624,58 @@ class TestBuildDisplayEntries(unittest.TestCase):
         )
         self.assertEqual([host_id for host_id, _label in entries], [2, 1, 0])
 
+    def test_group_site_tag1_config_sort_uses_first_tag_only(self):
+        """site>tag1 should use only first tag and order by site -> tag1 -> host."""
+        infos = [
+            {
+                "id": 0,
+                "ip": "10.0.0.1",
+                "alias": "h1",
+                "host": "h1",
+                "rdns": None,
+                "rdns_pending": False,
+                "asn": None,
+                "asn_pending": False,
+                "site": "Rack1",
+                "tags": ["z", "a"],
+            },
+            {
+                "id": 1,
+                "ip": "10.0.0.2",
+                "alias": "h2",
+                "host": "h2",
+                "rdns": None,
+                "rdns_pending": False,
+                "asn": None,
+                "asn_pending": False,
+                "site": "Rack1",
+                "tags": ["a"],
+            },
+        ]
+        buffers = _make_buffers([0, 1])
+        names = {0: "h1", 1: "h2"}
+        stats = self._make_stats(2)
+        entries = build_display_entries(
+            infos,
+            names,
+            buffers,
+            stats,
+            _SYMBOLS,
+            "config",
+            "all",
+            200.0,
+            group_by="site>tag1",
+            group_sort_enabled=True,
+        )
+        self.assertEqual([host_id for host_id, _label in entries], [1, 0])
+
+    def test_resolve_site_tag1_labels_defaults_unknown_tag1(self):
+        """site>tag1 label resolution should use tag1:unknown when tags are missing."""
+        labels = resolve_site_tag1_labels({"site": "tokyo", "tags": []})
+        self.assertEqual(labels["site_label"], "site:tokyo")
+        self.assertEqual(labels["tag1_label"], "tag1:unknown")
+        self.assertEqual(labels["composite_label"], "site:tokyo>tag1:unknown")
+
 
 class TestShouldShowAsn(unittest.TestCase):
     """Test should_show_asn function."""
@@ -1938,6 +2035,13 @@ class TestMiscFunctions(unittest.TestCase):
         entry = _make_summary_entry("h")
         result = format_summary_line(entry, width=1, summary_mode="ttl")
         self.assertLessEqual(len(result), 1)
+
+    def test_format_summary_line_applies_indent_level(self):
+        """Summary lines should indent hierarchical rows via indent_level."""
+        entry = _make_summary_entry("tag1:web")
+        entry["indent_level"] = 1
+        result = format_summary_line(entry, width=80, summary_mode="rates")
+        self.assertTrue(result.startswith("  tag1:web"))
 
     def test_render_host_selection_view_zero_size(self):
         """render_host_selection_view with zero size returns empty list."""

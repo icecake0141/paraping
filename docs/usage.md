@@ -43,7 +43,7 @@ make run ARGS='-f hosts.txt'
 - `-c, --count`: ping count per host (`0` for infinite)
 - `-s, --slow-threshold`: threshold for slow marker
 - `-f, --input`: host input file
-- `--group-by`: `none|asn|site|tag`
+- `--group-by`: `none|asn|site|tag|site>tag1`
 - `-P, --panel-position`: `right|left|top|bottom|none`
 - `-m, --pause-mode`: `display|ping`
 - `-z, --timezone`: display timezone
@@ -113,7 +113,7 @@ make run ARGS='-f hosts.txt'
 - `-c, --count`: ホストごとの送信回数（`0` は無限）
 - `-s, --slow-threshold`: 遅延判定しきい値
 - `-f, --input`: ホスト入力ファイル
-- `--group-by`: `none|asn|site|tag`
+- `--group-by`: `none|asn|site|tag|site>tag1`
 - `-P, --panel-position`: `right|left|top|bottom|none`
 - `-m, --pause-mode`: `display|ping`
 - `-z, --timezone`: 画面表示タイムゾーン
