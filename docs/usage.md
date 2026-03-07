@@ -60,6 +60,8 @@ make run ARGS='-f hosts.txt'
 - `H` / `h`: help overlay
 - `n`: display name mode cycle
 - `v`: timeline/sparkline toggle
+- `k`: toggle Knight Rider mode
+- `K`: cycle Knight Rider style (scanner/gradient)
 - `o`: sort mode cycle
 - `f`: filter mode cycle
 - `p`: display pause toggle
@@ -128,6 +130,8 @@ make run ARGS='-f hosts.txt'
 - `H` / `h`: ヘルプ表示
 - `n`: 表示名モード切替
 - `v`: timeline/sparkline 切替
+- `k`: Knight Rider モード切替
+- `K`: Knight Rider スタイル切替（scanner/gradient）
 - `o`: ソート切替
 - `f`: フィルタ切替
 - `p`: 表示更新のみ一時停止

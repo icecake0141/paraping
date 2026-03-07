@@ -35,6 +35,7 @@ from main import (  # noqa: E402
     should_flash_on_fail,
     toggle_panel_visibility,
 )
+from paraping.cli import _handle_user_input  # noqa: E402
 
 
 class TestEscapeSequenceParsing(unittest.TestCase):
@@ -106,6 +107,48 @@ class TestPanelToggle(unittest.TestCase):
         self.assertEqual(cycle_panel_position("top"), "bottom")
         self.assertEqual(cycle_panel_position("bottom"), "left")
         self.assertEqual(cycle_panel_position("none", default_position="right"), "right")
+
+
+class TestKnightRiderHotkeys(unittest.TestCase):
+    """Test Knight Rider mode hotkeys."""
+
+    def _base_state(self):
+        return {
+            "running": True,
+            "stop_event": MagicMock(),
+            "show_help": False,
+            "host_select_active": False,
+            "graph_host_id": None,
+            "status_message": None,
+            "kitt_mode_enabled": False,
+            "kitt_style_modes": ["scanner", "gradient"],
+            "kitt_style_index": 0,
+            "updated": False,
+            "force_render": False,
+        }
+
+    def test_k_toggles_kitt_mode(self):
+        """Pressing k should toggle Knight Rider mode on/off."""
+        state = self._base_state()
+        args = argparse.Namespace(slow_threshold=0.5, interval=1.0)
+        _handle_user_input("k", args, state)
+        self.assertTrue(state["kitt_mode_enabled"])
+        self.assertIn("enabled", state["status_message"])
+        _handle_user_input("k", args, state)
+        self.assertFalse(state["kitt_mode_enabled"])
+        self.assertIn("disabled", state["status_message"])
+
+    def test_capital_k_cycles_style_only_when_enabled(self):
+        """Pressing K should cycle styles only when mode is enabled."""
+        state = self._base_state()
+        args = argparse.Namespace(slow_threshold=0.5, interval=1.0)
+        _handle_user_input("K", args, state)
+        self.assertEqual(state["kitt_style_index"], 0)
+        self.assertIn("off", state["status_message"])
+        state["kitt_mode_enabled"] = True
+        _handle_user_input("K", args, state)
+        self.assertEqual(state["kitt_style_index"], 1)
+        self.assertIn("gradient", state["status_message"])
 
 
 class TestQuitHotkey(unittest.TestCase):
