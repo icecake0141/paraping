@@ -148,7 +148,7 @@ class TestHostSelectionKeyBindings(unittest.TestCase):
         with (
             patch("main.get_terminal_size") as mock_term_size,
             patch("main.read_key") as mock_read_key,
-            patch("main.render_display") as mock_render,
+            patch("main.render_display"),
             patch("main.ThreadPoolExecutor"),
         ):
 
@@ -156,28 +156,6 @@ class TestHostSelectionKeyBindings(unittest.TestCase):
 
             # Simulate key sequence: 'x' to enter selection, 'j' down, then 'k' up
             mock_read_key.side_effect = ["x", "j", "k", "q"]
-
-            args = type(
-                "obj",
-                (object,),
-                {
-                    "count": 1,
-                    "timeout": 1,
-                    "interval": 1.0,
-                    "slow_threshold": 0.5,
-                    "verbose": False,
-                    "input": None,
-                    "hosts": ["host1", "host2", "host3"],
-                    "panel_position": "right",
-                    "pause_mode": "display",
-                    "timezone": None,
-                    "snapshot_timezone": "utc",
-                    "flash_on_fail": False,
-                    "bell_on_fail": False,
-                    "color": False,
-                    "ping_helper": "./ping_helper",
-                },
-            )()
 
             # Note: Full integration test would require more mocking
             # This test verifies the key is recognized in the code path

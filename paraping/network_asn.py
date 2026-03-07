@@ -22,8 +22,8 @@ designed with separation of concerns:
 - Caching/retry policy (unit-testable with mocked time)
 """
 
-import queue
 import logging
+import queue
 import socket
 import threading
 from queue import Queue

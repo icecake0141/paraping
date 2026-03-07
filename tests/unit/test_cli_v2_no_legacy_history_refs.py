@@ -3,7 +3,6 @@
 import ast
 from pathlib import Path
 
-
 CLI_PATH = Path(__file__).resolve().parents[2] / "paraping" / "cli.py"
 
 

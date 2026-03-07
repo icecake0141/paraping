@@ -51,16 +51,6 @@ from concurrent.futures import ThreadPoolExecutor
 # pylint: enable=unused-import
 
 # Import and re-export from the refactored modules
-from paraping.core import (
-    build_host_infos,
-    compute_history_page_step,
-    get_cached_page_step,
-    HISTORY_DURATION_MINUTES,
-    MAX_HOST_THREADS,
-    parse_host_file_line,
-    read_input_file,
-    SNAPSHOT_INTERVAL_SECONDS,
-)
 
 # pylint: enable=unused-import
 
@@ -108,6 +98,7 @@ _LAZY_EXPORTS = {
     "format_display_name": ("paraping.ui_render", "format_display_name"),
     "build_display_names": ("paraping.ui_render", "build_display_names"),
 }
+
 
 def __getattr__(name):
     """Lazily resolve backward-compatible exports."""
