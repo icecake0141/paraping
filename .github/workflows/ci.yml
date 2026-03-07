@@ -88,6 +88,9 @@ jobs:
       - name: Type check with mypy
         run: mypy
 
+      - name: Enforce GitHub Actions workflow security policy
+        run: python scripts/check_github_workflow_security.py
+
   test-pr:
     if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
     name: Test Code (PR)
