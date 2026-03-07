@@ -181,7 +181,7 @@ _EAGER_EXPORTS = [
 ]
 
 # Expose full compatibility surface, including lazy exports.
-__all__ = _EAGER_EXPORTS + list(_LAZY_EXPORTS.keys())
+__all__ = list(dict.fromkeys(_EAGER_EXPORTS + list(_LAZY_EXPORTS.keys())))
 
 
 # Backward compatibility: main(args) is now run(args), but keep main alias
