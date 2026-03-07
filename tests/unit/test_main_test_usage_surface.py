@@ -28,7 +28,11 @@ def _collect_patched_names_on_main(tests_dir: Path) -> set[str]:
         for node in ast.walk(tree):
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "patch" and node.args:
                 first_arg = node.args[0]
-                if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str) and first_arg.value.startswith("main."):
+                if (
+                    isinstance(first_arg, ast.Constant)
+                    and isinstance(first_arg.value, str)
+                    and first_arg.value.startswith("main.")
+                ):
                     patched.add(first_arg.value.split(".", 1)[1])
     return patched
 

@@ -1835,22 +1835,22 @@ class TestBuildDisplayLines(unittest.TestCase):
     def _call_build_display_lines(self, host_infos, buffers, stats, **kwargs):
         from paraping.ui_render import build_display_lines
 
-        defaults = dict(
-            symbols=_SYMBOLS,
-            panel_position="none",
-            mode_label="ip",
-            display_mode="timeline",
-            summary_mode="rates",
-            sort_mode="host",
-            filter_mode="all",
-            slow_threshold=200.0,
-            show_help=False,
-            show_asn=False,
-            paused=False,
-            status_message=None,
-            timestamp="2025-01-01 00:00:00 (UTC)",
-            now_utc=self._now(),
-        )
+        defaults = {
+            "symbols": _SYMBOLS,
+            "panel_position": "none",
+            "mode_label": "ip",
+            "display_mode": "timeline",
+            "summary_mode": "rates",
+            "sort_mode": "host",
+            "filter_mode": "all",
+            "slow_threshold": 200.0,
+            "show_help": False,
+            "show_asn": False,
+            "paused": False,
+            "status_message": None,
+            "timestamp": "2025-01-01 00:00:00 (UTC)",
+            "now_utc": self._now(),
+        }
         defaults.update(kwargs)
         return build_display_lines(host_infos, buffers, stats, **defaults)
 

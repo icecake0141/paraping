@@ -20,3 +20,4 @@ black>=24.1.0
 ruff>=0.1.15
 isort>=5.13.0
 mypy>=1.8.0
+types-PyYAML>=6.0.12

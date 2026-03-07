@@ -116,7 +116,7 @@ class TestScheduler50Hosts(unittest.TestCase):
         window_ms = 0.050
         max_in_window = 5
 
-        for start_idx, t_start in enumerate(times):
+        for _start_idx, t_start in enumerate(times):
             count_in_window = sum(1 for t in times if t_start <= t < t_start + window_ms)
             self.assertLessEqual(
                 count_in_window,
@@ -211,9 +211,7 @@ class TestHistoryBufferMemory(unittest.TestCase):
                     buffers[host_id]["rtt_history"].append(1.0)
                     buffers[host_id]["time_history"].append(time.time())
                     buffers[host_id]["ttl_history"].append(64)
-            total_entries = sum(
-                len(buffers[hid]["timeline"]) for hid in range(host_count)
-            )
+            total_entries = sum(len(buffers[hid]["timeline"]) for hid in range(host_count))
             self.assertEqual(
                 total_entries,
                 host_count * maxlen,

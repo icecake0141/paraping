@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PACKAGE_DIRS = [REPO_ROOT / "paraping", REPO_ROOT / "paraping_v2"]
 ALLOWED_IMPORTERS = {
