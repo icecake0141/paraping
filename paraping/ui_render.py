@@ -26,7 +26,7 @@ import textwrap
 import time
 from collections import deque
 from datetime import datetime, timezone, tzinfo
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
 from paraping.stats import (
     build_summary_all_suffix,
@@ -34,8 +34,10 @@ from paraping.stats import (
     compute_fail_streak,
     compute_group_summary_data,
     compute_summary_data,
+    is_hierarchical_group_by,
     latest_rtt_value,
     natural_sort_key,
+    resolve_group_components,
     resolve_primary_group_label,
 )
 
@@ -142,11 +144,20 @@ def latest_status_from_timeline(timeline: Sequence[str], symbols: Dict[str, str]
     return status_from_symbol(timeline[-1], symbols)
 
 
+def latest_non_pending_status_from_timeline(timeline: Sequence[str], symbols: Dict[str, str]) -> Optional[str]:
+    """Get the latest non-pending status from a timeline."""
+    for symbol in reversed(timeline):
+        status = status_from_symbol(symbol, symbols)
+        if status and status != "pending":
+            return status
+    return None
+
+
 def host_label_status(status: Optional[str]) -> Optional[str]:
     """Map timeline status to host-label color status.
 
-    Pending state is intentionally rendered without host-label coloring to
-    reduce visible flicker at the start of each monitoring cycle.
+    Pending host labels keep the latest non-pending color (resolved by caller).
+    When no non-pending history exists, labels remain uncolored.
     """
     if status == "pending":
         return None
@@ -161,6 +172,16 @@ def host_label_status(status: Optional[str]) -> Optional[str]:
 def build_colored_timeline(timeline: Sequence[str], symbols: Dict[str, str], use_color: bool) -> str:
     """Build a colored timeline string from symbols."""
     return "".join(colorize_text(symbol, status_from_symbol(symbol, symbols), use_color) for symbol in timeline)
+
+
+def resolve_host_label_status(timeline: Sequence[str], symbols: Dict[str, str], is_removed: bool = False) -> Optional[str]:
+    """Resolve host label status with pending fallback behavior."""
+    if is_removed:
+        return None
+    status = latest_status_from_timeline(timeline, symbols)
+    if status == "pending":
+        status = latest_non_pending_status_from_timeline(timeline, symbols)
+    return host_label_status(status)
 
 
 def build_colored_sparkline(
@@ -924,8 +945,8 @@ def build_time_axis(
     """
     Build a time axis string for the timeline/sparkline view.
 
-    The axis shows time labels (e.g., "10", "20", "30") at regular intervals,
-    representing seconds from the leftmost (oldest) to rightmost (newest) column.
+    The axis shows time labels (e.g., "30", "20", "10") at regular intervals,
+    representing seconds-ago values that decrease from left to right.
 
     Args:
         timeline_width: Width of the timeline area in characters
@@ -939,19 +960,20 @@ def build_time_axis(
     if timeline_width <= 0:
         return ""
 
-    # Build the axis from left to right with increasing time values
-    # The leftmost column represents the oldest time, rightmost is newest (now)
+    # Build the axis from left to right with decreasing "seconds ago" values.
+    # The leftmost column is oldest, and the rightmost column is newest (0s ago).
     axis_chars = [" "] * timeline_width
 
     # Place labels at regular intervals, checking for overlaps
     for i in range(timeline_width):
-        # Time from left (for label purposes)
-        time_from_left = i * interval_seconds
+        # Time from right (seconds ago), so rightmost column is 0s.
+        time_from_right = (timeline_width - 1 - i) * interval_seconds
 
         # Check if this position should have a label
-        # We want labels at 0, label_period, 2*label_period, etc. from the left
-        if i > 0 and abs(time_from_left % label_period_seconds) < interval_seconds:
-            label_value = int(time_from_left)
+        # We want labels at label_period, 2*label_period, ... from the right.
+        # 0 is intentionally omitted.
+        if i > 0 and abs(time_from_right % label_period_seconds) < interval_seconds and time_from_right >= interval_seconds:
+            label_value = int(time_from_right)
             label_str = str(label_value)
 
             # Check if label fits and doesn't overlap with existing labels
@@ -1096,11 +1118,13 @@ def build_group_tree_label_map(
     display_entries: Sequence[Tuple[Any, ...]],
     show_group_headers: bool = False,
     host_group_labels: Optional[Dict[int, str]] = None,
+    group_by: str = "none",
 ) -> Dict[int, str]:
     """Build host label overrides with tree branch markers for grouped rendering."""
     if not show_group_headers or not host_group_labels:
         return {}
 
+    branch_prefix = "  " if is_hierarchical_group_by(group_by) else ""
     label_map: Dict[int, str] = {}
     for index, entry in enumerate(display_entries):
         host = entry[0]
@@ -1114,9 +1138,39 @@ def build_group_tree_label_map(
             next_host = display_entries[index + 1][0]
             next_same_group = host_group_labels.get(next_host) == group_label
 
-        branch = "├ " if next_same_group else "└ "
+        branch = f"{branch_prefix}{'├ ' if next_same_group else '└ '}"
         label_map[host] = f"{branch}{label}"
     return label_map
+
+
+def build_group_header_line_map(
+    active_host_infos: Sequence[Dict[str, Any]],
+    ordered_host_ids: Sequence[int],
+    group_by: str,
+    group_summary_data: Sequence[Dict[str, Any]],
+) -> Dict[str, List[str]]:
+    """Build group header text blocks keyed by primary group label."""
+    summary_by_label = {entry["host"]: entry for entry in group_summary_data}
+    info_by_id = {info["id"]: info for info in active_host_infos}
+    header_lines: Dict[str, List[str]] = {}
+    for host_id in ordered_host_ids:
+        info = info_by_id.get(host_id)
+        if info is None:
+            continue
+        primary_label = resolve_primary_group_label(info, group_by)
+        if primary_label in header_lines:
+            continue
+        summary_entry = summary_by_label.get(primary_label, {})
+        member_count = int(summary_entry.get("member_count", 0))
+        loss_rate = float(summary_entry.get("loss_rate", 0.0))
+        suffix = f" ({member_count} hosts, loss {loss_rate:.1f}%)"
+        if is_hierarchical_group_by(group_by):
+            components = resolve_group_components(info, group_by)
+            if len(components) >= 2:
+                header_lines[primary_label] = [f"--- {components[0]} ---", f"  {components[1]}{suffix}"]
+                continue
+        header_lines[primary_label] = [f"--- {primary_label}{suffix} ---"]
+    return header_lines
 
 
 def render_timeline_view(
@@ -1133,7 +1187,8 @@ def render_timeline_view(
     interval_seconds: float = 1.0,
     show_group_headers: bool = False,
     host_group_labels: Optional[Dict[int, str]] = None,
-    group_header_lines: Optional[Dict[str, str]] = None,
+    group_header_lines: Optional[Mapping[str, Union[str, List[str]]]] = None,
+    group_by: str = "none",
 ) -> List[str]:
     """Render the timeline view."""
     if width <= 0 or height <= 0:
@@ -1144,6 +1199,7 @@ def render_timeline_view(
         display_entries,
         show_group_headers=show_group_headers,
         host_group_labels=host_group_labels,
+        group_by=group_by,
     )
     host_labels = [
         label_overrides.get(entry[0], str(entry[1]) if len(entry) >= 2 else str(entry[0])) for entry in display_entries
@@ -1153,9 +1209,11 @@ def render_timeline_view(
     render_width, label_width, timeline_width, visible_hosts = compute_main_layout(
         host_labels, render_width, render_height, header_lines + 1
     )
-    max_offset = max(0, len(display_entries) - visible_hosts)
+    reserve_overflow_line = len(display_entries) > visible_hosts
+    host_capacity = max(1, visible_hosts - 1) if reserve_overflow_line else visible_hosts
+    max_offset = max(0, len(display_entries) - host_capacity)
     scroll_offset = min(max(scroll_offset, 0), max_offset)
-    truncated_entries = display_entries[scroll_offset : scroll_offset + visible_hosts]
+    truncated_entries = display_entries[scroll_offset : scroll_offset + host_capacity]
 
     resize_buffers(buffers, timeline_width, symbols)
 
@@ -1171,26 +1229,28 @@ def render_timeline_view(
         host_group_label = host_group_labels.get(host) if host_group_labels else None
         if show_group_headers and host_group_label and host_group_label != current_group:
             current_group = host_group_label
-            header_line = (
-                group_header_lines.get(host_group_label, f"--- {host_group_label} ---")
-                if group_header_lines
-                else f"--- {host_group_label} ---"
-            )
-            lines.append(header_line[:render_width])
+            if group_header_lines:
+                header_value = group_header_lines.get(host_group_label, [f"--- {host_group_label} ---"])
+                if isinstance(header_value, str):
+                    header_stack = [header_value]
+                else:
+                    header_stack = header_value
+            else:
+                header_stack = [f"--- {host_group_label} ---"]
+            for header_line in header_stack:
+                lines.append(header_line[:render_width])
         timeline_symbols = list(buffers[host]["timeline"])
         timeline = build_colored_timeline(timeline_symbols, symbols, use_color)
         timeline = rjust_visible(timeline, timeline_width)
-        status = latest_status_from_timeline(timeline_symbols, symbols)
-        if is_removed:
-            status = "pending"
-        colored_label = colorize_text(label, host_label_status(status), use_color)
+        label_status = resolve_host_label_status(timeline_symbols, symbols, is_removed=is_removed)
+        colored_label = colorize_text(label, label_status, use_color)
         lines.append(format_status_line(colored_label, timeline, label_width))
 
     # Add time axis at the bottom of the timeline area
     time_axis = build_time_axis(timeline_width, label_width, interval_seconds=interval_seconds)
     lines.append(time_axis)
 
-    if len(display_entries) > len(truncated_entries) and len(lines) < height:
+    if len(display_entries) > len(truncated_entries):
         remaining = len(display_entries) - len(truncated_entries)
         lines.append(f"... ({remaining} host(s) not shown)")
 
@@ -1213,7 +1273,8 @@ def render_sparkline_view(
     interval_seconds: float = 1.0,
     show_group_headers: bool = False,
     host_group_labels: Optional[Dict[int, str]] = None,
-    group_header_lines: Optional[Dict[str, str]] = None,
+    group_header_lines: Optional[Mapping[str, Union[str, List[str]]]] = None,
+    group_by: str = "none",
 ) -> List[str]:
     """Render the sparkline view."""
     if width <= 0 or height <= 0:
@@ -1224,6 +1285,7 @@ def render_sparkline_view(
         display_entries,
         show_group_headers=show_group_headers,
         host_group_labels=host_group_labels,
+        group_by=group_by,
     )
     host_labels = [
         label_overrides.get(entry[0], str(entry[1]) if len(entry) >= 2 else str(entry[0])) for entry in display_entries
@@ -1233,9 +1295,11 @@ def render_sparkline_view(
     render_width, label_width, timeline_width, visible_hosts = compute_main_layout(
         host_labels, render_width, render_height, header_lines + 1
     )
-    max_offset = max(0, len(display_entries) - visible_hosts)
+    reserve_overflow_line = len(display_entries) > visible_hosts
+    host_capacity = max(1, visible_hosts - 1) if reserve_overflow_line else visible_hosts
+    max_offset = max(0, len(display_entries) - host_capacity)
     scroll_offset = min(max(scroll_offset, 0), max_offset)
-    truncated_entries = display_entries[scroll_offset : scroll_offset + visible_hosts]
+    truncated_entries = display_entries[scroll_offset : scroll_offset + host_capacity]
 
     resize_buffers(buffers, timeline_width, symbols)
 
@@ -1251,28 +1315,30 @@ def render_sparkline_view(
         host_group_label = host_group_labels.get(host) if host_group_labels else None
         if show_group_headers and host_group_label and host_group_label != current_group:
             current_group = host_group_label
-            header_line = (
-                group_header_lines.get(host_group_label, f"--- {host_group_label} ---")
-                if group_header_lines
-                else f"--- {host_group_label} ---"
-            )
-            lines.append(header_line[:render_width])
+            if group_header_lines:
+                header_value = group_header_lines.get(host_group_label, [f"--- {host_group_label} ---"])
+                if isinstance(header_value, str):
+                    header_stack = [header_value]
+                else:
+                    header_stack = header_value
+            else:
+                header_stack = [f"--- {host_group_label} ---"]
+            for header_line in header_stack:
+                lines.append(header_line[:render_width])
         rtt_values = list(buffers[host]["rtt_history"])[-timeline_width:]
         status_symbols = list(buffers[host]["timeline"])[-timeline_width:]
         sparkline = build_sparkline(rtt_values, status_symbols, symbols["fail"])
         sparkline = build_colored_sparkline(sparkline, status_symbols, symbols, use_color)
         sparkline = rjust_visible(sparkline, timeline_width)
-        status = latest_status_from_timeline(status_symbols, symbols)
-        if is_removed:
-            status = "pending"
-        colored_label = colorize_text(label, host_label_status(status), use_color)
+        label_status = resolve_host_label_status(status_symbols, symbols, is_removed=is_removed)
+        colored_label = colorize_text(label, label_status, use_color)
         lines.append(format_status_line(colored_label, sparkline, label_width))
 
     # Add time axis at the bottom of the sparkline area
     time_axis = build_time_axis(timeline_width, label_width, interval_seconds=interval_seconds)
     lines.append(time_axis)
 
-    if len(display_entries) > len(truncated_entries) and len(lines) < height:
+    if len(display_entries) > len(truncated_entries):
         remaining = len(display_entries) - len(truncated_entries)
         lines.append(f"... ({remaining} host(s) not shown)")
 
@@ -1338,7 +1404,8 @@ def render_square_view(
     interval_seconds: float = 1.0,
     show_group_headers: bool = False,
     host_group_labels: Optional[Dict[int, str]] = None,
-    group_header_lines: Optional[Dict[str, str]] = None,
+    group_header_lines: Optional[Mapping[str, Union[str, List[str]]]] = None,
+    group_by: str = "none",
 ) -> List[str]:
     """Render the square view as a time-series (horizontal sequence of colored squares)."""
     if width <= 0 or height <= 0:
@@ -1349,6 +1416,7 @@ def render_square_view(
         display_entries,
         show_group_headers=show_group_headers,
         host_group_labels=host_group_labels,
+        group_by=group_by,
     )
     host_labels = [
         label_overrides.get(entry[0], str(entry[1]) if len(entry) >= 2 else str(entry[0])) for entry in display_entries
@@ -1358,9 +1426,11 @@ def render_square_view(
     render_width, label_width, timeline_width, visible_hosts = compute_main_layout(
         host_labels, render_width, render_height, header_lines + 1
     )
-    max_offset = max(0, len(display_entries) - visible_hosts)
+    reserve_overflow_line = len(display_entries) > visible_hosts
+    host_capacity = max(1, visible_hosts - 1) if reserve_overflow_line else visible_hosts
+    max_offset = max(0, len(display_entries) - host_capacity)
     scroll_offset = min(max(scroll_offset, 0), max_offset)
-    truncated_entries = display_entries[scroll_offset : scroll_offset + visible_hosts]
+    truncated_entries = display_entries[scroll_offset : scroll_offset + host_capacity]
 
     resize_buffers(buffers, timeline_width, symbols)
 
@@ -1377,28 +1447,29 @@ def render_square_view(
         host_group_label = host_group_labels.get(host) if host_group_labels else None
         if show_group_headers and host_group_label and host_group_label != current_group:
             current_group = host_group_label
-            header_line = (
-                group_header_lines.get(host_group_label, f"--- {host_group_label} ---")
-                if group_header_lines
-                else f"--- {host_group_label} ---"
-            )
-            lines.append(header_line[:render_width])
+            if group_header_lines:
+                header_value = group_header_lines.get(host_group_label, [f"--- {host_group_label} ---"])
+                if isinstance(header_value, str):
+                    header_stack = [header_value]
+                else:
+                    header_stack = header_value
+            else:
+                header_stack = [f"--- {host_group_label} ---"]
+            for header_line in header_stack:
+                lines.append(header_line[:render_width])
         timeline_symbols = list(buffers[host]["timeline"])
         # Build colored square timeline from all timeline symbols
         square_timeline = build_colored_square_timeline(timeline_symbols, symbols, use_color)
         square_timeline = rjust_visible(square_timeline, timeline_width)
-        # Get the latest status for label colorization
-        status = latest_status_from_timeline(timeline_symbols, symbols)
-        if is_removed:
-            status = "pending"
-        colored_label = colorize_text(label, host_label_status(status), use_color)
+        label_status = resolve_host_label_status(timeline_symbols, symbols, is_removed=is_removed)
+        colored_label = colorize_text(label, label_status, use_color)
         lines.append(format_status_line(colored_label, square_timeline, label_width))
 
     # Add time axis at the bottom of the square timeline area
     time_axis = build_time_axis(timeline_width, label_width, interval_seconds=interval_seconds)
     lines.append(time_axis)
 
-    if len(display_entries) > len(truncated_entries) and len(lines) < height:
+    if len(display_entries) > len(truncated_entries):
         remaining = len(display_entries) - len(truncated_entries)
         lines.append(f"... ({remaining} host(s) not shown)")
 
@@ -1426,7 +1497,8 @@ def render_main_view(
     dormant: bool = False,
     show_group_headers: bool = False,
     host_group_labels: Optional[Dict[int, str]] = None,
-    group_header_lines: Optional[Dict[str, str]] = None,
+    group_header_lines: Optional[Mapping[str, Union[str, List[str]]]] = None,
+    group_by: str = "none",
     kitt_mode_enabled: bool = False,
     kitt_style: str = "scanner",
 ) -> List[str]:
@@ -1466,6 +1538,7 @@ def render_main_view(
             show_group_headers=show_group_headers,
             host_group_labels=host_group_labels,
             group_header_lines=group_header_lines,
+            group_by=group_by,
         )
     if display_mode == "square":
         return render_square_view(
@@ -1483,6 +1556,7 @@ def render_main_view(
             show_group_headers=show_group_headers,
             host_group_labels=host_group_labels,
             group_header_lines=group_header_lines,
+            group_by=group_by,
         )
     return render_timeline_view(
         display_entries,
@@ -1499,6 +1573,7 @@ def render_main_view(
         show_group_headers=show_group_headers,
         host_group_labels=host_group_labels,
         group_header_lines=group_header_lines,
+        group_by=group_by,
     )
 
 
@@ -1561,7 +1636,7 @@ def render_help_view(width: int, height: int, boxed: bool = False) -> List[str]:
         "  w: toggle summary panel (on/off)",
         "  W: cycle summary panel position",
         "  G: toggle summary scope (host/group)",
-        "  T: cycle group key (none/asn/site/tag)",
+        "  T: cycle group key (none/asn/site/tag1..tagN/site>tag1/tag1>site)",
         "  k: toggle Knight Rider mode",
         "  K: cycle Knight Rider style (scanner/gradient)",
         "  p: pause display | P: toggle Dormant Mode",
@@ -1863,16 +1938,13 @@ def build_display_lines(  # noqa: C901
         summary_height = min(summary_height, content_height, max_summary_height)
         summary_height = max(summary_height, min(minimal_height, max_summary_height))
         main_height = max(min_main_height, panel_height - summary_height - gap_size)
+    group_header_lines = build_group_header_line_map(active_host_infos, ordered_host_ids, group_by, group_summary_data)
     if kitt_mode_enabled and not summary_fullscreen and not show_help and panel_height >= 8:
         desired_band_height = max(3, panel_height // 4)
         max_band_height = max(0, main_height - min_main_height)
         if max_band_height >= 3:
             kitt_band_height = min(desired_band_height, max_band_height)
             main_height = max(min_main_height, main_height - kitt_band_height)
-    group_header_lines = {
-        entry["host"]: f"--- {entry['host']} ({entry.get('member_count', 0)} hosts, loss {entry['loss_rate']:.1f}%) ---"
-        for entry in group_summary_data
-    }
     summary_all = False
     main_lines = []
     summary_lines = []
@@ -1909,6 +1981,7 @@ def build_display_lines(  # noqa: C901
             group_header_lines=group_header_lines,
             kitt_mode_enabled=kitt_mode_enabled,
             kitt_style=kitt_style,
+            group_by=group_by,
         )
         summary_render_width = _summary_render_width(summary_width, use_panel_boxes)
         summary_all = resolved_position in ("top", "bottom") and can_render_full_summary(summary_source, summary_render_width)
@@ -1976,7 +2049,7 @@ def build_display_lines(  # noqa: C901
     return combined_lines + status_lines
 
 
-def render_display(
+def render_display(  # noqa: C901
     host_infos: Sequence[Dict[str, Any]],
     buffers: Dict[int, Dict[str, Any]],
     stats: Dict[int, Dict[str, Any]],

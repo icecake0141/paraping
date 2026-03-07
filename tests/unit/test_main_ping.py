@@ -252,14 +252,14 @@ class TestMain(unittest.TestCase):
     @patch("paraping.cli.queue.Queue")
     @patch("paraping.cli.sys.stdin")
     @patch("paraping.ui_render.get_terminal_size")
-    @patch("paraping.cli.read_input_file")
+    @patch("paraping.cli.read_input_file_with_report")
     @patch("paraping.cli.ThreadPoolExecutor")
     @patch("paraping.cli.threading.Thread")
     def test_main_with_input_file(
         self,
         mock_thread,
         mock_executor,
-        mock_read_file,
+        mock_read_with_report,
         mock_term_size,
         mock_stdin,
         mock_queue,
@@ -269,7 +269,17 @@ class TestMain(unittest.TestCase):
         mock_stdin.isatty.return_value = False
         mock_term_size.return_value = MagicMock(columns=80, lines=24)
 
-        mock_read_file.return_value = ["host1.com", "host2.com"]
+        ok_report = MagicMock()
+        ok_report.has_errors = False
+        ok_report.error_count = 0
+        ok_report.issues = []
+        mock_read_with_report.return_value = (
+            [
+                {"host": "host1.com", "alias": "host1.com", "ip": "host1.com"},
+                {"host": "host2.com", "alias": "host2.com", "ip": "host2.com"},
+            ],
+            ok_report,
+        )
 
         # Mock queue to simulate completion
         result_queue = MagicMock()
@@ -321,7 +331,7 @@ class TestMain(unittest.TestCase):
         # Should not raise exception
         main(args)
 
-        mock_read_file.assert_called_once_with("hosts.txt")
+        mock_read_with_report.assert_called_once_with("hosts.txt")
 
     @patch("builtins.print")
     def test_main_with_invalid_interval(self, mock_print):

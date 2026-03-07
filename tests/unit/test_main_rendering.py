@@ -558,12 +558,66 @@ class TestColorAndNonTTY(unittest.TestCase):
         combined = "\n".join(lines)
         self.assertIn("\x1b[", combined)
 
-    def test_render_timeline_view_pending_does_not_color_host_label(self):
-        """Pending latest status should keep host label uncolored to reduce flicker."""
+    def test_render_timeline_view_pending_keeps_latest_fail_color(self):
+        """Pending latest status should preserve the prior fail color for host labels."""
+        entries = [(0, "host1")]
+        buffers = _make_buffers([0], timeline_data=["x", "-"])
+        lines = render_timeline_view(entries, buffers, _SYMBOLS, width=60, height=10, header="H", use_color=True)
+        host_line = next((line for line in lines if "host1" in line), "")
+        label_segment = host_line.split(" | ", 1)[0]
+        self.assertIn("\x1b[31m", label_segment)
+
+    def test_render_timeline_view_pending_keeps_latest_success_color(self):
+        """Pending latest status should preserve the prior success color for host labels."""
+        entries = [(0, "host1")]
+        buffers = _make_buffers([0], timeline_data=[".", "-"])
+        lines = render_timeline_view(entries, buffers, _SYMBOLS, width=60, height=10, header="H", use_color=True)
+        host_line = next((line for line in lines if "host1" in line), "")
+        label_segment = host_line.split(" | ", 1)[0]
+        self.assertIn("\x1b[37m", label_segment)
+
+    def test_render_timeline_view_pending_keeps_latest_slow_color(self):
+        """Pending latest status should preserve the prior slow color for host labels."""
+        entries = [(0, "host1")]
+        buffers = _make_buffers([0], timeline_data=["!", "-"])
+        lines = render_timeline_view(entries, buffers, _SYMBOLS, width=60, height=10, header="H", use_color=True)
+        host_line = next((line for line in lines if "host1" in line), "")
+        label_segment = host_line.split(" | ", 1)[0]
+        self.assertIn("\x1b[33m", label_segment)
+
+    def test_render_timeline_view_initial_pending_keeps_host_label_uncolored(self):
+        """Pending with no non-pending history should keep host labels uncolored."""
         entries = [(0, "host1")]
         buffers = _make_buffers([0], timeline_data=["-"])
         lines = render_timeline_view(entries, buffers, _SYMBOLS, width=60, height=10, header="H", use_color=True)
         host_line = next((line for line in lines if "host1" in line), "")
+        label_segment = host_line.split(" | ", 1)[0]
+        self.assertNotIn("\x1b[", label_segment)
+
+    def test_render_sparkline_view_pending_keeps_latest_fail_color(self):
+        """Sparkline labels should keep prior fail color when latest symbol is pending."""
+        entries = [(0, "host1")]
+        buffers = _make_buffers([0], timeline_data=["x", "-"], rtt_data=[None, None])
+        lines = render_sparkline_view(entries, buffers, _SYMBOLS, width=60, height=10, header="H", use_color=True)
+        host_line = next((line for line in lines if "host1" in line), "")
+        label_segment = host_line.split(" | ", 1)[0]
+        self.assertIn("\x1b[31m", label_segment)
+
+    def test_render_square_view_pending_keeps_latest_fail_color(self):
+        """Square view labels should keep prior fail color when latest symbol is pending."""
+        entries = [(0, "host1")]
+        buffers = _make_buffers([0], timeline_data=["x", "-"], rtt_data=[None, None])
+        lines = render_square_view(entries, buffers, _SYMBOLS, width=60, height=10, header="H", use_color=True)
+        host_line = next((line for line in lines if "host1" in line), "")
+        label_segment = host_line.split(" | ", 1)[0]
+        self.assertIn("\x1b[31m", label_segment)
+
+    def test_render_timeline_view_removed_host_label_remains_uncolored(self):
+        """Removed host labels should remain uncolored even with prior fail history."""
+        entries = [(0, "host1 [REMOVED]")]
+        buffers = _make_buffers([0], timeline_data=["x", "-"])
+        lines = render_timeline_view(entries, buffers, _SYMBOLS, width=60, height=10, header="H", use_color=True)
+        host_line = next((line for line in lines if "host1 [REMOVED]" in line), "")
         label_segment = host_line.split(" | ", 1)[0]
         self.assertNotIn("\x1b[", label_segment)
 
@@ -1179,6 +1233,12 @@ class TestScrollOverflow(unittest.TestCase):
         # Overflow line path is exercised; result should render without error
         self.assertIsInstance(lines, list)
         self.assertEqual(len(lines), 14)
+
+    def test_timeline_overflow_indicator_visible_without_spare_line(self):
+        """Overflow indicator should be shown even when host rows exactly fill height."""
+        entries, buffers = self._many_entries_and_buffers()
+        lines = render_timeline_view(entries, buffers, _SYMBOLS, width=80, height=8, header="H", boxed=False)
+        self.assertTrue(any("host(s) not shown" in line for line in lines))
 
     def test_sparkline_scroll_overflow_indicator(self):
         """Boxed sparkline with more hosts than fit exercises overflow code path."""

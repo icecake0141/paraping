@@ -2,7 +2,37 @@
 
 import ipaddress
 import socket
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Union
+
+
+@dataclass(frozen=True)
+class HostInputIssue:
+    """One parse issue discovered while reading a host input file."""
+
+    line_number: int
+    raw_line: str
+    reason: str
+    severity: str = "error"
+
+
+@dataclass(frozen=True)
+class HostInputReport:
+    """Structured parse diagnostics for host input file loading."""
+
+    issues: List[HostInputIssue]
+
+    @property
+    def error_count(self) -> int:
+        return sum(1 for issue in self.issues if issue.severity == "error")
+
+    @property
+    def warning_count(self) -> int:
+        return sum(1 for issue in self.issues if issue.severity == "warning")
+
+    @property
+    def has_errors(self) -> bool:
+        return self.error_count > 0
 
 
 def _is_header_row(parts: List[str]) -> bool:
@@ -12,10 +42,7 @@ def _is_header_row(parts: List[str]) -> bool:
         return lowered[0] in {"host", "ip"} and lowered[1] in {"alias", "name"}
     if len(lowered) == 4:
         return (
-            lowered[0] in {"host", "ip"}
-            and lowered[1] in {"alias", "name"}
-            and lowered[2] == "site"
-            and lowered[3] == "tags"
+            lowered[0] in {"host", "ip"} and lowered[1] in {"alias", "name"} and lowered[2] == "site" and lowered[3] == "tags"
         )
     return False
 
@@ -94,6 +121,98 @@ def read_input_file_v2(input_file: str, logger: Any) -> List[Dict[str, Any]]:
         return []
 
     return host_list
+
+
+def _parse_host_file_line_with_issue(
+    line: str,
+    line_number: int,
+    input_file: str,
+    logger: Any,
+) -> tuple[Optional[Dict[str, Any]], Optional[HostInputIssue]]:
+    """Parse one line and optionally return a structured issue."""
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#"):
+        return None, None
+    parts = [part.strip() for part in stripped.split(",")]
+    if len(parts) not in (2, 4):
+        reason = "Expected format 'IP,alias' or 'IP,alias,site,tags'."
+        logger.warning("Invalid host entry at %s:%d. %s", input_file, line_number, reason)
+        return None, HostInputIssue(line_number=line_number, raw_line=stripped, reason=reason, severity="error")
+    if _is_header_row(parts):
+        return None, None
+    ip_text, alias = parts[0], parts[1]
+    site = parts[2] if len(parts) == 4 else ""
+    tags_value = parts[3] if len(parts) == 4 else ""
+    if not ip_text or not alias:
+        reason = "IP address and alias are required."
+        logger.warning("Invalid host entry at %s:%d. %s", input_file, line_number, reason)
+        return None, HostInputIssue(line_number=line_number, raw_line=stripped, reason=reason, severity="error")
+    try:
+        ip_obj = ipaddress.ip_address(ip_text)
+    except ValueError:
+        reason = f"Invalid IP address '{ip_text}'."
+        logger.warning("Invalid IP address at %s:%d: '%s'.", input_file, line_number, ip_text)
+        return None, HostInputIssue(line_number=line_number, raw_line=stripped, reason=reason, severity="error")
+
+    entry: Dict[str, Any] = {"host": ip_text, "alias": alias, "ip": ip_text}
+    if len(parts) == 4:
+        entry["site"] = site
+        entry["tags"] = [tag.strip() for tag in tags_value.split(";") if tag.strip()]
+
+    if ip_obj.version != 4:
+        logger.warning(
+            "IPv6 address at %s:%d: '%s'. IPv6 is not supported by ping_helper; this entry will likely fail during ping.",
+            input_file,
+            line_number,
+            ip_text,
+        )
+    return entry, None
+
+
+def read_input_file_with_report_v2(input_file: str, logger: Any) -> tuple[List[Dict[str, Any]], HostInputReport]:
+    """Read hosts from file and include structured parse diagnostics."""
+    host_list: List[Dict[str, Any]] = []
+    issues: List[HostInputIssue] = []
+    try:
+        with open(input_file, "r", encoding="utf-8") as f:
+            for line_number, line in enumerate(f, start=1):
+                entry, issue = _parse_host_file_line_with_issue(line, line_number, input_file, logger)
+                if entry is not None:
+                    host_list.append(entry)
+                if issue is not None:
+                    issues.append(issue)
+    except FileNotFoundError:
+        logger.error("Input file '%s' not found.", input_file)
+        issues.append(
+            HostInputIssue(
+                line_number=0,
+                raw_line="",
+                reason=f"Input file '{input_file}' not found.",
+                severity="error",
+            )
+        )
+    except PermissionError:
+        logger.error("Permission denied reading file '%s'.", input_file)
+        issues.append(
+            HostInputIssue(
+                line_number=0,
+                raw_line="",
+                reason=f"Permission denied reading file '{input_file}'.",
+                severity="error",
+            )
+        )
+    except (OSError, UnicodeDecodeError) as e:
+        logger.error("Error reading input file '%s': %s", input_file, e)
+        issues.append(
+            HostInputIssue(
+                line_number=0,
+                raw_line="",
+                reason=f"Error reading input file '{input_file}': {e}",
+                severity="error",
+            )
+        )
+
+    return host_list, HostInputReport(issues=issues)
 
 
 def build_host_infos_v2(
