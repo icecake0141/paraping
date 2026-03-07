@@ -41,7 +41,7 @@ from paraping.core import (
     read_input_file_with_report,
 )
 from paraping.input_keys import read_key
-from paraping.keymap import resolve_action
+from paraping.keymap import KeyContext, resolve_action
 from paraping.network_asn import asn_worker, should_retry_asn
 from paraping.pinger import rdns_worker, scheduler_driven_worker_ping
 from paraping.ui_render import (
@@ -732,7 +732,7 @@ def _handle_user_input(
 ) -> bool:
     """Process one keyboard input event and return True when the current loop iteration should be skipped."""
     skip_iteration = False
-    context = "main"
+    context: KeyContext = "main"
     if state.get("show_help"):
         context = "help"
     elif state.get("host_select_active"):
