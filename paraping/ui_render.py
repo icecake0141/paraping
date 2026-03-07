@@ -1863,12 +1863,7 @@ def build_display_lines(  # noqa: C901
         summary_height = min(summary_height, content_height, max_summary_height)
         summary_height = max(summary_height, min(minimal_height, max_summary_height))
         main_height = max(min_main_height, panel_height - summary_height - gap_size)
-    if (
-        kitt_mode_enabled
-        and not summary_fullscreen
-        and not show_help
-        and panel_height >= 8
-    ):
+    if kitt_mode_enabled and not summary_fullscreen and not show_help and panel_height >= 8:
         desired_band_height = max(3, panel_height // 4)
         max_band_height = max(0, main_height - min_main_height)
         if max_band_height >= 3:

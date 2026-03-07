@@ -767,9 +767,7 @@ def _handle_user_input(
         state["updated"] = True
     elif key == "k":
         state["kitt_mode_enabled"] = not state["kitt_mode_enabled"]
-        state["status_message"] = (
-            "Knight Rider mode enabled" if state["kitt_mode_enabled"] else "Knight Rider mode disabled"
-        )
+        state["status_message"] = "Knight Rider mode enabled" if state["kitt_mode_enabled"] else "Knight Rider mode disabled"
         state["force_render"] = True
         state["updated"] = True
     elif key == "K":
