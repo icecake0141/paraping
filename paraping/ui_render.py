@@ -28,6 +28,7 @@ from collections import deque
 from datetime import datetime, timezone, tzinfo
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
+from paraping.keymap import build_help_items
 from paraping.stats import (
     build_summary_all_suffix,
     build_summary_suffix,
@@ -1794,29 +1795,7 @@ def render_help_view(width: int, height: int, boxed: bool = False) -> List[str]:
         "ParaPing - Help",
         "-" * render_width,
     ]
-    help_items = [
-        "  n: cycle display mode (ip/rdns/alias)",
-        "  v: cycle view (timeline/sparkline/square)",
-        "  g: select host for fullscreen RTT graph",
-        "  o: cycle sort (failures/streak/latency/host)",
-        "  f: cycle filter (failures/latency/all)",
-        "  a: toggle ASN display",
-        "  m: cycle summary info (rates/rtt/ttl/streak)",
-        "  c/b: color output / bell on ping failure",
-        "  F: toggle summary fullscreen view",
-        "  w: toggle summary panel (on/off)",
-        "  W: cycle summary panel position",
-        "  G: toggle summary scope (host/group)",
-        "  T: cycle group key (none/asn/site/tag1..tagN/site>tag1/tag1>site)",
-        "  k: toggle Knight Rider mode",
-        "  K: cycle Knight Rider style (scanner/gradient)",
-        "  p: pause display | P: toggle Dormant Mode",
-        "  R/s: reload hosts / save snapshot",
-        "  L: force full redraw",
-        "  <-/-> + up/down: page/list navigation",
-        "  ESC: exit fullscreen graph | q: quit",
-        "  H: show help (Press any key to close)",
-    ]
+    help_items = build_help_items()
 
     def _wrap_items(items: Sequence[str], line_width: int) -> List[str]:
         wrapped: List[str] = []
@@ -1868,7 +1847,7 @@ def render_host_selection_view(
 
     title = f"Select Host for RTT Graph [{mode_label}]"
     lines = [title[:width], "-" * width]
-    status_line = "n/p: move | Enter: select | ESC: cancel"
+    status_line = "j/k or ↑/↓: move | Enter: select | ESC: cancel"
     list_height = max(0, height - 3)
 
     if not display_entries:
@@ -1933,7 +1912,7 @@ def render_fullscreen_rtt_graph(
         min_val = max_val = 0.0
         range_line = "RTT range (Y-axis, ms): n/a"
 
-    status_line = "ESC: back | v: toggle graph | g: select host"
+    status_line = "ESC: back | v: toggle graph | x: select host"
 
     y_tick_labels = [
         f"{max_val:.1f}",

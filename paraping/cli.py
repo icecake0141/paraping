@@ -29,7 +29,7 @@ import tty
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor  # noqa: F401 - Backward-compatibility for tests patching this symbol.
 from datetime import datetime, timezone, tzinfo
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from paraping.config import load_config
@@ -41,6 +41,7 @@ from paraping.core import (
     read_input_file_with_report,
 )
 from paraping.input_keys import read_key
+from paraping.keymap import KeyContext, resolve_action
 from paraping.network_asn import asn_worker, should_retry_asn
 from paraping.pinger import rdns_worker, scheduler_driven_worker_ping
 from paraping.ui_render import (
@@ -159,7 +160,7 @@ def _check_terminal_resize_and_request_redraw(state: Dict[str, Any], now_monoton
     if current_size.columns == previous_size.columns and current_size.lines == previous_size.lines:
         return
 
-    # Match hotkey `L` behavior for resize recovery.
+    # Match hotkey `u` behavior for resize recovery.
     reset_render_cache()
     state["cached_page_step"] = None
     state["last_term_size"] = None
@@ -731,15 +732,36 @@ def _handle_user_input(
 ) -> bool:
     """Process one keyboard input event and return True when the current loop iteration should be skipped."""
     skip_iteration = False
-    if key in ("q", "Q"):
+    context: KeyContext = "main"
+    if state.get("show_help"):
+        context = "help"
+    elif state.get("host_select_active"):
+        context = "host_select"
+    elif state.get("graph_host_id") is not None:
+        context = "graph"
+
+    action = resolve_action(key, context) or ""
+
+    if action == "quit":
         state["running"] = False
         state["stop_event"].set()
-    elif state["show_help"]:
-        state["show_help"] = False
+        return skip_iteration
+
+    if context == "help":
+        if action in ("help_toggle", "back"):
+            state["show_help"] = False
+            state["force_render"] = True
+            state["updated"] = True
+            skip_iteration = True
+        return skip_iteration
+
+    if action == "help_toggle":
+        state["show_help"] = True
         state["force_render"] = True
         state["updated"] = True
-        skip_iteration = True
-    elif state["host_select_active"]:
+        return skip_iteration
+
+    if context == "host_select":
         render_buffers = state["render_buffers"]
         render_stats = state["render_stats"]
         term_size = get_terminal_size(fallback=(80, 24))
@@ -771,103 +793,121 @@ def _handle_user_input(
             state["host_select_index"] = 0
         else:
             state["host_select_index"] = min(max(state["host_select_index"], 0), len(display_entries) - 1)
-        if key in ("p", "P") and display_entries:
+        if action == "select_prev" and display_entries:
             state["host_select_index"] = max(0, state["host_select_index"] - 1)
             state["force_render"] = True
             state["updated"] = True
-        elif key in ("n", "N") and display_entries:
+        elif action == "select_next" and display_entries:
             state["host_select_index"] = min(len(display_entries) - 1, state["host_select_index"] + 1)
             state["force_render"] = True
             state["updated"] = True
-        elif key in ("\r", "\n"):
+        elif action == "select_confirm":
             if display_entries:
                 state["graph_host_id"] = display_entries[state["host_select_index"]][0]
                 state["host_select_active"] = False
                 state["force_render"] = True
                 state["updated"] = True
-        elif key == "\x1b":
+        elif action == "back":
             state["host_select_active"] = False
             state["force_render"] = True
             state["updated"] = True
-        skip_iteration = True
-    elif state["graph_host_id"] is not None:
-        if key == "\x1b":
+        if action:
+            skip_iteration = True
+        return skip_iteration
+
+    if context == "graph":
+        if action == "back":
             state["graph_host_id"] = None
             state["force_render"] = True
             state["updated"] = True
             skip_iteration = True
-        elif key in ("g", "G"):
+        elif action == "host_select_open":
             state["host_select_active"] = True
             state["graph_host_id"] = None
             state["force_render"] = True
             state["updated"] = True
             skip_iteration = True
-    elif key in ("H", "h"):
-        state["show_help"] = True
-        state["force_render"] = True
-        state["updated"] = True
-    elif key == "R":
+        elif action == "graph_toggle":
+            state["display_mode_index"] = (state["display_mode_index"] + 1) % len(state["display_modes"])
+            state["updated"] = True
+        return skip_iteration
+
+    action_handlers: Dict[str, Callable[[], None]] = {}
+
+    def _handle_reload() -> None:
         if scheduler is None or ping_lock is None or sequence_tracker is None:
             state["status_message"] = "Reload unavailable in this context"
         else:
             state["status_message"] = _apply_manual_reload(args, state, scheduler, ping_lock, sequence_tracker)
         state["updated"] = True
         state["force_render"] = True
-    elif key == "L":
+
+    def _handle_force_redraw() -> None:
         reset_render_cache()
         state["status_message"] = "Full redraw requested"
         state["force_render"] = True
         state["updated"] = True
-    elif key == "n":
+
+    def _handle_display_mode_cycle() -> None:
         state["mode_index"] = (state["mode_index"] + 1) % len(state["modes"])
         state["cached_page_step"] = None
         state["updated"] = True
-    elif key == "v":
+
+    def _handle_view_cycle() -> None:
         state["display_mode_index"] = (state["display_mode_index"] + 1) % len(state["display_modes"])
         state["updated"] = True
-    elif key == "k":
+
+    def _handle_kitt_toggle() -> None:
         state["kitt_mode_enabled"] = not state["kitt_mode_enabled"]
         state["status_message"] = "Knight Rider mode enabled" if state["kitt_mode_enabled"] else "Knight Rider mode disabled"
         state["force_render"] = True
         state["updated"] = True
-    elif key == "K":
+
+    def _handle_kitt_style_cycle() -> None:
         if state["kitt_mode_enabled"]:
             state["kitt_style_index"] = (state["kitt_style_index"] + 1) % len(state["kitt_style_modes"])
             current_style = state["kitt_style_modes"][state["kitt_style_index"]]
             state["status_message"] = f"Knight Rider style: {current_style}"
         else:
-            state["status_message"] = "Knight Rider mode is off (press 'k' first)"
+            state["status_message"] = "Knight Rider mode is off (press 'y' first)"
         state["force_render"] = True
         state["updated"] = True
-    elif key == "o":
+
+    def _handle_sort_cycle() -> None:
         state["sort_mode_index"] = (state["sort_mode_index"] + 1) % len(state["sort_modes"])
         state["cached_page_step"] = None
         state["updated"] = True
-    elif key == "f":
+
+    def _handle_filter_cycle() -> None:
         state["filter_mode_index"] = (state["filter_mode_index"] + 1) % len(state["filter_modes"])
         state["cached_page_step"] = None
         state["updated"] = True
-    elif key == "a":
+
+    def _handle_asn_toggle() -> None:
         state["show_asn"] = not state["show_asn"]
         state["cached_page_step"] = None
         state["updated"] = True
-    elif key == "m":
+
+    def _handle_summary_mode_cycle() -> None:
         state["summary_mode_index"] = (state["summary_mode_index"] + 1) % len(state["summary_modes"])
         state["status_message"] = f"Summary: {state['summary_modes'][state['summary_mode_index']].upper()}"
         state["updated"] = True
-    elif key == "G":
+
+    def _handle_summary_scope_cycle() -> None:
         state["summary_scope_mode_index"] = (state["summary_scope_mode_index"] + 1) % len(state["summary_scope_modes"])
         scope = state["summary_scope_modes"][state["summary_scope_mode_index"]]
         state["status_message"] = f"Summary scope: {scope.upper()}"
         state["cached_page_step"] = None
         state["updated"] = True
-    elif key == "T":
+
+    def _handle_group_key_cycle() -> None:
         state["group_by_mode_index"] = (state["group_by_mode_index"] + 1) % len(state["group_by_modes"])
         group_by = state["group_by_modes"][state["group_by_mode_index"]]
         state["status_message"] = f"Group key: {group_by}"
         state["cached_page_step"] = None
         state["updated"] = True
-    elif key == "c":
+
+    def _handle_color_toggle() -> None:
         if not state["color_supported"]:
             state["status_message"] = "Color output unavailable (no TTY)"
         else:
@@ -875,19 +915,22 @@ def _handle_user_input(
             state["status_message"] = "Color output enabled" if state["use_color"] else "Color output disabled"
         state["force_render"] = True
         state["updated"] = True
-    elif key == "b":
+
+    def _handle_bell_toggle() -> None:
         state["bell_on_fail"] = not state["bell_on_fail"]
         state["status_message"] = "Bell on fail enabled" if state["bell_on_fail"] else "Bell on fail disabled"
         state["force_render"] = True
         state["updated"] = True
-    elif key == "F":
+
+    def _handle_summary_fullscreen_toggle() -> None:
         state["summary_fullscreen"] = not state["summary_fullscreen"]
         state["status_message"] = (
             "Summary fullscreen view enabled" if state["summary_fullscreen"] else "Summary fullscreen view disabled"
         )
         state["force_render"] = True
         state["updated"] = True
-    elif key == "w":
+
+    def _handle_panel_toggle() -> None:
         state["panel_position"], state["last_panel_position"] = toggle_panel_visibility(
             state["panel_position"],
             state["last_panel_position"],
@@ -897,7 +940,8 @@ def _handle_user_input(
         state["cached_page_step"] = None
         state["force_render"] = True
         state["updated"] = True
-    elif key == "W":
+
+    def _handle_panel_position_cycle() -> None:
         reference_position = (
             state["panel_position"]
             if state["panel_position"] != "none"
@@ -909,7 +953,8 @@ def _handle_user_input(
         state["cached_page_step"] = None
         state["force_render"] = True
         state["updated"] = True
-    elif key == "p":
+
+    def _handle_display_pause_toggle() -> None:
         state["display_paused"] = not state["display_paused"]
         state["paused"] = state["display_paused"] or state["dormant"]
         if state["dormant"] or (state["pause_mode"] == "ping" and state["display_paused"]):
@@ -919,7 +964,8 @@ def _handle_user_input(
         state["status_message"] = "Display paused" if state["display_paused"] else "Display resumed"
         state["force_render"] = True
         state["updated"] = True
-    elif key == "P":
+
+    def _handle_dormant_toggle() -> None:
         state["dormant"] = not state["dormant"]
         state["paused"] = state["display_paused"] or state["dormant"]
         if state["dormant"] or (state["pause_mode"] == "ping" and state["display_paused"]):
@@ -929,7 +975,8 @@ def _handle_user_input(
         state["status_message"] = "Dormant mode enabled" if state["dormant"] else "Dormant mode disabled"
         state["force_render"] = True
         state["updated"] = True
-    elif key == "s":
+
+    def _handle_snapshot_save() -> None:
         now_utc = datetime.now(timezone.utc)
         snapshot_name = now_utc.astimezone(state["snapshot_tz"]).strftime("paraping_snapshot_%Y%m%d_%H%M%S.txt")
         snapshot_lines = build_display_lines(
@@ -964,7 +1011,8 @@ def _handle_user_input(
             snapshot_file.write("\n".join(snapshot_lines) + "\n")
         state["status_message"] = f"Saved: {snapshot_name}"
         state["updated"] = True
-    elif key == "arrow_left":
+
+    def _handle_history_prev() -> None:
         if state["v2_history_offset"] < len(state["v2_history_buffer"]) - 1:
             page_step, state["cached_page_step"], state["last_term_size"] = get_cached_page_step(
                 state["cached_page_step"],
@@ -986,7 +1034,8 @@ def _handle_user_input(
             if 0 < state["v2_history_offset"] <= len(state["v2_history_buffer"]):
                 snapshot = state["v2_history_buffer"][-(state["v2_history_offset"] + 1)]
                 state["status_message"] = f"Viewing {int(time.time() - snapshot['timestamp'])}s ago"
-    elif key == "arrow_right":
+
+    def _handle_history_next() -> None:
         if state["v2_history_offset"] > 0:
             page_step, state["cached_page_step"], state["last_term_size"] = get_cached_page_step(
                 state["cached_page_step"],
@@ -1011,7 +1060,8 @@ def _handle_user_input(
                 if 0 < state["v2_history_offset"] <= len(state["v2_history_buffer"]):
                     snapshot = state["v2_history_buffer"][-(state["v2_history_offset"] + 1)]
                     state["status_message"] = f"Viewing {int(time.time() - snapshot['timestamp'])}s ago"
-    elif key in ("arrow_up", "arrow_down"):
+
+    def _handle_host_scroll(delta: int) -> None:
         scroll_buffers = state["render_buffers"]
         scroll_stats = state["render_stats"]
         max_offset, visible_hosts, total_hosts = compute_host_scroll_bounds(
@@ -1030,23 +1080,55 @@ def _handle_user_input(
             group_by=state["group_by_modes"][state["group_by_mode_index"]],
             group_sort_enabled=state["summary_scope_modes"][state["summary_scope_mode_index"]] == "group",
         )
-        if key == "arrow_up" and state["host_scroll_offset"] > 0 and total_hosts > 0:
+        if delta < 0 and state["host_scroll_offset"] > 0 and total_hosts > 0:
             state["host_scroll_offset"] = max(0, state["host_scroll_offset"] - 1)
             end_index = min(state["host_scroll_offset"] + visible_hosts, total_hosts)
             state["status_message"] = f"Hosts {state['host_scroll_offset'] + 1}-{end_index} of {total_hosts}"
             state["force_render"] = True
             state["updated"] = True
-        elif key == "arrow_down" and state["host_scroll_offset"] < max_offset and total_hosts > 0:
+        elif delta > 0 and state["host_scroll_offset"] < max_offset and total_hosts > 0:
             state["host_scroll_offset"] = min(max_offset, state["host_scroll_offset"] + 1)
             end_index = min(state["host_scroll_offset"] + visible_hosts, total_hosts)
             state["status_message"] = f"Hosts {state['host_scroll_offset'] + 1}-{end_index} of {total_hosts}"
             state["force_render"] = True
             state["updated"] = True
-    elif key in ("g", "G"):
+
+    def _handle_host_select_open() -> None:
         state["host_select_active"] = True
         state["host_select_index"] = 0
         state["force_render"] = True
         state["updated"] = True
+
+    action_handlers = {
+        "reload_hosts": _handle_reload,
+        "force_redraw": _handle_force_redraw,
+        "display_name_cycle": _handle_display_mode_cycle,
+        "display_view_cycle": _handle_view_cycle,
+        "kitt_toggle": _handle_kitt_toggle,
+        "kitt_style_cycle": _handle_kitt_style_cycle,
+        "sort_cycle": _handle_sort_cycle,
+        "filter_cycle": _handle_filter_cycle,
+        "asn_toggle": _handle_asn_toggle,
+        "summary_info_cycle": _handle_summary_mode_cycle,
+        "summary_scope_cycle": _handle_summary_scope_cycle,
+        "group_key_cycle": _handle_group_key_cycle,
+        "color_toggle": _handle_color_toggle,
+        "bell_toggle": _handle_bell_toggle,
+        "summary_fullscreen_toggle": _handle_summary_fullscreen_toggle,
+        "panel_toggle": _handle_panel_toggle,
+        "panel_position_cycle": _handle_panel_position_cycle,
+        "display_pause_toggle": _handle_display_pause_toggle,
+        "dormant_toggle": _handle_dormant_toggle,
+        "snapshot_save": _handle_snapshot_save,
+        "history_prev": _handle_history_prev,
+        "history_next": _handle_history_next,
+        "host_select_open": _handle_host_select_open,
+        "host_scroll_up": lambda: _handle_host_scroll(-1),
+        "host_scroll_down": lambda: _handle_host_scroll(1),
+    }
+    handler = action_handlers.get(action)
+    if handler is not None:
+        handler()
     return skip_iteration
 
 

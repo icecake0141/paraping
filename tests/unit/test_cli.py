@@ -457,10 +457,10 @@ class TestCLIInputHandling(unittest.TestCase):
         self.assertTrue(state["stop_event"].is_set())
 
     def test_handle_user_input_hides_help_and_skips_iteration(self):
-        """Any key while help is visible should close help and skip the loop body."""
+        """`?` while help is visible should close help and skip the loop body."""
         state = {"show_help": True, "force_render": False, "updated": False}
 
-        skip_iteration = _handle_user_input("x", MagicMock(slow_threshold=0.5), state)
+        skip_iteration = _handle_user_input("?", MagicMock(slow_threshold=0.5), state)
 
         self.assertTrue(skip_iteration)
         self.assertFalse(state["show_help"])
@@ -492,7 +492,7 @@ class TestCLIInputHandling(unittest.TestCase):
         self.assertEqual(state["status_message"], "Display paused")
 
     def test_handle_user_input_group_scope_toggle(self):
-        """`G` toggles summary scope between host and group."""
+        """`g` toggles summary scope between host and group."""
         state = {
             "show_help": False,
             "host_select_active": False,
@@ -504,7 +504,7 @@ class TestCLIInputHandling(unittest.TestCase):
             "updated": False,
         }
 
-        skip_iteration = _handle_user_input("G", MagicMock(slow_threshold=0.5), state)
+        skip_iteration = _handle_user_input("g", MagicMock(slow_threshold=0.5), state)
 
         self.assertFalse(skip_iteration)
         self.assertEqual(state["summary_scope_mode_index"], 1)
@@ -513,7 +513,7 @@ class TestCLIInputHandling(unittest.TestCase):
         self.assertTrue(state["updated"])
 
     def test_handle_user_input_group_key_toggle(self):
-        """`T` cycles the group-by key."""
+        """`t` cycles the group-by key."""
         state = {
             "show_help": False,
             "host_select_active": False,
@@ -525,7 +525,7 @@ class TestCLIInputHandling(unittest.TestCase):
             "updated": False,
         }
 
-        skip_iteration = _handle_user_input("T", MagicMock(slow_threshold=0.5), state)
+        skip_iteration = _handle_user_input("t", MagicMock(slow_threshold=0.5), state)
 
         self.assertFalse(skip_iteration)
         self.assertEqual(state["group_by_mode_index"], 1)
@@ -534,7 +534,7 @@ class TestCLIInputHandling(unittest.TestCase):
         self.assertTrue(state["updated"])
 
     def test_handle_user_input_reload_without_input_file_shows_status(self):
-        """`R` without -f/--input should show an unavailable message."""
+        """`r` without -f/--input should show an unavailable message."""
         state = {
             "show_help": False,
             "host_select_active": False,
@@ -545,7 +545,7 @@ class TestCLIInputHandling(unittest.TestCase):
         }
         args = MagicMock(slow_threshold=0.5, input=None)
 
-        skip_iteration = _handle_user_input("R", args, state)
+        skip_iteration = _handle_user_input("r", args, state)
 
         self.assertFalse(skip_iteration)
         self.assertEqual(state["status_message"], "Reload unavailable in this context")
@@ -554,7 +554,7 @@ class TestCLIInputHandling(unittest.TestCase):
 
     @patch("paraping.cli._apply_manual_reload", return_value="Reloaded: +1 -0 (total 1)")
     def test_handle_user_input_reload_delegates_to_reload_handler(self, mock_reload):
-        """`R` with scheduler context should call manual reload helper."""
+        """`r` with scheduler context should call manual reload helper."""
         state = {
             "show_help": False,
             "host_select_active": False,
@@ -568,7 +568,7 @@ class TestCLIInputHandling(unittest.TestCase):
         ping_lock = threading.Lock()
         sequence_tracker = MagicMock()
 
-        skip_iteration = _handle_user_input("R", args, state, scheduler, ping_lock, sequence_tracker)
+        skip_iteration = _handle_user_input("r", args, state, scheduler, ping_lock, sequence_tracker)
 
         self.assertFalse(skip_iteration)
         mock_reload.assert_called_once_with(args, state, scheduler, ping_lock, sequence_tracker)
@@ -578,7 +578,7 @@ class TestCLIInputHandling(unittest.TestCase):
 
     @patch("paraping.cli.reset_render_cache")
     def test_handle_user_input_full_redraw_hotkey(self, mock_reset_render_cache):
-        """`L` should request a full redraw and force a render pass."""
+        """`u` should request a full redraw and force a render pass."""
         state = {
             "show_help": False,
             "host_select_active": False,
@@ -588,7 +588,7 @@ class TestCLIInputHandling(unittest.TestCase):
             "updated": False,
         }
 
-        skip_iteration = _handle_user_input("L", MagicMock(slow_threshold=0.5), state)
+        skip_iteration = _handle_user_input("u", MagicMock(slow_threshold=0.5), state)
 
         self.assertFalse(skip_iteration)
         mock_reset_render_cache.assert_called_once_with()
