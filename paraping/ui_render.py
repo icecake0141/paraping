@@ -143,11 +143,20 @@ def latest_status_from_timeline(timeline: Sequence[str], symbols: Dict[str, str]
     return status_from_symbol(timeline[-1], symbols)
 
 
+def latest_non_pending_status_from_timeline(timeline: Sequence[str], symbols: Dict[str, str]) -> Optional[str]:
+    """Get the latest non-pending status from a timeline."""
+    for symbol in reversed(timeline):
+        status = status_from_symbol(symbol, symbols)
+        if status and status != "pending":
+            return status
+    return None
+
+
 def host_label_status(status: Optional[str]) -> Optional[str]:
     """Map timeline status to host-label color status.
 
-    Pending state is intentionally rendered without host-label coloring to
-    reduce visible flicker at the start of each monitoring cycle.
+    Pending host labels keep the latest non-pending color (resolved by caller).
+    When no non-pending history exists, labels remain uncolored.
     """
     if status == "pending":
         return None
@@ -162,6 +171,16 @@ def host_label_status(status: Optional[str]) -> Optional[str]:
 def build_colored_timeline(timeline: Sequence[str], symbols: Dict[str, str], use_color: bool) -> str:
     """Build a colored timeline string from symbols."""
     return "".join(colorize_text(symbol, status_from_symbol(symbol, symbols), use_color) for symbol in timeline)
+
+
+def resolve_host_label_status(timeline: Sequence[str], symbols: Dict[str, str], is_removed: bool = False) -> Optional[str]:
+    """Resolve host label status with pending fallback behavior."""
+    if is_removed:
+        return None
+    status = latest_status_from_timeline(timeline, symbols)
+    if status == "pending":
+        status = latest_non_pending_status_from_timeline(timeline, symbols)
+    return host_label_status(status)
 
 
 def build_colored_sparkline(
@@ -1081,10 +1100,8 @@ def render_timeline_view(
         timeline_symbols = list(buffers[host]["timeline"])
         timeline = build_colored_timeline(timeline_symbols, symbols, use_color)
         timeline = rjust_visible(timeline, timeline_width)
-        status = latest_status_from_timeline(timeline_symbols, symbols)
-        if is_removed:
-            status = "pending"
-        colored_label = colorize_text(label, host_label_status(status), use_color)
+        label_status = resolve_host_label_status(timeline_symbols, symbols, is_removed=is_removed)
+        colored_label = colorize_text(label, label_status, use_color)
         lines.append(format_status_line(colored_label, timeline, label_width))
 
     # Add time axis at the bottom of the timeline area
@@ -1163,10 +1180,8 @@ def render_sparkline_view(
         sparkline = build_sparkline(rtt_values, status_symbols, symbols["fail"])
         sparkline = build_colored_sparkline(sparkline, status_symbols, symbols, use_color)
         sparkline = rjust_visible(sparkline, timeline_width)
-        status = latest_status_from_timeline(status_symbols, symbols)
-        if is_removed:
-            status = "pending"
-        colored_label = colorize_text(label, host_label_status(status), use_color)
+        label_status = resolve_host_label_status(status_symbols, symbols, is_removed=is_removed)
+        colored_label = colorize_text(label, label_status, use_color)
         lines.append(format_status_line(colored_label, sparkline, label_width))
 
     # Add time axis at the bottom of the sparkline area
@@ -1288,11 +1303,8 @@ def render_square_view(
         # Build colored square timeline from all timeline symbols
         square_timeline = build_colored_square_timeline(timeline_symbols, symbols, use_color)
         square_timeline = rjust_visible(square_timeline, timeline_width)
-        # Get the latest status for label colorization
-        status = latest_status_from_timeline(timeline_symbols, symbols)
-        if is_removed:
-            status = "pending"
-        colored_label = colorize_text(label, host_label_status(status), use_color)
+        label_status = resolve_host_label_status(timeline_symbols, symbols, is_removed=is_removed)
+        colored_label = colorize_text(label, label_status, use_color)
         lines.append(format_status_line(colored_label, square_timeline, label_width))
 
     # Add time axis at the bottom of the square timeline area
