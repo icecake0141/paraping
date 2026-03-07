@@ -26,12 +26,14 @@ import termios
 import threading
 import time
 import tty
+import warnings
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor  # noqa: F401 - Backward-compatibility for tests patching this symbol.
 from datetime import datetime, timezone, tzinfo
 from typing import Any, Callable, Dict, List, Optional, Union
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from paraping.cli_options import CLI_OPTION_SPECS, OptionSpec
 from paraping.config import load_config
 from paraping.core import (
     _normalize_term_size,
@@ -191,22 +193,28 @@ def _configure_logging(
     )
 
 
-# Hardcoded defaults for config-overridable fields.
-# Applied after config merging for any field still set to None.
-_HARDCODED_DEFAULTS: Dict[str, Any] = {
-    "timeout": 1,
-    "slow_threshold": 0.5,
-    "interval": 1.0,
-    "panel_position": "right",
-    "pause_mode": "display",
-    "snapshot_timezone": "utc",
-    "ping_helper": "./bin/ping_helper",
-    "log_level": "INFO",
-    "flash_on_fail": False,
-    "bell_on_fail": False,
-    "color": False,
-    "group_by": "none",
-}
+def _add_option_from_spec(parser: argparse.ArgumentParser, spec: OptionSpec) -> None:
+    """Register one option spec on the argparse parser."""
+    kwargs: Dict[str, Any] = {
+        "dest": spec.dest,
+        "default": None,
+        "help": spec.help_text,
+    }
+    if spec.boolean:
+        kwargs["action"] = argparse.BooleanOptionalAction
+    else:
+        if spec.value_type is not None:
+            kwargs["type"] = str.upper if spec.dest == "log_level" else spec.value_type
+        if spec.choices:
+            kwargs["choices"] = list(spec.choices)
+    parser.add_argument(*spec.flags, **kwargs)
+
+
+def _apply_option_defaults(args: argparse.Namespace) -> None:
+    """Apply defaults for unset values after config overlay."""
+    for spec in CLI_OPTION_SPECS:
+        if getattr(args, spec.dest, None) is None:
+            setattr(args, spec.dest, spec.default)
 
 
 def _count_entry_tags(host_info: Dict[str, Any]) -> int:
@@ -257,6 +265,8 @@ def _apply_config_to_args(args: argparse.Namespace, config: Dict[str, Any]) -> N
         config: Dictionary of values loaded from the config file.
     """
     for key, value in config.items():
+        if key == "verbose_ui_errors":
+            key = "ui_log_errors"
         if key == "hosts":
             if not getattr(args, "hosts", None) and not getattr(args, "input", None):
                 args.hosts = value
@@ -271,131 +281,22 @@ def handle_options() -> argparse.Namespace:
         epilog="Note: ParaPing enforces a global rate limit of 50 pings/sec for flood protection. "
         "The tool will exit with an error if (host_count / interval) > 50.",
     )
-    parser.add_argument(
-        "-t",
-        "--timeout",
-        type=int,
-        default=None,
-        help="Timeout in seconds for each ping (default: 1)",
-    )
-    parser.add_argument(
-        "-c",
-        "--count",
-        type=int,
-        default=0,
-        help="Number of ping attempts per host (default: 0 for infinite)",
-    )
-    parser.add_argument(
-        "-s",
-        "--slow-threshold",
-        type=float,
-        default=None,
-        help="Threshold in seconds for slow ping (default: 0.5)",
-    )
-    parser.add_argument(
-        "-i",
-        "--interval",
-        type=float,
-        default=None,
-        help="Interval in seconds between pings per host (default: 1.0, range: 0.1-60.0). "
-        "Note: Global rate limit is 50 pings/sec (host_count / interval <= 50)",
-    )
+    for spec in CLI_OPTION_SPECS:
+        _add_option_from_spec(parser, spec)
+
     parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
-        help="Enable verbose output, showing detailed ping results",
-    )
-    parser.add_argument(
-        "--log-level",
-        type=str.upper,
-        default=None,
-        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        help="Logging level for verbose and error output (default: INFO)",
-    )
-    parser.add_argument(
-        "--log-file",
-        type=str,
-        default=None,
-        help="Optional log file path for persistent logging",
-    )
-    parser.add_argument(
-        "-f",
-        "--input",
-        type=str,
-        help="Input file containing list of hosts (one per line, format: IP,alias)",
-        required=False,
-    )
-    parser.add_argument(
-        "--group-by",
-        type=str,
-        default=None,
-        help="Group key for summary and host grouping " "(none|asn|site|tag|tagN|site>tag1|tag1>site)",
-    )
-    parser.add_argument(
-        "-P",
-        "--panel-position",
-        type=str,
-        default=None,
-        choices=["right", "left", "top", "bottom", "none"],
-        help="Summary panel position (right|left|top|bottom|none)",
-    )
-    parser.add_argument(
-        "-m",
-        "--pause-mode",
-        type=str,
-        default=None,
-        choices=["display", "ping"],
-        help="Pause behavior: display (stop updates only) or ping (pause ping + updates)",
-    )
-    parser.add_argument(
-        "-z",
-        "--timezone",
-        type=str,
-        default=None,
-        help="Display timezone (IANA name, e.g. Asia/Tokyo). Defaults to UTC.",
-    )
-    parser.add_argument(
-        "-Z",
-        "--snapshot-timezone",
-        type=str,
-        default=None,
-        choices=["utc", "display"],
-        help="Timezone used in snapshot filename (utc|display). Defaults to utc.",
-    )
-    parser.add_argument(
-        "-F",
-        "--flash-on-fail",
-        action="store_true",
-        default=None,
-        help="Flash screen (white background) when ping fails",
-    )
-    parser.add_argument(
-        "-B",
-        "--bell-on-fail",
-        action="store_true",
-        default=None,
-        help="Ring terminal bell when ping fails",
-    )
-    parser.add_argument(
-        "-C",
-        "--color",
-        action="store_true",
-        default=None,
-        help="Enable colored output (blue=success, yellow=slow, red=fail)",
-    )
-    parser.add_argument(
-        "-H",
-        "--ping-helper",
-        type=str,
-        default=None,
-        help="Path to ping_helper binary (default: ./bin/ping_helper)",
+        default=False,
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--verbose-ui-errors",
         action="store_true",
+        dest="deprecated_verbose_ui_errors",
         default=False,
-        help="Show warning/error log lines in live TUI output (default: off)",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--no-config",
@@ -415,10 +316,23 @@ def handle_options() -> argparse.Namespace:
         except (ValueError, ImportError) as exc:
             parser.error(str(exc))
 
-    # Apply hardcoded defaults for any config-overridable field still at None
-    for field, default in _HARDCODED_DEFAULTS.items():
-        if getattr(args, field, None) is None:
-            setattr(args, field, default)
+    if args.verbose:
+        warnings.warn("--verbose is deprecated; use --log-level DEBUG instead.", DeprecationWarning, stacklevel=2)
+        if getattr(args, "log_level", None) is None:
+            args.log_level = "DEBUG"
+    if args.deprecated_verbose_ui_errors:
+        warnings.warn(
+            "--verbose-ui-errors is deprecated; use --ui-log-errors instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        args.ui_log_errors = True
+
+    _apply_option_defaults(args)
+    args.log_level = str(args.log_level).upper()
+    if args.log_level not in ("DEBUG", "INFO", "WARNING", "ERROR"):
+        parser.error("--log-level must be one of DEBUG|INFO|WARNING|ERROR")
+    args.verbose_ui_errors = args.ui_log_errors
 
     if args.timeout <= 0:
         parser.error("--timeout must be a positive integer.")
@@ -1347,7 +1261,7 @@ def run(args: argparse.Namespace) -> None:
         getattr(args, "log_level", "INFO"),
         getattr(args, "log_file", None),
         interactive_ui=sys.stdout.isatty(),
-        verbose_ui_errors=getattr(args, "verbose_ui_errors", False),
+        verbose_ui_errors=getattr(args, "ui_log_errors", False),
     )
     setup = _setup_hosts_and_state(args)
     if setup is None:
@@ -1361,27 +1275,44 @@ def run(args: argparse.Namespace) -> None:
     initial_render_buffers, initial_render_stats = project_legacy_state_from_v2(setup["v2_state"], setup["symbols"])
     initial_term_size = get_terminal_size(fallback=(80, 24))
     now_monotonic = time.monotonic()
+    modes = ["ip", "rdns", "alias"]
+    display_modes = ["timeline", "sparkline", "square"]
+    summary_modes = ["rates", "rtt", "ttl", "streak"]
+    summary_scope_modes = ["host", "group"]
+    sort_modes = ["config", "failures", "streak", "latency", "host"]
+    filter_modes = ["failures", "latency", "all"]
+    kitt_style_modes = ["scanner", "gradient"]
+    arg_values = vars(args) if hasattr(args, "__dict__") else {}
+    initial_display_name = arg_values.get("display_name", "alias")
+    initial_view = arg_values.get("view", "timeline")
+    initial_summary_mode = arg_values.get("summary_mode", "rates")
+    initial_summary_scope = arg_values.get("summary_scope", "host")
+    initial_sort = arg_values.get("sort", "config")
+    initial_filter = arg_values.get("filter", "all")
+    initial_kitt_style = arg_values.get("kitt_style", "scanner")
     state = {
         **setup,
-        "modes": ["ip", "rdns", "alias"],
-        "mode_index": 2,
+        "modes": modes,
+        "mode_index": modes.index(initial_display_name) if initial_display_name in modes else 2,
         "show_help": False,
-        "display_modes": ["timeline", "sparkline", "square"],
-        "display_mode_index": 0,
-        "summary_modes": ["rates", "rtt", "ttl", "streak"],
-        "summary_mode_index": 0,
-        "summary_scope_modes": ["host", "group"],
-        "summary_scope_mode_index": 0,
+        "display_modes": display_modes,
+        "display_mode_index": display_modes.index(initial_view) if initial_view in display_modes else 0,
+        "summary_modes": summary_modes,
+        "summary_mode_index": summary_modes.index(initial_summary_mode) if initial_summary_mode in summary_modes else 0,
+        "summary_scope_modes": summary_scope_modes,
+        "summary_scope_mode_index": (
+            summary_scope_modes.index(initial_summary_scope) if initial_summary_scope in summary_scope_modes else 0
+        ),
         "group_by_modes": _build_group_by_modes(setup["host_infos"]),
         "group_by_mode_index": 0,
-        "kitt_mode_enabled": False,
-        "kitt_style_modes": ["scanner", "gradient"],
-        "kitt_style_index": 0,
-        "summary_fullscreen": False,
-        "sort_modes": ["config", "failures", "streak", "latency", "host"],
-        "sort_mode_index": 0,
-        "filter_modes": ["failures", "latency", "all"],
-        "filter_mode_index": 2,
+        "kitt_mode_enabled": bool(arg_values.get("kitt", False)),
+        "kitt_style_modes": kitt_style_modes,
+        "kitt_style_index": kitt_style_modes.index(initial_kitt_style) if initial_kitt_style in kitt_style_modes else 0,
+        "summary_fullscreen": bool(arg_values.get("summary_fullscreen", False)),
+        "sort_modes": sort_modes,
+        "sort_mode_index": sort_modes.index(initial_sort) if initial_sort in sort_modes else 0,
+        "filter_modes": filter_modes,
+        "filter_mode_index": filter_modes.index(initial_filter) if initial_filter in filter_modes else 2,
         "running": True,
         "paused": False,
         "dormant": False,
@@ -1391,7 +1322,7 @@ def run(args: argparse.Namespace) -> None:
         "stop_event": threading.Event(),
         "status_message": None,
         "force_render": False,
-        "show_asn": True,
+        "show_asn": bool(arg_values.get("show_asn", True)),
         "color_supported": sys.stdout.isatty(),
         "use_color": args.color and sys.stdout.isatty(),
         "flash_on_fail": getattr(args, "flash_on_fail", False),

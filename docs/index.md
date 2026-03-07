@@ -27,6 +27,7 @@ Welcome to the ParaPing documentation hub. This directory contains comprehensive
 ### Product Overview
 - [Specification](specification.md) - Scope, core capabilities, runtime/security model, and platform notes
 - [Usage Guide](usage.md) - CLI options, input formats, and interactive key controls
+- [CLI Option Policy](cli_option_policy.md) - Ownership and synchronization rules for CLI/config/hotkey responsibilities
 
 ### Component Documentation
 - [Ping Helper](ping_helper.md) - Detailed documentation for the privileged ICMP helper binary
@@ -102,6 +103,7 @@ ParaPingドキュメントハブへようこそ。このディレクトリには
 ### プロダクト概要
 - [仕様](specification.md) - スコープ、主要機能、実行要件、セキュリティ/プラットフォーム注意点
 - [使い方ガイド](usage.md) - CLI オプション、入力形式、インタラクティブキー操作
+- [CLI オプション方針](cli_option_policy.md) - CLI/設定/ホットキー責務分離と同期ルール
 
 ### コンポーネントドキュメント
 - [Pingヘルパー](ping_helper.md) - 特権ICMPヘルパーバイナリの詳細ドキュメント
