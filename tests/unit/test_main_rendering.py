@@ -35,6 +35,7 @@ from main import (  # noqa: E402
 )
 from paraping.stats import resolve_site_tag1_labels  # noqa: E402
 from paraping.ui_render import (  # noqa: E402
+    _resolve_kitt_gradient_rings,
     build_colored_sparkline,
     build_colored_timeline,
     build_display_entries,
@@ -1669,7 +1670,26 @@ class TestActivityIndicator(unittest.TestCase):
             )
         changed = [idx for idx, (early_char, later_char) in enumerate(zip(early, later)) if early_char != later_char]
         self.assertTrue(changed)
-        self.assertLessEqual(max(changed) - min(changed), 10)
+        center = len(early) - 1
+        mirrored = {center - idx for idx in changed}
+        self.assertEqual(set(changed), mirrored)
+        self.assertLessEqual(len(changed), 8)
+
+    def test_kitt_gradient_reaches_screen_edges(self):
+        """Gradient should let outer rings reach the visible edges instead of dying early."""
+        now = datetime.fromtimestamp(6.0, tz=timezone.utc)
+        with patch("paraping.ui_render.time.monotonic", return_value=6.0):
+            band = build_kitt_gradient_bar(41, now, use_color=False, error_hosts=7, total_hosts=10)
+        self.assertNotEqual(band[0], " ")
+        self.assertNotEqual(band[-1], " ")
+
+    def test_kitt_gradient_ring_spacing_is_not_too_dense(self):
+        """Gradient rings should be spaced apart enough to read as expanding waves."""
+        rings = _resolve_kitt_gradient_rings(4.4, 20.0, 0.7)
+        radii = [ring_radius for ring_radius, _ring_width, _freshness in rings]
+        gaps = [right - left for left, right in zip(radii, radii[1:])]
+        self.assertTrue(gaps)
+        self.assertTrue(all(gap >= 5.0 for gap in gaps))
 
 
 class TestIncrementalRendering(unittest.TestCase):
@@ -1777,6 +1797,8 @@ class TestIncrementalRendering(unittest.TestCase):
         output = stdout.getvalue()
         self.assertIn("\x1b[4;1H\x1b[2K", output)
         self.assertNotIn("\x1b[4;2H", output)
+
+
 class TestBuildDisplayEntries(unittest.TestCase):
     """Test build_display_entries sorting and filtering."""
 

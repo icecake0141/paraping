@@ -442,8 +442,8 @@ def _build_kitt_gradient_levels(width: int, now_utc: datetime, error_ratio: floa
             if distance > ring_width:
                 continue
             wave_strength = 1.0 - (distance / max(0.001, ring_width))
-            radial_decay = max(0.28, 1.0 - (pseudo_radius / (max_radius + 0.5)))
-            ring_decay = max(0.35, 1.0 - (ring_radius / (max_radius + 2.0)))
+            radial_decay = max(0.5, 1.0 - (pseudo_radius / (max_radius + 0.8)))
+            ring_decay = max(0.65, 1.0 - (ring_radius / (max_radius + ring_width + 1.0)))
             level = max(level, wave_strength * radial_decay * ring_decay * freshness)
         levels.append(_clamp(level, 0.0, 1.0))
     return levels
@@ -484,9 +484,10 @@ def _compute_error_ratio(error_hosts: int, total_hosts: int) -> float:
 def _resolve_kitt_gradient_rings(phase_time: float, max_radius: float, error_ratio: float) -> List[Tuple[float, float, float]]:
     """Resolve outward-only ripple rings that expire after leaving the visible area."""
     ring_speed = 1.1 + 2.8 * error_ratio
-    spawn_interval = max(0.55, 1.25 - (0.55 * error_ratio))
-    visible_ring_count = max(2, min(7, 2 + int(round(error_ratio * 5))))
-    ring_lifetime = (max_radius + 2.5) / max(0.001, ring_speed)
+    spawn_interval = max(1.6, 2.8 - (0.8 * error_ratio))
+    visible_ring_count = max(2, min(4, 2 + int(round(error_ratio * 2))))
+    max_ring_width = max(0.7, 1.55 - (0.55 * error_ratio) + ((visible_ring_count - 1) * 0.07))
+    ring_lifetime = (max_radius + max_ring_width + 0.8) / max(0.001, ring_speed)
     rings: List[Tuple[float, float, float]] = []
     latest_spawn_time = math.floor(phase_time / spawn_interval) * spawn_interval
     for ring_index in range(visible_ring_count):
@@ -495,10 +496,10 @@ def _resolve_kitt_gradient_rings(phase_time: float, max_radius: float, error_rat
         if age < 0.0 or age > ring_lifetime:
             continue
         ring_radius = age * ring_speed
-        if ring_radius < 1.85 or ring_radius > max_radius + 1.5:
+        if ring_radius < 1.85 or ring_radius > max_radius + max_ring_width:
             continue
         ring_width = max(0.7, 1.55 - (0.55 * error_ratio) + (ring_index * 0.07))
-        freshness = max(0.45, 1.0 - (age / max(0.001, ring_lifetime)))
+        freshness = max(0.6, 1.0 - (age / max(0.001, ring_lifetime)))
         rings.append((ring_radius, ring_width, freshness))
     return rings
 
