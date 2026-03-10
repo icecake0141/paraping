@@ -1580,17 +1580,24 @@ class TestActivityIndicator(unittest.TestCase):
         self.assertIn("\x1b[38;5;214m", orange)
         self.assertIn("\x1b[91m", red)
 
+    def _gradient_kwargs(self, row_index=2, body_height=5, error_hosts=0, total_hosts=10):
+        return {
+            "row_index": row_index,
+            "body_height": body_height,
+            "error_hosts": error_hosts,
+            "total_hosts": total_hosts,
+        }
+
     def test_kitt_gradient_activity_scales_with_error_hosts(self):
         """Gradient style should show more active ripple area at higher severity."""
         now = datetime.fromtimestamp(0.75, tz=timezone.utc)
         with patch("paraping.ui_render.time.monotonic", return_value=0.4):
             low_rows = [
-                build_kitt_gradient_bar(80, now, use_color=False, phase_offset=row, error_hosts=0, total_hosts=10)
-                for row in range(-2, 3)
+                build_kitt_gradient_bar(80, now, use_color=False, **self._gradient_kwargs(row_index=row)) for row in range(5)
             ]
             high_rows = [
-                build_kitt_gradient_bar(80, now, use_color=False, phase_offset=row, error_hosts=8, total_hosts=10)
-                for row in range(-2, 3)
+                build_kitt_gradient_bar(80, now, use_color=False, **self._gradient_kwargs(row_index=row, error_hosts=8))
+                for row in range(5)
             ]
         low_active = sum(1 for band in low_rows for char in band if char != " ")
         high_active = sum(1 for band in high_rows for char in band if char != " ")
@@ -1600,10 +1607,10 @@ class TestActivityIndicator(unittest.TestCase):
         """Gradient palette should follow green/yellow/orange/red thresholds."""
         now = datetime.fromtimestamp(1.0, tz=timezone.utc)
         with patch("paraping.ui_render.time.monotonic", return_value=0.3):
-            green = build_kitt_gradient_bar(30, now, use_color=True, error_hosts=0, total_hosts=10)
-            yellow = build_kitt_gradient_bar(30, now, use_color=True, error_hosts=1, total_hosts=10)
-            orange = build_kitt_gradient_bar(30, now, use_color=True, error_hosts=3, total_hosts=10)
-            red = build_kitt_gradient_bar(30, now, use_color=True, error_hosts=7, total_hosts=10)
+            green = build_kitt_gradient_bar(30, now, use_color=True, **self._gradient_kwargs(error_hosts=0))
+            yellow = build_kitt_gradient_bar(30, now, use_color=True, **self._gradient_kwargs(error_hosts=1))
+            orange = build_kitt_gradient_bar(30, now, use_color=True, **self._gradient_kwargs(error_hosts=3))
+            red = build_kitt_gradient_bar(30, now, use_color=True, **self._gradient_kwargs(error_hosts=7))
         self.assertIn("\x1b[32m", green)
         self.assertIn("\x1b[33m", yellow)
         self.assertIn("\x1b[38;5;208m", orange)
@@ -1613,7 +1620,7 @@ class TestActivityIndicator(unittest.TestCase):
         """Gradient should use strong peak color and softer trail color."""
         now = datetime.fromtimestamp(1.0, tz=timezone.utc)
         with patch("paraping.ui_render.time.monotonic", return_value=0.3):
-            colored = build_kitt_gradient_bar(40, now, use_color=True, error_hosts=7, total_hosts=10)
+            colored = build_kitt_gradient_bar(40, now, use_color=True, **self._gradient_kwargs(error_hosts=7))
         self.assertIn("\x1b[31m", colored)
         self.assertIn("\x1b[2;31m", colored)
 
@@ -1621,7 +1628,7 @@ class TestActivityIndicator(unittest.TestCase):
         """Gradient should radiate from the center rather than translate sideways as one bar."""
         now = datetime.fromtimestamp(0.75, tz=timezone.utc)
         with patch("paraping.ui_render.time.monotonic", return_value=0.3):
-            band = build_kitt_gradient_bar(41, now, use_color=False, error_hosts=6, total_hosts=10)
+            band = build_kitt_gradient_bar(41, now, use_color=False, **self._gradient_kwargs(error_hosts=6))
         center = len(band) // 2
         self.assertNotEqual(band[center], " ")
         active = [idx for idx, ch in enumerate(band) if ch != " "]
@@ -1632,7 +1639,7 @@ class TestActivityIndicator(unittest.TestCase):
         """Gradient should keep the origin as a single center dot, not a thick bar."""
         now = datetime.fromtimestamp(0.12, tz=timezone.utc)
         with patch("paraping.ui_render.time.monotonic", return_value=0.12):
-            band = build_kitt_gradient_bar(41, now, use_color=False, error_hosts=0, total_hosts=10)
+            band = build_kitt_gradient_bar(41, now, use_color=False, **self._gradient_kwargs(error_hosts=0))
         center = len(band) // 2
         active = [idx for idx, ch in enumerate(band) if ch != " "]
         center_cluster = [idx for idx in active if abs(idx - center) <= 1]
@@ -1643,15 +1650,15 @@ class TestActivityIndicator(unittest.TestCase):
         """Gradient rows should mirror each other around the center row."""
         now = datetime.fromtimestamp(0.55, tz=timezone.utc)
         with patch("paraping.ui_render.time.monotonic", return_value=0.55):
-            upper = build_kitt_gradient_bar(41, now, use_color=False, phase_offset=-2, error_hosts=7, total_hosts=10)
-            lower = build_kitt_gradient_bar(41, now, use_color=False, phase_offset=2, error_hosts=7, total_hosts=10)
+            upper = build_kitt_gradient_bar(41, now, use_color=False, **self._gradient_kwargs(row_index=0, error_hosts=7))
+            lower = build_kitt_gradient_bar(41, now, use_color=False, **self._gradient_kwargs(row_index=4, error_hosts=7))
         self.assertEqual(upper, lower)
 
     def test_kitt_gradient_decays_away_from_center(self):
         """Gradient ripple should weaken as it expands away from the center."""
         now = datetime.fromtimestamp(0.75, tz=timezone.utc)
         with patch("paraping.ui_render.time.monotonic", return_value=0.3):
-            band = build_kitt_gradient_bar(41, now, use_color=False, error_hosts=7, total_hosts=10)
+            band = build_kitt_gradient_bar(41, now, use_color=False, **self._gradient_kwargs(error_hosts=7))
         center = len(band) // 2
         density = {"█": 4, "▓": 3, "▒": 2, "░": 1, " ": 0}
         self.assertGreaterEqual(density.get(band[center], 0), density.get(band[0], 0))
@@ -1661,7 +1668,7 @@ class TestActivityIndicator(unittest.TestCase):
         """Gradient should still show a visible origin in narrow widths."""
         now = datetime.fromtimestamp(0.05, tz=timezone.utc)
         with patch("paraping.ui_render.time.monotonic", return_value=0.05):
-            band = build_kitt_gradient_bar(3, now, use_color=False, error_hosts=0, total_hosts=10)
+            band = build_kitt_gradient_bar(3, now, use_color=False, **self._gradient_kwargs(error_hosts=0))
         self.assertEqual(len(band), 3)
         self.assertNotEqual(band[1], " ")
 
@@ -1669,7 +1676,7 @@ class TestActivityIndicator(unittest.TestCase):
         """Gradient style should remain left-right symmetric at a fixed frame."""
         now = datetime.fromtimestamp(0.75, tz=timezone.utc)
         with patch("paraping.ui_render.time.monotonic", return_value=0.3):
-            band = build_kitt_gradient_bar(41, now, use_color=False, error_hosts=7, total_hosts=10)
+            band = build_kitt_gradient_bar(41, now, use_color=False, **self._gradient_kwargs(error_hosts=7))
         self.assertEqual(band, band[::-1])
 
     def test_kitt_gradient_does_not_wrap_outer_ring_back_to_center(self):
@@ -1679,15 +1686,13 @@ class TestActivityIndicator(unittest.TestCase):
                 41,
                 datetime.fromtimestamp(1.10, tz=timezone.utc),
                 use_color=False,
-                error_hosts=6,
-                total_hosts=10,
+                **self._gradient_kwargs(error_hosts=6),
             )
             after_wrap = build_kitt_gradient_bar(
                 41,
                 datetime.fromtimestamp(1.15, tz=timezone.utc),
                 use_color=False,
-                error_hosts=6,
-                total_hosts=10,
+                **self._gradient_kwargs(error_hosts=6),
             )
         center = len(before_wrap) // 2
         inner_before = sum(
@@ -1703,15 +1708,13 @@ class TestActivityIndicator(unittest.TestCase):
                 41,
                 datetime.fromtimestamp(1.10, tz=timezone.utc),
                 use_color=False,
-                error_hosts=6,
-                total_hosts=10,
+                **self._gradient_kwargs(error_hosts=6),
             )
             later = build_kitt_gradient_bar(
                 41,
                 datetime.fromtimestamp(1.15, tz=timezone.utc),
                 use_color=False,
-                error_hosts=6,
-                total_hosts=10,
+                **self._gradient_kwargs(error_hosts=6),
             )
         changed = [idx for idx, (early_char, later_char) in enumerate(zip(early, later)) if early_char != later_char]
         self.assertTrue(changed)
@@ -1722,16 +1725,16 @@ class TestActivityIndicator(unittest.TestCase):
 
     def test_kitt_gradient_reaches_screen_edges(self):
         """Gradient should let outer rings reach the visible edges instead of dying early."""
-        now = datetime.fromtimestamp(6.0, tz=timezone.utc)
-        with patch("paraping.ui_render.time.monotonic", return_value=6.0):
-            band = build_kitt_gradient_bar(41, now, use_color=False, error_hosts=7, total_hosts=10)
+        now = datetime.fromtimestamp(7.4, tz=timezone.utc)
+        with patch("paraping.ui_render.time.monotonic", return_value=7.4):
+            band = build_kitt_gradient_bar(41, now, use_color=False, **self._gradient_kwargs(error_hosts=7))
         self.assertNotEqual(band[0], " ")
         self.assertNotEqual(band[-1], " ")
 
     def test_kitt_gradient_reaches_outer_radius_on_wide_view(self):
         """Gradient should preserve visible outer ripples on wider terminals too."""
-        now = datetime.fromtimestamp(0.7, tz=timezone.utc)
-        with patch("paraping.ui_render.time.monotonic", return_value=0.7):
+        now = datetime.fromtimestamp(7.4, tz=timezone.utc)
+        with patch("paraping.ui_render.time.monotonic", return_value=7.4):
             band = build_kitt_gradient_bar(81, now, use_color=False, error_hosts=7, total_hosts=10)
         active = [idx for idx, char in enumerate(band) if char != " "]
         center = len(band) // 2
@@ -1746,6 +1749,34 @@ class TestActivityIndicator(unittest.TestCase):
         gaps = [right - left for left, right in zip(radii, radii[1:])]
         self.assertTrue(gaps)
         self.assertTrue(all(gap >= 5.0 for gap in gaps))
+
+    def test_kitt_gradient_generation_interval_is_one_second(self):
+        """Gradient should spawn one new ripple each second regardless of severity."""
+        early = _resolve_kitt_gradient_rings(4.99, 20.0, 0.0)
+        later = _resolve_kitt_gradient_rings(5.01, 20.0, 0.8)
+        self.assertTrue(early)
+        self.assertTrue(later)
+        self.assertLess(min(ring_radius for ring_radius, _ring_width, _freshness in later), 0.5)
+        self.assertGreater(min(ring_radius for ring_radius, _ring_width, _freshness in early), 5.0)
+
+    def test_kitt_gradient_center_tracks_body_height(self):
+        """Gradient should place its origin on the vertical center of the Pulse body."""
+        now = datetime.fromtimestamp(0.02, tz=timezone.utc)
+        with patch("paraping.ui_render.time.monotonic", return_value=0.02):
+            top_row = build_kitt_gradient_bar(21, now, use_color=False, **self._gradient_kwargs(row_index=0, body_height=6))
+            center_row = build_kitt_gradient_bar(21, now, use_color=False, **self._gradient_kwargs(row_index=2, body_height=6))
+        self.assertEqual(top_row[len(top_row) // 2], " ")
+        self.assertNotEqual(center_row[len(center_row) // 2], " ")
+
+    def test_kitt_gradient_reaches_pulse_window_corners(self):
+        """Gradient should reach the furthest visible corners of the Pulse body."""
+        now = datetime.fromtimestamp(7.4, tz=timezone.utc)
+        with patch("paraping.ui_render.time.monotonic", return_value=7.4):
+            top = build_kitt_gradient_bar(21, now, use_color=False, **self._gradient_kwargs(row_index=0))
+            bottom = build_kitt_gradient_bar(21, now, use_color=False, **self._gradient_kwargs(row_index=4))
+        self.assertNotEqual(top[0], " ")
+        self.assertNotEqual(top[-1], " ")
+        self.assertEqual(top, bottom)
 
 
 class TestIncrementalRendering(unittest.TestCase):

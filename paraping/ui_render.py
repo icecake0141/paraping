@@ -429,39 +429,56 @@ def _build_kitt_scanner_levels(
     return levels
 
 
-def _build_kitt_gradient_levels(width: int, now_utc: datetime, error_ratio: float, phase_offset: int = 0) -> List[float]:
-    """Build a smooth center-out ripple intensity map."""
+def _build_kitt_gradient_levels(
+    width: int,
+    body_height: int,
+    row_index: int,
+    now_utc: datetime,
+    error_ratio: float,
+) -> List[float]:
+    """Build a smooth center-out ripple intensity map for one Pulse body row."""
     if width <= 0:
         return []
-    center = (width - 1) / 2.0
-    row_offset = float(phase_offset)
-    max_radius = max(1.0, (center * center + row_offset * row_offset) ** 0.5)
-    speed = _resolve_kitt_speed_hz(error_ratio)
-    phase_time = time.monotonic() * (0.6 + (0.12 * speed))
+    del now_utc  # Motion is driven by monotonic time for smoothness.
+    bounded_height = max(1, body_height)
+    bounded_row_index = min(max(0, row_index), bounded_height - 1)
+    center_x = (width - 1) / 2.0
+    center_y = (bounded_height - 1) / 2.0
+    max_radius = max(
+        1.0,
+        max(
+            ((corner_x - center_x) ** 2 + (corner_y - center_y) ** 2) ** 0.5
+            for corner_x in (0.0, float(width - 1))
+            for corner_y in (0.0, float(bounded_height - 1))
+        ),
+    )
+    phase_time = time.monotonic()
     rings = _resolve_kitt_gradient_rings(phase_time, max_radius, error_ratio)
     levels: List[float] = []
     for index in range(width):
-        distance_x = index - center
-        pseudo_radius = (distance_x * distance_x + row_offset * row_offset) ** 0.5
+        distance_x = index - center_x
+        distance_y = bounded_row_index - center_y
+        radius = (distance_x * distance_x + distance_y * distance_y) ** 0.5
         level = 0.0
-        is_center_dot = abs(distance_x) <= 0.5 and abs(row_offset) <= 0.5
+        is_center_dot = abs(distance_x) <= 0.5 and abs(distance_y) <= 0.5
         if is_center_dot:
             pulse = 0.08 * (0.5 + 0.5 * math.sin(phase_time * 2.4))
             level = max(level, 0.72 + (0.18 * error_ratio) + pulse)
         for ring_radius, ring_width, freshness in rings:
-            distance = abs(pseudo_radius - ring_radius)
-            shoulder_distance = pseudo_radius - ring_radius
+            if ring_radius < 3.2 and radius < 3.2:
+                continue
+            distance = abs(radius - ring_radius)
             if distance > ring_width * 1.9:
                 continue
             if distance <= ring_width:
                 wave_strength = 1.0 - (distance / max(0.001, ring_width))
-            elif shoulder_distance > 0:
+            elif radius > ring_radius:
                 shoulder_ratio = (distance - ring_width) / max(0.001, ring_width * 0.9)
                 wave_strength = max(0.0, (0.12 + 0.08 * error_ratio) * (1.0 - shoulder_ratio))
             else:
                 tail_ratio = (distance - ring_width) / max(0.001, ring_width * 0.9)
                 wave_strength = max(0.0, (0.18 + 0.12 * error_ratio) * (1.0 - tail_ratio))
-            radial_decay = max(0.68, 1.0 - (pseudo_radius / (max_radius + 1.2)))
+            radial_decay = max(0.68, 1.0 - (radius / (max_radius + 1.2)))
             ring_decay = max(0.74, 1.0 - (ring_radius / (max_radius + ring_width + 1.8)))
             level = max(level, wave_strength * radial_decay * ring_decay * freshness)
         levels.append(_clamp(level, 0.0, 1.0))
@@ -502,11 +519,13 @@ def _compute_error_ratio(error_hosts: int, total_hosts: int) -> float:
 
 def _resolve_kitt_gradient_rings(phase_time: float, max_radius: float, error_ratio: float) -> List[Tuple[float, float, float]]:
     """Resolve outward-only ripple rings that expire after leaving the visible area."""
-    ring_speed = 1.1 + 2.8 * error_ratio
-    spawn_interval = max(1.6, 2.8 - (0.8 * error_ratio))
-    max_ring_width = max(1.1, 2.35 - (0.4 * error_ratio) + (error_ratio * 0.35))
+    spawn_interval = 1.0
+    bounded_ratio = _clamp(error_ratio, 0.0, 1.0)
+    ring_speed = max(6.5, max_radius * 0.7)
+    visible_ring_count = 2 + int(math.ceil(bounded_ratio * 1.5))
+    max_ring_width = 1.0 + (0.55 * bounded_ratio)
     ring_lifetime = (max_radius + max_ring_width + 0.8) / max(0.001, ring_speed)
-    visible_ring_count = max(2, min(6, 1 + int(math.ceil(ring_lifetime / max(0.001, spawn_interval)))))
+    visible_ring_count = max(visible_ring_count, min(4, 1 + int(math.ceil(ring_lifetime / max(0.001, spawn_interval)))))
     rings: List[Tuple[float, float, float]] = []
     latest_spawn_time = math.floor(phase_time / spawn_interval) * spawn_interval
     for ring_index in range(visible_ring_count):
@@ -515,13 +534,13 @@ def _resolve_kitt_gradient_rings(phase_time: float, max_radius: float, error_rat
         if age < 0.0 or age > ring_lifetime:
             continue
         ring_radius = age * ring_speed
-        if ring_radius < 1.85 or ring_radius > max_radius + max_ring_width:
+        if ring_radius < 0.1 or ring_radius > max_radius + max_ring_width:
             continue
         ring_width = max(
             1.1,
-            1.75 + (0.7 * error_ratio) + (ring_index * 0.16) + (ring_radius / max(6.0, max_radius)) * 1.1,
+            max_ring_width + (ring_index * 0.08) + (ring_radius / max(6.0, max_radius)) * 0.35,
         )
-        freshness = max(0.72, 1.0 - (age / max(0.001, ring_lifetime)))
+        freshness = max(0.65, 1.0 - (age / max(0.001, ring_lifetime)))
         rings.append((ring_radius, ring_width, freshness))
     return rings
 
@@ -532,18 +551,19 @@ def build_kitt_gradient_bar(
     use_color: bool,
     speed_hz: int = 10,
     band_width: int = 12,
-    phase_offset: int = 0,
+    row_index: int = 0,
+    body_height: int = 1,
     error_hosts: int = 0,
     total_hosts: int = 0,
 ) -> str:
     """Build one row of the center-out ripple Pulse effect."""
     if width <= 0:
         return ""
-    del speed_hz  # Gradient style speed is severity-driven.
-    del band_width  # Gradient width is severity-driven.
+    del speed_hz  # Reserved for backward-compatible signature/semantics.
+    del band_width  # Reserved for backward-compatible signature/semantics.
     error_ratio = _compute_error_ratio(error_hosts, total_hosts)
     strong_color, soft_color = _resolve_kitt_palette(error_ratio)
-    levels = _build_kitt_gradient_levels(width, now_utc, error_ratio, phase_offset=phase_offset)
+    levels = _build_kitt_gradient_levels(width, body_height, row_index, now_utc, error_ratio)
     return _render_kitt_levels(levels, use_color, strong_color, soft_color, core_color=strong_color)
 
 
@@ -569,12 +589,12 @@ def render_pulse_panel(
     active_rows, start_row = _resolve_kitt_profile(body_height)
     for row in range(body_height):
         if normalized_style == "gradient":
-            phase = row - start_row
             bar = build_kitt_gradient_bar(
                 width,
                 now_utc,
                 use_color,
-                phase_offset=phase,
+                row_index=row,
+                body_height=body_height,
                 error_hosts=error_hosts,
                 total_hosts=total_hosts,
             )
