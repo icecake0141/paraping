@@ -36,6 +36,7 @@ from main import (  # noqa: E402
 from paraping.stats import resolve_site_tag1_labels  # noqa: E402
 from paraping.ui_render import (  # noqa: E402
     _resolve_kitt_gradient_rings,
+    _resolve_kitt_scanner_speed_hz,
     build_colored_sparkline,
     build_colored_timeline,
     build_display_entries,
@@ -1461,6 +1462,16 @@ class TestActivityIndicator(unittest.TestCase):
         self.assertEqual(len(lines), 5)
         self.assertIn("Pulse [Gradient]", lines[0])
 
+    def test_render_kitt_bottom_band_scanner_expands_to_fill_available_height(self):
+        """Scanner rows should use the full Pulse band body height on tall terminals."""
+        with patch("paraping.ui_render.time.monotonic", return_value=0.25):
+            lines = render_kitt_bottom_band(60, 12, "scanner", datetime.now(timezone.utc), use_color=False)
+
+        body_rows = lines[2:]
+        active_rows = [line for line in body_rows if line.strip()]
+        self.assertEqual(len(body_rows), 10)
+        self.assertEqual(len(active_rows), 10)
+
     def test_kitt_scanner_rows_share_a_center_and_taper_symmetrically(self):
         """Scanner rows should align on one center and widen toward the middle rows."""
         now = datetime.fromtimestamp(0.25, tz=timezone.utc)
@@ -1495,6 +1506,34 @@ class TestActivityIndicator(unittest.TestCase):
         self.assertEqual(widths[0], widths[-1])
         self.assertEqual(widths[1], widths[-2])
 
+    def test_kitt_scanner_rows_expand_symmetrically_with_taller_body(self):
+        """Scanner taper should remain symmetric when using a taller Pulse band."""
+        now = datetime.fromtimestamp(0.25, tz=timezone.utc)
+        with patch("paraping.ui_render.time.monotonic", return_value=0.25):
+            rows = [
+                build_kitt_scanner_bar(
+                    41,
+                    now,
+                    use_color=False,
+                    row_index=index,
+                    total_rows=12,
+                    error_hosts=5,
+                    total_hosts=10,
+                )
+                for index in range(12)
+            ]
+
+        widths = []
+        for row in rows:
+            active = [idx for idx, ch in enumerate(row) if ch != " "]
+            self.assertTrue(active)
+            widths.append(len(active))
+
+        self.assertLess(widths[0], widths[5])
+        self.assertLess(widths[-1], widths[6])
+        self.assertEqual(widths[0], widths[-1])
+        self.assertEqual(widths[1], widths[-2])
+
     def test_kitt_scanner_speed_scales_with_error_hosts(self):
         """Scanner center should move farther over time at higher severity."""
         early = datetime.fromtimestamp(0.00, tz=timezone.utc)
@@ -1521,6 +1560,12 @@ class TestActivityIndicator(unittest.TestCase):
         low_shift = abs(_band_center(low_later) - _band_center(low_early))
         high_shift = abs(_band_center(high_later) - _band_center(high_early))
         self.assertGreater(high_shift, low_shift)
+
+    def test_kitt_scanner_healthy_speed_is_reduced_relative_to_original_curve(self):
+        """Healthy scanner speed should be noticeably slower than the legacy 2.0Hz baseline."""
+        self.assertLess(_resolve_kitt_scanner_speed_hz(0.0), 1.5)
+        self.assertGreater(_resolve_kitt_scanner_speed_hz(0.8), _resolve_kitt_scanner_speed_hz(0.0))
+        self.assertGreater(_resolve_kitt_scanner_speed_hz(0.8), 8.0)
 
     def test_kitt_scanner_palette_stage_thresholds(self):
         """Scanner colors should follow the same severity palette as gradient mode."""
