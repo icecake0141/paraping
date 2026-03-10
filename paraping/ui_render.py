@@ -41,6 +41,7 @@ from paraping.stats import (
     resolve_group_components,
     resolve_group_labels,
     resolve_primary_group_label,
+    resolve_site_tag1_labels,
 )
 
 # ANSI and display constants (imported from main)
@@ -1372,36 +1373,37 @@ def build_group_header_line_map(
     group_by: str,
     group_summary_data: Sequence[Dict[str, Any]],
 ) -> Dict[str, List[str]]:
-    """Build group header text blocks keyed by primary group label."""
+    """Build group header text blocks keyed by group label."""
     if group_by == "site>tag1":
         site_entries = [entry for entry in group_summary_data if entry.get("row_kind") == "site"]
         tag_entries = [entry for entry in group_summary_data if entry.get("row_kind") == "tag1"]
         site_summary = {entry.get("group_label", entry["host"]): entry for entry in site_entries}
-        tag_by_site: Dict[str, List[Dict[str, Any]]] = {}
-        for entry in tag_entries:
-            parent = entry.get("parent_label")
-            if isinstance(parent, str):
-                tag_by_site.setdefault(parent, []).append(entry)
-
-        site_header_lines: Dict[str, List[str]] = {}
+        tag_summary = {entry.get("group_label", entry["host"]): entry for entry in tag_entries}
+        site_tag_header_lines: Dict[str, List[str]] = {}
         info_by_id = {info["id"]: info for info in active_host_infos}
         for host_id in ordered_host_ids:
             info = info_by_id.get(host_id)
             if info is None:
                 continue
-            site_label = resolve_primary_group_label(info, group_by)
-            if site_label in site_header_lines:
-                continue
-            site_entry = site_summary.get(site_label, {})
-            site_member_count = int(site_entry.get("member_count", 0))
-            site_loss_rate = float(site_entry.get("loss_rate", 0.0))
-            lines = [f"--- {site_label} ({site_member_count} hosts, loss {site_loss_rate:.1f}%) ---"]
-            for tag_entry in tag_by_site.get(site_label, []):
+            labels = resolve_site_tag1_labels(info)
+            site_label = labels["site_label"]
+            composite_label = labels["composite_label"]
+            if site_label not in site_tag_header_lines:
+                site_entry = site_summary.get(site_label, {})
+                site_member_count = int(site_entry.get("member_count", 0))
+                site_loss_rate = float(site_entry.get("loss_rate", 0.0))
+                site_tag_header_lines[site_label] = [
+                    f"--- {site_label} ({site_member_count} hosts, loss {site_loss_rate:.1f}%) ---"
+                ]
+            if composite_label not in site_tag_header_lines:
+                tag_entry = tag_summary.get(composite_label, {})
                 tag_member_count = int(tag_entry.get("member_count", 0))
                 tag_loss_rate = float(tag_entry.get("loss_rate", 0.0))
-                lines.append(f"  --- {tag_entry['host']} ({tag_member_count} hosts, loss {tag_loss_rate:.1f}%) ---")
-            site_header_lines[site_label] = lines
-        return site_header_lines
+                tag_label = str(tag_entry.get("host", labels["tag1_label"]))
+                site_tag_header_lines[composite_label] = [
+                    f"  --- {tag_label} ({tag_member_count} hosts, loss {tag_loss_rate:.1f}%) ---"
+                ]
+        return site_tag_header_lines
 
     summary_by_label = {entry["host"]: entry for entry in group_summary_data}
     info_by_id = {info["id"]: info for info in active_host_infos}
@@ -1424,6 +1426,47 @@ def build_group_header_line_map(
                 continue
         header_lines[primary_label] = [f"--- {primary_label}{suffix} ---"]
     return header_lines
+
+
+def resolve_group_header_lines(
+    host_id: Any,
+    group_by: str,
+    current_primary_group: Optional[str],
+    current_tree_group: Optional[str],
+    host_group_labels: Optional[Dict[int, str]],
+    host_tree_labels: Optional[Dict[int, str]],
+    group_header_lines: Optional[Mapping[str, Union[str, List[str]]]],
+) -> Tuple[List[str], Optional[str], Optional[str]]:
+    """Resolve which group headers should be inserted before a host row."""
+    if not host_group_labels:
+        return [], current_primary_group, current_tree_group
+
+    primary_group_label = host_group_labels.get(host_id)
+    if not primary_group_label:
+        return [], current_primary_group, current_tree_group
+
+    tree_group_label = host_tree_labels.get(host_id) if host_tree_labels else primary_group_label
+    header_stack: List[str] = []
+
+    def _as_lines(label: str, fallback: str) -> List[str]:
+        if not group_header_lines:
+            return [fallback]
+        header_value = group_header_lines.get(label, [fallback])
+        if isinstance(header_value, str):
+            return [header_value]
+        return list(header_value)
+
+    if group_by == "site>tag1":
+        if primary_group_label != current_primary_group:
+            header_stack.extend(_as_lines(primary_group_label, f"--- {primary_group_label} ---"))
+        if tree_group_label and tree_group_label != current_tree_group:
+            header_stack.extend(_as_lines(tree_group_label, f"  --- {tree_group_label} ---"))
+        return header_stack, primary_group_label, tree_group_label
+
+    if primary_group_label != current_primary_group:
+        header_stack.extend(_as_lines(primary_group_label, f"--- {primary_group_label} ---"))
+        return header_stack, primary_group_label, tree_group_label
+    return [], current_primary_group, current_tree_group
 
 
 def render_timeline_view(
@@ -1475,23 +1518,23 @@ def render_timeline_view(
     lines = []
     lines.append(header)
     lines.append("".join("-" for _ in range(render_width)))
-    current_group = None
+    current_primary_group = None
+    current_tree_group = None
     for entry in truncated_entries:
         host = entry[0]
         base_label = str(entry[1]) if len(entry) >= 2 else str(entry[0])
         label = label_overrides.get(host, base_label)
         is_removed = "[REMOVED]" in label
-        host_group_label = host_group_labels.get(host) if host_group_labels else None
-        if show_group_headers and host_group_label and host_group_label != current_group:
-            current_group = host_group_label
-            if group_header_lines:
-                header_value = group_header_lines.get(host_group_label, [f"--- {host_group_label} ---"])
-                if isinstance(header_value, str):
-                    header_stack = [header_value]
-                else:
-                    header_stack = header_value
-            else:
-                header_stack = [f"--- {host_group_label} ---"]
+        if show_group_headers:
+            header_stack, current_primary_group, current_tree_group = resolve_group_header_lines(
+                host,
+                group_by,
+                current_primary_group,
+                current_tree_group,
+                host_group_labels,
+                host_tree_labels,
+                group_header_lines,
+            )
             for header_line in header_stack:
                 lines.append(header_line[:render_width])
         timeline_symbols = list(buffers[host]["timeline"])
@@ -1563,23 +1606,23 @@ def render_sparkline_view(
     lines = []
     lines.append(header)
     lines.append("".join("-" for _ in range(render_width)))
-    current_group = None
+    current_primary_group = None
+    current_tree_group = None
     for entry in truncated_entries:
         host = entry[0]
         base_label = str(entry[1]) if len(entry) >= 2 else str(entry[0])
         label = label_overrides.get(host, base_label)
         is_removed = "[REMOVED]" in label
-        host_group_label = host_group_labels.get(host) if host_group_labels else None
-        if show_group_headers and host_group_label and host_group_label != current_group:
-            current_group = host_group_label
-            if group_header_lines:
-                header_value = group_header_lines.get(host_group_label, [f"--- {host_group_label} ---"])
-                if isinstance(header_value, str):
-                    header_stack = [header_value]
-                else:
-                    header_stack = header_value
-            else:
-                header_stack = [f"--- {host_group_label} ---"]
+        if show_group_headers:
+            header_stack, current_primary_group, current_tree_group = resolve_group_header_lines(
+                host,
+                group_by,
+                current_primary_group,
+                current_tree_group,
+                host_group_labels,
+                host_tree_labels,
+                group_header_lines,
+            )
             for header_line in header_stack:
                 lines.append(header_line[:render_width])
         rtt_values = list(buffers[host]["rtt_history"])[-timeline_width:]
@@ -1697,23 +1740,23 @@ def render_square_view(
     lines.append(header)
     lines.append("".join("-" for _ in range(render_width)))
 
-    current_group = None
+    current_primary_group = None
+    current_tree_group = None
     for entry in truncated_entries:
         host = entry[0]
         base_label = str(entry[1]) if len(entry) >= 2 else str(entry[0])
         label = label_overrides.get(host, base_label)
         is_removed = "[REMOVED]" in label
-        host_group_label = host_group_labels.get(host) if host_group_labels else None
-        if show_group_headers and host_group_label and host_group_label != current_group:
-            current_group = host_group_label
-            if group_header_lines:
-                header_value = group_header_lines.get(host_group_label, [f"--- {host_group_label} ---"])
-                if isinstance(header_value, str):
-                    header_stack = [header_value]
-                else:
-                    header_stack = header_value
-            else:
-                header_stack = [f"--- {host_group_label} ---"]
+        if show_group_headers:
+            header_stack, current_primary_group, current_tree_group = resolve_group_header_lines(
+                host,
+                group_by,
+                current_primary_group,
+                current_tree_group,
+                host_group_labels,
+                host_tree_labels,
+                group_header_lines,
+            )
             for header_line in header_stack:
                 lines.append(header_line[:render_width])
         timeline_symbols = list(buffers[host]["timeline"])

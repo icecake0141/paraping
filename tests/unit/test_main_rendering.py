@@ -648,25 +648,22 @@ class TestColorAndNonTTY(unittest.TestCase):
         self.assertIn("└ internal.example", combined)
 
     def test_render_views_site_tag1_hierarchical_headers(self):
-        """site>tag1 should render site header once with nested tag1 headers."""
-        entries = [(0, "h0"), (1, "h1"), (2, "h2")]
-        buffers = _make_buffers([0, 1, 2], timeline_data=["."])
-        host_group_labels = {0: "site:tokyo", 1: "site:tokyo", 2: "site:osaka"}
+        """site>tag1 should render site and tag headers alongside matching hosts."""
+        entries = [(0, "h0"), (1, "h1"), (2, "h2"), (3, "h3")]
+        buffers = _make_buffers([0, 1, 2, 3], timeline_data=["."])
+        host_group_labels = {0: "site:tokyo", 1: "site:tokyo", 2: "site:tokyo", 3: "site:osaka"}
         host_tree_labels = {
             0: "site:tokyo>tag1:web",
-            1: "site:tokyo>tag1:db",
-            2: "site:osaka>tag1:web",
+            1: "site:tokyo>tag1:web",
+            2: "site:tokyo>tag1:db",
+            3: "site:osaka>tag1:web",
         }
         group_header_lines = {
-            "site:tokyo": [
-                "--- site:tokyo (2 hosts, loss 0.0%) ---",
-                "  --- tag1:web (1 hosts, loss 0.0%) ---",
-                "  --- tag1:db (1 hosts, loss 0.0%) ---",
-            ],
-            "site:osaka": [
-                "--- site:osaka (1 hosts, loss 0.0%) ---",
-                "  --- tag1:web (1 hosts, loss 0.0%) ---",
-            ],
+            "site:tokyo": ["--- site:tokyo (3 hosts, loss 0.0%) ---"],
+            "site:tokyo>tag1:web": ["  --- tag1:web (2 hosts, loss 0.0%) ---"],
+            "site:tokyo>tag1:db": ["  --- tag1:db (1 hosts, loss 0.0%) ---"],
+            "site:osaka": ["--- site:osaka (1 hosts, loss 0.0%) ---"],
+            "site:osaka>tag1:web": ["  --- tag1:web (1 hosts, loss 0.0%) ---"],
         }
 
         for render_fn in (render_timeline_view, render_sparkline_view, render_square_view):
@@ -685,11 +682,56 @@ class TestColorAndNonTTY(unittest.TestCase):
             )
             combined = "\n".join(lines)
             self.assertEqual(combined.count("--- site:tokyo"), 1)
-            self.assertIn("  --- tag1:web", combined)
-            self.assertIn("  --- tag1:db", combined)
-            self.assertIn("└ h0", combined)
-            self.assertIn("└ h1", combined)
-            self.assertIn("└ h2", combined)
+            self.assertEqual(combined.count("  --- tag1:web"), 2)
+            self.assertEqual(combined.count("  --- tag1:db"), 1)
+            self.assertLess(combined.index("  --- tag1:web (2 hosts, loss 0.0%) ---"), combined.index("├ h0"))
+            self.assertLess(combined.index("├ h0"), combined.index("└ h1"))
+            self.assertLess(combined.index("└ h1"), combined.index("  --- tag1:db (1 hosts, loss 0.0%) ---"))
+            self.assertLess(combined.index("  --- tag1:db (1 hosts, loss 0.0%) ---"), combined.index("└ h2"))
+            self.assertLess(
+                combined.index("--- site:osaka (1 hosts, loss 0.0%) ---"),
+                combined.index("  --- tag1:web (1 hosts, loss 0.0%) ---"),
+            )
+            self.assertLess(combined.index("  --- tag1:web (1 hosts, loss 0.0%) ---"), combined.index("└ h3"))
+
+    def test_render_views_site_tag1_scroll_repeats_needed_headers(self):
+        """Scrolled site>tag1 views should re-render the current site and tag headers."""
+        entries = [(0, "h0"), (1, "h1"), (2, "h2"), (3, "h3")]
+        buffers = _make_buffers([0, 1, 2, 3], timeline_data=["."])
+        host_group_labels = {0: "site:tokyo", 1: "site:tokyo", 2: "site:tokyo", 3: "site:osaka"}
+        host_tree_labels = {
+            0: "site:tokyo>tag1:web",
+            1: "site:tokyo>tag1:web",
+            2: "site:tokyo>tag1:db",
+            3: "site:osaka>tag1:web",
+        }
+        group_header_lines = {
+            "site:tokyo": ["--- site:tokyo (3 hosts, loss 0.0%) ---"],
+            "site:tokyo>tag1:web": ["  --- tag1:web (2 hosts, loss 0.0%) ---"],
+            "site:tokyo>tag1:db": ["  --- tag1:db (1 hosts, loss 0.0%) ---"],
+            "site:osaka": ["--- site:osaka (1 hosts, loss 0.0%) ---"],
+            "site:osaka>tag1:web": ["  --- tag1:web (1 hosts, loss 0.0%) ---"],
+        }
+
+        for render_fn in (render_timeline_view, render_sparkline_view, render_square_view):
+            lines = render_fn(
+                entries,
+                buffers,
+                _SYMBOLS,
+                width=100,
+                height=20,
+                header="H",
+                scroll_offset=2,
+                show_group_headers=True,
+                host_group_labels=host_group_labels,
+                host_tree_labels=host_tree_labels,
+                group_header_lines=group_header_lines,
+                group_by="site>tag1",
+            )
+            combined = "\n".join(lines)
+            self.assertIn("--- site:tokyo (3 hosts, loss 0.0%) ---", combined)
+            self.assertIn("  --- tag1:db (1 hosts, loss 0.0%) ---", combined)
+            self.assertLess(combined.index("--- site:tokyo (3 hosts, loss 0.0%) ---"), combined.index("└ h2"))
 
     def test_truncate_visible_preserves_ansi(self):
         """truncate_visible must count only visible chars and keep ANSI codes."""
