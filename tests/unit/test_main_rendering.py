@@ -36,6 +36,7 @@ from main import (  # noqa: E402
 from paraping.stats import resolve_site_tag1_labels  # noqa: E402
 from paraping.ui_render import (  # noqa: E402
     _resolve_kitt_gradient_rings,
+    _resolve_kitt_scanner_speed_hz,
     build_colored_sparkline,
     build_colored_timeline,
     build_display_entries,
@@ -1461,6 +1462,16 @@ class TestActivityIndicator(unittest.TestCase):
         self.assertEqual(len(lines), 5)
         self.assertIn("Pulse [Gradient]", lines[0])
 
+    def test_render_kitt_bottom_band_scanner_expands_to_fill_available_height(self):
+        """Scanner rows should use the full Pulse band body height on tall terminals."""
+        with patch("paraping.ui_render.time.monotonic", return_value=0.25):
+            lines = render_kitt_bottom_band(60, 12, "scanner", datetime.now(timezone.utc), use_color=False)
+
+        body_rows = lines[2:]
+        active_rows = [line for line in body_rows if line.strip()]
+        self.assertEqual(len(body_rows), 10)
+        self.assertEqual(len(active_rows), 10)
+
     def test_kitt_scanner_rows_share_a_center_and_taper_symmetrically(self):
         """Scanner rows should align on one center and widen toward the middle rows."""
         now = datetime.fromtimestamp(0.25, tz=timezone.utc)
@@ -1495,6 +1506,34 @@ class TestActivityIndicator(unittest.TestCase):
         self.assertEqual(widths[0], widths[-1])
         self.assertEqual(widths[1], widths[-2])
 
+    def test_kitt_scanner_rows_expand_symmetrically_with_taller_body(self):
+        """Scanner taper should remain symmetric when using a taller Pulse band."""
+        now = datetime.fromtimestamp(0.25, tz=timezone.utc)
+        with patch("paraping.ui_render.time.monotonic", return_value=0.25):
+            rows = [
+                build_kitt_scanner_bar(
+                    41,
+                    now,
+                    use_color=False,
+                    row_index=index,
+                    total_rows=12,
+                    error_hosts=5,
+                    total_hosts=10,
+                )
+                for index in range(12)
+            ]
+
+        widths = []
+        for row in rows:
+            active = [idx for idx, ch in enumerate(row) if ch != " "]
+            self.assertTrue(active)
+            widths.append(len(active))
+
+        self.assertLess(widths[0], widths[5])
+        self.assertLess(widths[-1], widths[6])
+        self.assertEqual(widths[0], widths[-1])
+        self.assertEqual(widths[1], widths[-2])
+
     def test_kitt_scanner_speed_scales_with_error_hosts(self):
         """Scanner center should move farther over time at higher severity."""
         early = datetime.fromtimestamp(0.00, tz=timezone.utc)
@@ -1521,6 +1560,12 @@ class TestActivityIndicator(unittest.TestCase):
         low_shift = abs(_band_center(low_later) - _band_center(low_early))
         high_shift = abs(_band_center(high_later) - _band_center(high_early))
         self.assertGreater(high_shift, low_shift)
+
+    def test_kitt_scanner_healthy_speed_is_reduced_relative_to_original_curve(self):
+        """Healthy scanner speed should be noticeably slower than the legacy 2.0Hz baseline."""
+        self.assertLess(_resolve_kitt_scanner_speed_hz(0.0), 1.5)
+        self.assertGreater(_resolve_kitt_scanner_speed_hz(0.8), _resolve_kitt_scanner_speed_hz(0.0))
+        self.assertGreater(_resolve_kitt_scanner_speed_hz(0.8), 8.0)
 
     def test_kitt_scanner_palette_stage_thresholds(self):
         """Scanner colors should follow the same severity palette as gradient mode."""
@@ -1685,6 +1730,17 @@ class TestActivityIndicator(unittest.TestCase):
             band = build_kitt_gradient_bar(41, now, use_color=False, **self._gradient_kwargs(error_hosts=7))
         self.assertNotEqual(band[0], " ")
         self.assertNotEqual(band[-1], " ")
+
+    def test_kitt_gradient_reaches_outer_radius_on_wide_view(self):
+        """Gradient should preserve visible outer ripples on wider terminals too."""
+        now = datetime.fromtimestamp(7.4, tz=timezone.utc)
+        with patch("paraping.ui_render.time.monotonic", return_value=7.4):
+            band = build_kitt_gradient_bar(81, now, use_color=False, error_hosts=7, total_hosts=10)
+        active = [idx for idx, char in enumerate(band) if char != " "]
+        center = len(band) // 2
+        self.assertTrue(active)
+        self.assertGreaterEqual(center - active[0], 35)
+        self.assertGreaterEqual(active[-1] - center, 35)
 
     def test_kitt_gradient_ring_spacing_is_not_too_dense(self):
         """Gradient rings should be spaced apart enough to read as expanding waves."""
@@ -2223,6 +2279,7 @@ class TestBuildDisplayLines(unittest.TestCase):
         defaults = {
             "symbols": _SYMBOLS,
             "panel_position": "none",
+            "pulse_position": "none",
             "mode_label": "ip",
             "display_mode": "timeline",
             "summary_mode": "rates",
@@ -2319,6 +2376,7 @@ class TestBuildDisplayLines(unittest.TestCase):
             buffers,
             stats,
             panel_position="none",
+            pulse_position="bottom",
             kitt_mode_enabled=True,
             kitt_style="scanner",
         )
@@ -2334,6 +2392,7 @@ class TestBuildDisplayLines(unittest.TestCase):
             buffers,
             stats,
             panel_position="none",
+            pulse_position="bottom",
             kitt_mode_enabled=True,
             kitt_style="gradient",
         )
@@ -2353,6 +2412,7 @@ class TestBuildDisplayLines(unittest.TestCase):
             buffers,
             stats,
             panel_position="none",
+            pulse_position="bottom",
             kitt_mode_enabled=True,
             kitt_style="gradient",
             use_color=True,
@@ -2367,6 +2427,7 @@ class TestBuildDisplayLines(unittest.TestCase):
             buffers,
             stats,
             panel_position="none",
+            pulse_position="bottom",
             kitt_mode_enabled=True,
             kitt_style="gradient",
             use_color=True,
@@ -2377,6 +2438,49 @@ class TestBuildDisplayLines(unittest.TestCase):
         high_text = "\n".join(high)
         self.assertIn("\x1b[32m", low_text)
         self.assertIn("\x1b[31m", high_text)
+
+    @patch("paraping.ui_render.get_terminal_size", return_value=os.terminal_size((100, 30)))
+    def test_build_display_lines_pulse_top_places_panel_first(self, _mock_term_size):
+        host_infos, buffers, stats = self._setup()
+        result = self._call_build_display_lines(
+            host_infos, buffers, stats, panel_position="none", pulse_position="top", kitt_mode_enabled=True
+        )
+        self.assertTrue(result[0].startswith("Pulse ["))
+
+    @patch("paraping.ui_render.get_terminal_size", return_value=os.terminal_size((100, 30)))
+    def test_build_display_lines_pulse_left_splits_main_row(self, _mock_term_size):
+        host_infos, buffers, stats = self._setup()
+        result = self._call_build_display_lines(
+            host_infos, buffers, stats, panel_position="none", pulse_position="left", kitt_mode_enabled=True
+        )
+        self.assertTrue(result[0].startswith("Pulse ["))
+        self.assertIn("ParaPing - LIVE results", "\n".join(result))
+
+    @patch("paraping.ui_render.get_terminal_size", return_value=os.terminal_size((100, 30)))
+    def test_build_display_lines_pulse_right_splits_main_row(self, _mock_term_size):
+        host_infos, buffers, stats = self._setup()
+        result = self._call_build_display_lines(
+            host_infos, buffers, stats, panel_position="none", pulse_position="right", kitt_mode_enabled=True
+        )
+        self.assertIn("Pulse [", result[0])
+        self.assertFalse(result[0].startswith("Pulse ["))
+
+    @patch("paraping.ui_render.get_terminal_size", return_value=os.terminal_size((100, 30)))
+    def test_build_display_lines_pulse_uses_extra_blank_rows(self, _mock_term_size):
+        host_infos, buffers, stats = self._setup()
+        result = self._call_build_display_lines(
+            host_infos, buffers, stats, panel_position="none", pulse_position="bottom", kitt_mode_enabled=True
+        )
+        pulse_start = next(index for index, line in enumerate(result) if "Pulse [" in line)
+        self.assertLess(pulse_start, 24)
+
+    @patch("paraping.ui_render.get_terminal_size", return_value=os.terminal_size((40, 8)))
+    def test_build_display_lines_pulse_hides_when_no_blank_rows_remain(self, _mock_term_size):
+        host_infos, buffers, stats = self._setup(6)
+        result = self._call_build_display_lines(
+            host_infos, buffers, stats, panel_position="none", pulse_position="bottom", kitt_mode_enabled=True
+        )
+        self.assertNotIn("Pulse [", "\n".join(result))
 
 
 class TestMiscFunctions(unittest.TestCase):

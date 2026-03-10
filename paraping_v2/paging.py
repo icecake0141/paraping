@@ -36,6 +36,7 @@ def compute_history_page_step_v2(
     show_asn: bool,
     asn_width: int = 8,
     header_lines: int = 2,
+    pulse_position: str = "none",
 ) -> int:
     """Compute page step for history navigation from current layout."""
     term_size = paraping.ui_render.get_terminal_size(fallback=(80, 24))
@@ -47,6 +48,9 @@ def compute_history_page_step_v2(
     include_asn = should_show_asn(host_infos, mode_label, show_asn, term_width, asn_width=asn_width)
     display_names = build_display_names(host_infos, mode_label, include_asn, asn_width)
     main_width, main_height, _, _, _ = compute_panel_sizes(term_width, panel_height, panel_position)
+    main_width, main_height, _, _, _ = paraping.ui_render.compute_pulse_panel_sizes(
+        main_width, main_height, pulse_position, min_main_width=20, min_panel_height=3
+    )
     display_entries = build_display_entries(
         host_infos,
         display_names,
@@ -78,6 +82,7 @@ def get_cached_page_step_v2(
     filter_mode: str,
     slow_threshold: float,
     show_asn: bool,
+    pulse_position: str = "none",
 ) -> Tuple[int, int, Optional[TerminalSizeLike]]:
     """Get page step with terminal-size based caching."""
 
@@ -96,16 +101,17 @@ def get_cached_page_step_v2(
     current_term_size = paraping.ui_render.get_terminal_size(fallback=(80, 24))
     if cached_page_step is None or should_recalculate_page_step(last_term_size, current_term_size):
         page_step = compute_history_page_step_v2(
-            host_infos,
-            buffers,
-            stats,
-            symbols,
-            panel_position,
-            mode_label,
-            sort_mode,
-            filter_mode,
-            slow_threshold,
-            show_asn,
+            host_infos=host_infos,
+            buffers=buffers,
+            stats=stats,
+            symbols=symbols,
+            panel_position=panel_position,
+            mode_label=mode_label,
+            sort_mode=sort_mode,
+            filter_mode=filter_mode,
+            slow_threshold=slow_threshold,
+            show_asn=show_asn,
+            pulse_position=pulse_position,
         )
         return page_step, page_step, current_term_size
 
