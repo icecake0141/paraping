@@ -400,42 +400,42 @@ def build_kitt_gradient_bar(
     speed = _resolve_kitt_speed_hz(error_ratio)
     strong_color, soft_color = _resolve_kitt_palette(error_ratio)
     center = (width - 1) / 2.0
-    ring_speed = 1.5 + 5.5 * error_ratio
-    spawn_density = 1.0 + 4.0 * error_ratio
-    max_radius = max(1.0, center)
-    spawn_count = max(1, min(6, 1 + int(round(1 + error_ratio * 4))))
-    phase_time = (now_utc.timestamp() * speed) + phase_offset
+    row_offset = float(phase_offset)
+    max_radius = max(1.0, (center * center + row_offset * row_offset) ** 0.5)
+    ring_speed = 1.1 + 2.8 * error_ratio
+    ring_spacing = max(3.0, 8.0 - (3.5 * error_ratio))
+    spawn_count = max(2, min(6, 2 + int(round(error_ratio * 4))))
+    phase_time = now_utc.timestamp() * (0.6 + (0.12 * speed))
     levels: List[float] = []
     for index in range(width):
-        radius = abs(index - center)
+        distance_x = index - center
+        pseudo_radius = (distance_x * distance_x + row_offset * row_offset) ** 0.5
         level = 0.0
-        # A soft center glow keeps the origin visible between ripple fronts.
-        center_glow = max(0.0, 1.0 - (radius / max(1.0, 2.5 + (1.0 - error_ratio) * 1.5)))
-        level = max(level, center_glow * (0.25 + 0.35 * error_ratio))
+        is_center_dot = abs(distance_x) <= 0.5 and abs(row_offset) <= 0.5
+        if is_center_dot:
+            level = max(level, 0.75 + (0.2 * error_ratio))
         for ring_index in range(spawn_count):
-            spawn_offset = ring_index / spawn_density
-            ring_phase = (phase_time - spawn_offset) * ring_speed
-            if ring_phase < 0:
+            ring_radius = ((phase_time * ring_speed) + (ring_index * ring_spacing)) % (max_radius + 3.0)
+            if ring_radius < 1.5:
                 continue
-            ring_radius = ring_phase % (max_radius + 4.0)
-            ring_width = 0.8 + 1.8 * (1.0 - error_ratio) + (ring_index * 0.1)
-            distance = abs(radius - ring_radius)
+            ring_width = max(0.7, 1.6 - (0.7 * error_ratio) + (ring_index * 0.08))
+            distance = abs(pseudo_radius - ring_radius)
             if distance > ring_width:
                 continue
             wave_strength = 1.0 - (distance / max(0.001, ring_width))
-            age_decay = max(0.2, 1.0 - (ring_phase / (max_radius + 6.0)))
-            level = max(level, wave_strength * age_decay)
+            radial_decay = max(0.28, 1.0 - (pseudo_radius / (max_radius + 0.5)))
+            ring_decay = max(0.35, 1.0 - (ring_radius / (max_radius + 2.0)))
+            level = max(level, wave_strength * radial_decay * ring_decay)
         levels.append(_clamp(level, 0.0, 1.0))
-    peak_level = max(levels, default=0.0)
-    strong_threshold = max(0.25, peak_level * 0.8)
     chars: List[str] = []
-    for level in levels:
+    for index, level in enumerate(levels):
         char = _kitt_density_to_char(level)
         if not use_color or char == " ":
             chars.append(char)
+        elif abs(index - center) <= 0.5 and abs(row_offset) <= 0.5:
+            chars.append(f"{strong_color}{char}{ANSI_RESET}")
         else:
-            color = strong_color if level >= strong_threshold else soft_color
-            chars.append(f"{color}{char}{ANSI_RESET}")
+            chars.append(_kitt_colorize(char, level, use_color, strong_color, soft_color))
     return "".join(chars)
 
 

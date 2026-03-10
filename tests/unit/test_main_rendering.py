@@ -1471,24 +1471,20 @@ class TestActivityIndicator(unittest.TestCase):
         self.assertIn("\x1b[38;5;214m", orange)
         self.assertIn("\x1b[91m", red)
 
-    def test_kitt_gradient_speed_scales_with_error_hosts(self):
-        """Gradient style should add more simultaneous ripple fronts at higher severity."""
+    def test_kitt_gradient_activity_scales_with_error_hosts(self):
+        """Gradient style should show more active ripple area at higher severity."""
         now = datetime.fromtimestamp(0.75, tz=timezone.utc)
-        low = build_kitt_gradient_bar(80, now, use_color=False, error_hosts=0, total_hosts=10)
-        high = build_kitt_gradient_bar(80, now, use_color=False, error_hosts=8, total_hosts=10)
-
-        def _segments(text):
-            spans = 0
-            in_span = False
-            for char in text:
-                if char != " " and not in_span:
-                    spans += 1
-                    in_span = True
-                elif char == " ":
-                    in_span = False
-            return spans
-
-        self.assertGreater(_segments(high), _segments(low))
+        low_rows = [
+            build_kitt_gradient_bar(80, now, use_color=False, phase_offset=row, error_hosts=0, total_hosts=10)
+            for row in range(-2, 3)
+        ]
+        high_rows = [
+            build_kitt_gradient_bar(80, now, use_color=False, phase_offset=row, error_hosts=8, total_hosts=10)
+            for row in range(-2, 3)
+        ]
+        low_active = sum(1 for band in low_rows for char in band if char != " ")
+        high_active = sum(1 for band in high_rows for char in band if char != " ")
+        self.assertGreater(high_active, low_active)
 
     def test_kitt_gradient_palette_stage_thresholds(self):
         """Gradient palette should follow green/yellow/orange/red thresholds."""
@@ -1504,7 +1500,7 @@ class TestActivityIndicator(unittest.TestCase):
 
     def test_kitt_gradient_uses_soft_and_strong_colors(self):
         """Gradient should use strong peak color and softer trail color."""
-        now = datetime.fromtimestamp(1.0, tz=timezone.utc)
+        now = datetime.fromtimestamp(0.75, tz=timezone.utc)
         colored = build_kitt_gradient_bar(40, now, use_color=True, error_hosts=7, total_hosts=10)
         self.assertIn("\x1b[31m", colored)
         self.assertIn("\x1b[2;31m", colored)
@@ -1519,6 +1515,23 @@ class TestActivityIndicator(unittest.TestCase):
         self.assertTrue(any(idx < center for idx in active))
         self.assertTrue(any(idx > center for idx in active))
 
+    def test_kitt_gradient_center_is_single_origin_dot(self):
+        """Gradient should keep the origin as a single center dot, not a thick bar."""
+        now = datetime.fromtimestamp(0.12, tz=timezone.utc)
+        band = build_kitt_gradient_bar(41, now, use_color=False, error_hosts=0, total_hosts=10)
+        center = len(band) // 2
+        active = [idx for idx, ch in enumerate(band) if ch != " "]
+        center_cluster = [idx for idx in active if abs(idx - center) <= 1]
+        self.assertIn(center, active)
+        self.assertEqual(center_cluster, [center])
+
+    def test_kitt_gradient_rows_form_symmetric_ripple(self):
+        """Gradient rows should mirror each other around the center row."""
+        now = datetime.fromtimestamp(0.55, tz=timezone.utc)
+        upper = build_kitt_gradient_bar(41, now, use_color=False, phase_offset=-2, error_hosts=7, total_hosts=10)
+        lower = build_kitt_gradient_bar(41, now, use_color=False, phase_offset=2, error_hosts=7, total_hosts=10)
+        self.assertEqual(upper, lower)
+
     def test_kitt_gradient_decays_away_from_center(self):
         """Gradient ripple should weaken as it expands away from the center."""
         now = datetime.fromtimestamp(0.75, tz=timezone.utc)
@@ -1527,6 +1540,13 @@ class TestActivityIndicator(unittest.TestCase):
         density = {"█": 4, "▓": 3, "▒": 2, "░": 1, " ": 0}
         self.assertGreaterEqual(density.get(band[center], 0), density.get(band[0], 0))
         self.assertGreaterEqual(density.get(band[center], 0), density.get(band[-1], 0))
+
+    def test_kitt_gradient_small_width_keeps_center_dot(self):
+        """Gradient should still show a visible origin in narrow widths."""
+        now = datetime.fromtimestamp(0.05, tz=timezone.utc)
+        band = build_kitt_gradient_bar(3, now, use_color=False, error_hosts=0, total_hosts=10)
+        self.assertEqual(len(band), 3)
+        self.assertNotEqual(band[1], " ")
 
 
 class TestBuildDisplayEntries(unittest.TestCase):
