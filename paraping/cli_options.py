@@ -228,7 +228,7 @@ CLI_OPTION_SPECS: Tuple[OptionSpec, ...] = (
         flags=("--kitt",),
         boolean=True,
         default=False,
-        help_text="Initial Knight Rider mode state",
+        help_text="Initial Pulse mode state",
         config_key="kitt",
     ),
     OptionSpec(
@@ -237,7 +237,7 @@ CLI_OPTION_SPECS: Tuple[OptionSpec, ...] = (
         value_type=str,
         choices=("scanner", "gradient"),
         default="scanner",
-        help_text="Initial Knight Rider style (scanner|gradient)",
+        help_text="Initial Pulse style (scanner|gradient)",
         config_key="kitt_style",
     ),
     OptionSpec(

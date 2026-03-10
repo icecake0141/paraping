@@ -59,8 +59,8 @@ make run ARGS='-f hosts.txt'
 - `--summary-scope`: initial summary scope (`host|group`)
 - `--sort`: initial sort mode
 - `--filter`: initial filter mode
-- `--kitt, --no-kitt`: Knight Rider mode default
-- `--kitt-style`: Knight Rider style default (`scanner|gradient`)
+- `--kitt, --no-kitt`: Pulse mode default
+- `--kitt-style`: Pulse style default (`scanner|gradient`)
 - `--summary-fullscreen, --no-summary-fullscreen`: summary fullscreen default
 - `-H, --ping-helper`: helper binary path
 - `--no-config`: skip `~/.paraping.conf`
@@ -89,8 +89,8 @@ make run ARGS='-f hosts.txt'
 - `b`: bell-on-fail toggle
 - `p`: display pause toggle
 - `P`: dormant mode toggle (ping + display pause)
-- `y`: Knight Rider mode toggle
-- `Y`: Knight Rider style cycle (scanner/gradient)
+- `y`: Pulse mode toggle
+- `Y`: Pulse style cycle (scanner/gradient)
 - `s`: save snapshot file
 - `ESC`: exit graph/selector
 
@@ -150,8 +150,8 @@ make run ARGS='-f hosts.txt'
 - `--summary-scope`: 起動時サマリースコープ（`host|group`）
 - `--sort`: 起動時ソートモード
 - `--filter`: 起動時フィルタモード
-- `--kitt, --no-kitt`: Knight Rider モード初期状態
-- `--kitt-style`: Knight Rider スタイル初期状態（`scanner|gradient`）
+- `--kitt, --no-kitt`: Pulse モード初期状態
+- `--kitt-style`: Pulse スタイル初期状態（`scanner|gradient`）
 - `--summary-fullscreen, --no-summary-fullscreen`: サマリーフルスクリーン初期状態
 - `-H, --ping-helper`: ヘルパーバイナリパス
 - `--no-config`: `~/.paraping.conf` を読み込まない
@@ -180,8 +180,8 @@ make run ARGS='-f hosts.txt'
 - `b`: 失敗時ベル切替
 - `p`: 表示更新のみ一時停止
 - `P`: Dormant モード（ping + 表示更新停止）
-- `y`: Knight Rider モード切替
-- `Y`: Knight Rider スタイル切替（scanner/gradient）
+- `y`: Pulse モード切替
+- `Y`: Pulse スタイル切替（scanner/gradient）
 - `s`: スナップショット保存
 - `ESC`: グラフ/選択を終了
 

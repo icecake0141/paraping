@@ -110,7 +110,7 @@ class TestPanelToggle(unittest.TestCase):
 
 
 class TestKnightRiderHotkeys(unittest.TestCase):
-    """Test Knight Rider mode hotkeys."""
+    """Test Pulse mode hotkeys."""
 
     def _base_state(self):
         return {
@@ -128,7 +128,7 @@ class TestKnightRiderHotkeys(unittest.TestCase):
         }
 
     def test_y_toggles_kitt_mode(self):
-        """Pressing y should toggle Knight Rider mode on/off."""
+        """Pressing y should toggle Pulse mode on/off."""
         state = self._base_state()
         args = argparse.Namespace(slow_threshold=0.5, interval=1.0)
         _handle_user_input("y", args, state)
@@ -139,7 +139,7 @@ class TestKnightRiderHotkeys(unittest.TestCase):
         self.assertIn("disabled", state["status_message"])
 
     def test_capital_y_cycles_style_only_when_enabled(self):
-        """Pressing Y should cycle styles only when mode is enabled."""
+        """Pressing Y should cycle Pulse styles only when mode is enabled."""
         state = self._base_state()
         args = argparse.Namespace(slow_threshold=0.5, interval=1.0)
         _handle_user_input("Y", args, state)

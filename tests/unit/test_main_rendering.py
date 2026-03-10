@@ -88,7 +88,7 @@ class TestHelpView(unittest.TestCase):
         self.assertIn("?: toggle help", combined)
         self.assertIn("u: force full redraw", combined)
         self.assertIn("P: toggle Dormant Mode", combined)
-        self.assertIn("y: toggle Knight Rider mode", combined)
+        self.assertIn("y: toggle Pulse mode", combined)
         self.assertIn("Esc: go back", combined)
 
     def test_help_view_contains_group_hotkeys(self):
@@ -1397,16 +1397,16 @@ class TestActivityIndicator(unittest.TestCase):
         self.assertEqual(result, 15)
 
     def test_render_kitt_bottom_band_scanner(self):
-        """Knight Rider scanner band should render with a visible title."""
+        """Pulse scanner band should render with a visible title."""
         lines = render_kitt_bottom_band(60, 5, "scanner", datetime.now(timezone.utc), use_color=False)
         self.assertEqual(len(lines), 5)
-        self.assertIn("Knight Rider [Scanner]", lines[0])
+        self.assertIn("Pulse [Scanner]", lines[0])
 
     def test_render_kitt_bottom_band_gradient(self):
-        """Knight Rider gradient band should render with a visible title."""
+        """Pulse gradient band should render with a visible title."""
         lines = render_kitt_bottom_band(60, 5, "gradient", datetime.now(timezone.utc), use_color=False)
         self.assertEqual(len(lines), 5)
-        self.assertIn("Knight Rider [Gradient]", lines[0])
+        self.assertIn("Pulse [Gradient]", lines[0])
 
     def test_kitt_scanner_rows_share_a_center_and_taper_symmetrically(self):
         """Scanner rows should align on one center and widen toward the middle rows."""
@@ -2011,7 +2011,7 @@ class TestBuildDisplayLines(unittest.TestCase):
 
     @patch("paraping.ui_render.get_terminal_size", return_value=os.terminal_size((100, 30)))
     def test_build_display_lines_kitt_mode_enabled_shows_band(self, _mock_term_size):
-        """Knight Rider mode should include the bottom accent area on large terminals."""
+        """Pulse mode should include the bottom accent area on large terminals."""
         host_infos, buffers, stats = self._setup()
         result = self._call_build_display_lines(
             host_infos,
@@ -2022,11 +2022,11 @@ class TestBuildDisplayLines(unittest.TestCase):
             kitt_style="scanner",
         )
         combined = "\n".join(result)
-        self.assertIn("Knight Rider [Scanner]", combined)
+        self.assertIn("Pulse [Scanner]", combined)
 
     @patch("paraping.ui_render.get_terminal_size", return_value=os.terminal_size((20, 6)))
     def test_build_display_lines_kitt_mode_small_terminal_graceful(self, _mock_term_size):
-        """Knight Rider mode should gracefully degrade on tiny terminals."""
+        """Pulse mode should gracefully degrade on tiny terminals."""
         host_infos, buffers, stats = self._setup()
         result = self._call_build_display_lines(
             host_infos,
