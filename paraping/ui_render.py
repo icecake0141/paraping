@@ -508,7 +508,7 @@ def build_kitt_gradient_bar(
     return _render_kitt_levels(levels, use_color, strong_color, soft_color, core_color=strong_color)
 
 
-def render_kitt_bottom_band(
+def render_pulse_panel(
     width: int,
     height: int,
     style: str,
@@ -517,7 +517,7 @@ def render_kitt_bottom_band(
     error_hosts: int = 0,
     total_hosts: int = 0,
 ) -> List[str]:
-    """Render the lower Pulse accent area."""
+    """Render the Pulse accent area."""
     if width <= 0 or height <= 0:
         return []
     if height < 3:
@@ -554,6 +554,27 @@ def render_kitt_bottom_band(
                 )
         lines.append(pad_visible(bar, width))
     return pad_lines(lines, width, height)
+
+
+def render_kitt_bottom_band(
+    width: int,
+    height: int,
+    style: str,
+    now_utc: datetime,
+    use_color: bool,
+    error_hosts: int = 0,
+    total_hosts: int = 0,
+) -> List[str]:
+    """Backward-compatible wrapper for the Pulse panel renderer."""
+    return render_pulse_panel(
+        width,
+        height,
+        style,
+        now_utc,
+        use_color,
+        error_hosts=error_hosts,
+        total_hosts=total_hosts,
+    )
 
 
 # ============================================================================
@@ -648,6 +669,35 @@ def compute_panel_sizes(
     return term_width, term_height, 0, 0, "none"
 
 
+def compute_pulse_panel_sizes(
+    term_width: int,
+    term_height: int,
+    pulse_position: str,
+    min_panel_width: int = 20,
+    min_panel_height: int = 3,
+    min_main_width: int = 20,
+    gap: int = 1,
+) -> Tuple[int, int, int, int, str]:
+    """Compute the main/pulse split for independent Pulse panel placement."""
+    if pulse_position == "none":
+        return term_width, term_height, 0, 0, "none"
+
+    if term_width < min_main_width or term_height < min_panel_height:
+        return term_width, term_height, 0, 0, "none"
+
+    if pulse_position in ("left", "right"):
+        pulse_width = max(min_panel_width, term_width // 4)
+        main_width = term_width - pulse_width - gap
+        if main_width < min_main_width or pulse_width < min_panel_width:
+            return term_width, term_height, 0, 0, "none"
+        return main_width, term_height, pulse_width, term_height, pulse_position
+
+    if pulse_position in ("top", "bottom"):
+        return term_width, term_height, term_width, 0, pulse_position
+
+    return term_width, term_height, 0, 0, "none"
+
+
 def _summary_render_width(width: int, boxed: bool) -> int:
     """Compute summary render width accounting for boxed borders."""
     if width <= 0:
@@ -722,6 +772,7 @@ def compute_host_scroll_bounds(
     group_sort_enabled: bool = False,
     asn_width: int = 8,
     header_lines: int = 2,
+    pulse_position: str = "none",
 ) -> Tuple[int, int, int]:
     """Compute the scroll bounds for the host list."""
     term_size = get_terminal_size(fallback=(80, 24))
@@ -740,6 +791,13 @@ def compute_host_scroll_bounds(
         panel_height,
         panel_position,
         min_main_height=min_main_height,
+    )
+    main_width, main_height, _, _, _ = compute_pulse_panel_sizes(
+        main_width,
+        main_height,
+        pulse_position,
+        min_main_width=20,
+        min_panel_height=3,
     )
     display_entries = build_display_entries(
         host_infos,
@@ -822,6 +880,33 @@ def pad_lines(lines: Sequence[str], width: int, height: int) -> List[str]:
     while len(padded) < height:
         padded.append("".ljust(width))
     return padded
+
+
+def extract_trailing_pulse_space(lines: Sequence[str], boxed: bool) -> Tuple[List[str], int]:
+    """Return trimmed lines and Pulse height derived from trailing empty rows."""
+    trimmed = list(lines)
+    if not trimmed:
+        return trimmed, 0
+
+    empty_rows = 0
+    if boxed and len(trimmed) >= 3:
+        while len(trimmed) - 2 - empty_rows > 0:
+            candidate = strip_ansi(trimmed[-2 - empty_rows])
+            if candidate.startswith("|") and candidate.endswith("|") and not candidate[1:-1].strip():
+                empty_rows += 1
+                continue
+            break
+        if empty_rows <= 1:
+            return trimmed, 0
+        del trimmed[len(trimmed) - 1 - empty_rows : len(trimmed) - 1]
+        return trimmed, empty_rows - 1
+
+    while trimmed and not strip_ansi(trimmed[-1]).strip():
+        empty_rows += 1
+        trimmed.pop()
+    if empty_rows <= 1:
+        return list(lines), 0
+    return trimmed, empty_rows - 1
 
 
 def box_lines(lines: Sequence[str], width: int, height: int) -> List[str]:
@@ -2202,6 +2287,7 @@ def build_display_lines(  # noqa: C901
     group_sort_enabled: bool = False,
     kitt_mode_enabled: bool = False,
     kitt_style: str = "scanner",
+    pulse_position: str = "none",
 ) -> List[str]:
     """Build all display lines for the current state."""
     # Algorithm overview:
@@ -2246,6 +2332,13 @@ def build_display_lines(  # noqa: C901
         panel_position,
         min_main_height=min_main_height,
     )
+    main_width, main_height, pulse_width, _pulse_height, resolved_pulse_position = compute_pulse_panel_sizes(
+        main_width,
+        main_height,
+        pulse_position if kitt_mode_enabled else "none",
+        min_main_width=20,
+        min_panel_height=3,
+    )
     active_host_infos = [info for info in host_infos if info.get("active", True)]
     active_host_ids = {info["id"] for info in active_host_infos}
     host_group_labels = {info["id"]: resolve_primary_group_label(info, group_by) for info in active_host_infos}
@@ -2281,7 +2374,6 @@ def build_display_lines(  # noqa: C901
             ordered_group_labels=group_order,
         )
     summary_source = group_summary_data if summary_scope == "group" and group_by != "none" else summary_data
-    kitt_band_height = 0
     if not summary_fullscreen and resolved_position in ("top", "bottom") and summary_height > 0:
         summary_render_width = _summary_render_width(summary_width, use_panel_boxes)
         summary_all_for_height = can_render_full_summary(summary_source, summary_render_width)
@@ -2305,12 +2397,6 @@ def build_display_lines(  # noqa: C901
             timeline = buffers.get(info["id"], {}).get("timeline")
             if timeline and timeline[-1] == fail_symbol:
                 kitt_error_hosts += 1
-    if kitt_mode_enabled and not summary_fullscreen and not show_help and panel_height >= 8:
-        desired_band_height = max(3, panel_height // 4)
-        max_band_height = max(0, main_height - min_main_height)
-        if max_band_height >= 3:
-            kitt_band_height = min(desired_band_height, max_band_height)
-            main_height = max(min_main_height, main_height - kitt_band_height)
     summary_all = False
     main_lines = []
     summary_lines = []
@@ -2367,29 +2453,57 @@ def build_display_lines(  # noqa: C901
         combined_lines = render_help_view(term_width, panel_height, boxed=use_panel_boxes)
     elif summary_fullscreen:
         combined_lines = summary_lines
-    elif resolved_position in ("left", "right"):
-        for main_line, summary_line in zip(main_lines, summary_lines):
-            if resolved_position == "left":
-                combined_lines.append(f"{summary_line}{gap}{main_line}")
-            else:
-                combined_lines.append(f"{main_line}{gap}{summary_line}")
-    elif resolved_position == "top":
-        combined_lines = summary_lines + [""] + main_lines
-    elif resolved_position == "bottom":
-        combined_lines = main_lines + [""] + summary_lines
     else:
-        combined_lines = main_lines
-    if kitt_mode_enabled and kitt_band_height > 0 and not show_help and not summary_fullscreen:
-        kitt_lines = render_kitt_bottom_band(
-            term_width,
-            kitt_band_height,
-            kitt_style,
-            now_utc,
-            use_color,
-            error_hosts=kitt_error_hosts,
-            total_hosts=kitt_total_hosts,
-        )
-        combined_lines.extend(kitt_lines)
+        pulse_lines: List[str] = []
+        if kitt_mode_enabled and resolved_pulse_position in ("left", "right") and pulse_width > 0:
+            pulse_lines = render_pulse_panel(
+                pulse_width,
+                main_height,
+                kitt_style,
+                now_utc,
+                use_color,
+                error_hosts=kitt_error_hosts,
+                total_hosts=kitt_total_hosts,
+            )
+        elif kitt_mode_enabled and resolved_pulse_position in ("top", "bottom"):
+            main_lines, pulse_height = extract_trailing_pulse_space(main_lines, boxed=use_panel_boxes)
+            if pulse_height >= 3:
+                pulse_lines = render_pulse_panel(
+                    main_width,
+                    pulse_height,
+                    kitt_style,
+                    now_utc,
+                    use_color,
+                    error_hosts=kitt_error_hosts,
+                    total_hosts=kitt_total_hosts,
+                )
+
+        if resolved_position in ("left", "right"):
+            for main_line, summary_line in zip(main_lines, summary_lines):
+                if resolved_position == "left":
+                    combined_lines.append(f"{summary_line}{gap}{main_line}")
+                else:
+                    combined_lines.append(f"{main_line}{gap}{summary_line}")
+        elif resolved_position == "top":
+            combined_lines = summary_lines + [""] + main_lines
+        elif resolved_position == "bottom":
+            combined_lines = main_lines + [""] + summary_lines
+        else:
+            combined_lines = main_lines
+
+        if pulse_lines:
+            if resolved_pulse_position in ("left", "right"):
+                merged_lines = []
+                for combined_line, pulse_line in zip(combined_lines, pulse_lines):
+                    if resolved_pulse_position == "left":
+                        merged_lines.append(f"{pulse_line}{gap}{combined_line}")
+                    else:
+                        merged_lines.append(f"{combined_line}{gap}{pulse_line}")
+                combined_lines = merged_lines
+            elif resolved_pulse_position == "top":
+                combined_lines = pulse_lines + [""] + combined_lines
+            elif resolved_pulse_position == "bottom":
+                combined_lines = combined_lines + [""] + pulse_lines
 
     status_metrics = build_status_metrics(active_host_infos, stats, interval_seconds=interval_seconds)
     status_details = f"{status_metrics} | {status_message}" if status_message else status_metrics
@@ -2448,6 +2562,7 @@ def render_display(  # noqa: C901
     group_sort_enabled: bool = False,
     kitt_mode_enabled: bool = False,
     kitt_style: str = "scanner",
+    pulse_position: str = "none",
 ) -> None:
     """Render the complete display to the terminal."""
     global LAST_RENDER_LINES
@@ -2485,6 +2600,7 @@ def render_display(  # noqa: C901
             group_sort_enabled=group_sort_enabled,
             kitt_mode_enabled=kitt_mode_enabled,
             kitt_style=kitt_style,
+            pulse_position=pulse_position,
         )
     if not combined_lines:
         return

@@ -555,6 +555,56 @@ class TestCLIInputHandling(unittest.TestCase):
         self.assertTrue(state["pause_event"].is_set())
         self.assertEqual(state["status_message"], "Display paused")
 
+    def test_handle_user_input_toggle_pulse_panel(self):
+        """`n` toggles Pulse panel visibility."""
+        state = {
+            "show_help": False,
+            "host_select_active": False,
+            "graph_host_id": None,
+            "pulse_position": "bottom",
+            "last_pulse_position": "bottom",
+            "pulse_toggle_default": "bottom",
+            "status_message": None,
+            "cached_page_step": 1,
+            "force_render": False,
+            "updated": False,
+        }
+
+        skip_iteration = _handle_user_input("n", MagicMock(slow_threshold=0.5), state)
+
+        self.assertFalse(skip_iteration)
+        self.assertEqual(state["pulse_position"], "none")
+        self.assertEqual(state["last_pulse_position"], "bottom")
+        self.assertEqual(state["status_message"], "Pulse panel hidden")
+        self.assertIsNone(state["cached_page_step"])
+        self.assertTrue(state["force_render"])
+        self.assertTrue(state["updated"])
+
+    def test_handle_user_input_cycle_pulse_panel_position(self):
+        """`N` cycles Pulse panel positions."""
+        state = {
+            "show_help": False,
+            "host_select_active": False,
+            "graph_host_id": None,
+            "pulse_position": "left",
+            "last_pulse_position": "left",
+            "pulse_toggle_default": "bottom",
+            "status_message": None,
+            "cached_page_step": 1,
+            "force_render": False,
+            "updated": False,
+        }
+
+        skip_iteration = _handle_user_input("N", MagicMock(slow_threshold=0.5), state)
+
+        self.assertFalse(skip_iteration)
+        self.assertEqual(state["pulse_position"], "right")
+        self.assertEqual(state["last_pulse_position"], "right")
+        self.assertEqual(state["status_message"], "Pulse panel position: RIGHT")
+        self.assertIsNone(state["cached_page_step"])
+        self.assertTrue(state["force_render"])
+        self.assertTrue(state["updated"])
+
     def test_handle_user_input_group_scope_toggle(self):
         """`g` toggles summary scope between host and group."""
         state = {

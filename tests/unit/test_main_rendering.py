@@ -2127,6 +2127,7 @@ class TestBuildDisplayLines(unittest.TestCase):
         defaults = {
             "symbols": _SYMBOLS,
             "panel_position": "none",
+            "pulse_position": "none",
             "mode_label": "ip",
             "display_mode": "timeline",
             "summary_mode": "rates",
@@ -2223,6 +2224,7 @@ class TestBuildDisplayLines(unittest.TestCase):
             buffers,
             stats,
             panel_position="none",
+            pulse_position="bottom",
             kitt_mode_enabled=True,
             kitt_style="scanner",
         )
@@ -2238,6 +2240,7 @@ class TestBuildDisplayLines(unittest.TestCase):
             buffers,
             stats,
             panel_position="none",
+            pulse_position="bottom",
             kitt_mode_enabled=True,
             kitt_style="gradient",
         )
@@ -2257,6 +2260,7 @@ class TestBuildDisplayLines(unittest.TestCase):
             buffers,
             stats,
             panel_position="none",
+            pulse_position="bottom",
             kitt_mode_enabled=True,
             kitt_style="gradient",
             use_color=True,
@@ -2271,6 +2275,7 @@ class TestBuildDisplayLines(unittest.TestCase):
             buffers,
             stats,
             panel_position="none",
+            pulse_position="bottom",
             kitt_mode_enabled=True,
             kitt_style="gradient",
             use_color=True,
@@ -2281,6 +2286,49 @@ class TestBuildDisplayLines(unittest.TestCase):
         high_text = "\n".join(high)
         self.assertIn("\x1b[32m", low_text)
         self.assertIn("\x1b[31m", high_text)
+
+    @patch("paraping.ui_render.get_terminal_size", return_value=os.terminal_size((100, 30)))
+    def test_build_display_lines_pulse_top_places_panel_first(self, _mock_term_size):
+        host_infos, buffers, stats = self._setup()
+        result = self._call_build_display_lines(
+            host_infos, buffers, stats, panel_position="none", pulse_position="top", kitt_mode_enabled=True
+        )
+        self.assertTrue(result[0].startswith("Pulse ["))
+
+    @patch("paraping.ui_render.get_terminal_size", return_value=os.terminal_size((100, 30)))
+    def test_build_display_lines_pulse_left_splits_main_row(self, _mock_term_size):
+        host_infos, buffers, stats = self._setup()
+        result = self._call_build_display_lines(
+            host_infos, buffers, stats, panel_position="none", pulse_position="left", kitt_mode_enabled=True
+        )
+        self.assertTrue(result[0].startswith("Pulse ["))
+        self.assertIn("ParaPing - LIVE results", "\n".join(result))
+
+    @patch("paraping.ui_render.get_terminal_size", return_value=os.terminal_size((100, 30)))
+    def test_build_display_lines_pulse_right_splits_main_row(self, _mock_term_size):
+        host_infos, buffers, stats = self._setup()
+        result = self._call_build_display_lines(
+            host_infos, buffers, stats, panel_position="none", pulse_position="right", kitt_mode_enabled=True
+        )
+        self.assertIn("Pulse [", result[0])
+        self.assertFalse(result[0].startswith("Pulse ["))
+
+    @patch("paraping.ui_render.get_terminal_size", return_value=os.terminal_size((100, 30)))
+    def test_build_display_lines_pulse_uses_extra_blank_rows(self, _mock_term_size):
+        host_infos, buffers, stats = self._setup()
+        result = self._call_build_display_lines(
+            host_infos, buffers, stats, panel_position="none", pulse_position="bottom", kitt_mode_enabled=True
+        )
+        pulse_start = next(index for index, line in enumerate(result) if "Pulse [" in line)
+        self.assertLess(pulse_start, 24)
+
+    @patch("paraping.ui_render.get_terminal_size", return_value=os.terminal_size((40, 8)))
+    def test_build_display_lines_pulse_hides_when_no_blank_rows_remain(self, _mock_term_size):
+        host_infos, buffers, stats = self._setup(6)
+        result = self._call_build_display_lines(
+            host_infos, buffers, stats, panel_position="none", pulse_position="bottom", kitt_mode_enabled=True
+        )
+        self.assertNotIn("Pulse [", "\n".join(result))
 
 
 class TestMiscFunctions(unittest.TestCase):
