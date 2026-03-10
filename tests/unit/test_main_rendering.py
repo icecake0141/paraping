@@ -1626,6 +1626,51 @@ class TestActivityIndicator(unittest.TestCase):
             band = build_kitt_gradient_bar(41, now, use_color=False, error_hosts=7, total_hosts=10)
         self.assertEqual(band, band[::-1])
 
+    def test_kitt_gradient_does_not_wrap_outer_ring_back_to_center(self):
+        """Gradient should not reintroduce a strong inner ring when an outer ring expires."""
+        with patch("paraping.ui_render.time.monotonic", side_effect=[1.10, 1.15]):
+            before_wrap = build_kitt_gradient_bar(
+                41,
+                datetime.fromtimestamp(1.10, tz=timezone.utc),
+                use_color=False,
+                error_hosts=6,
+                total_hosts=10,
+            )
+            after_wrap = build_kitt_gradient_bar(
+                41,
+                datetime.fromtimestamp(1.15, tz=timezone.utc),
+                use_color=False,
+                error_hosts=6,
+                total_hosts=10,
+            )
+        center = len(before_wrap) // 2
+        inner_before = sum(
+            1 for idx, char in enumerate(before_wrap) if char != " " and abs(idx - center) <= 3 and idx != center
+        )
+        inner_after = sum(1 for idx, char in enumerate(after_wrap) if char != " " and abs(idx - center) <= 3 and idx != center)
+        self.assertLessEqual(inner_after, inner_before)
+
+    def test_kitt_gradient_changes_are_local_between_adjacent_frames(self):
+        """Gradient should evolve smoothly without long-distance teleports between nearby frames."""
+        with patch("paraping.ui_render.time.monotonic", side_effect=[1.10, 1.15]):
+            early = build_kitt_gradient_bar(
+                41,
+                datetime.fromtimestamp(1.10, tz=timezone.utc),
+                use_color=False,
+                error_hosts=6,
+                total_hosts=10,
+            )
+            later = build_kitt_gradient_bar(
+                41,
+                datetime.fromtimestamp(1.15, tz=timezone.utc),
+                use_color=False,
+                error_hosts=6,
+                total_hosts=10,
+            )
+        changed = [idx for idx, (early_char, later_char) in enumerate(zip(early, later)) if early_char != later_char]
+        self.assertTrue(changed)
+        self.assertLessEqual(max(changed) - min(changed), 10)
+
 
 class TestIncrementalRendering(unittest.TestCase):
     """Test diff rendering behaviour."""
@@ -1732,8 +1777,6 @@ class TestIncrementalRendering(unittest.TestCase):
         output = stdout.getvalue()
         self.assertIn("\x1b[4;1H\x1b[2K", output)
         self.assertNotIn("\x1b[4;2H", output)
-
-
 class TestBuildDisplayEntries(unittest.TestCase):
     """Test build_display_entries sorting and filtering."""
 
