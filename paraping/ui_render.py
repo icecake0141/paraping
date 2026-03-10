@@ -270,6 +270,12 @@ def _clamp(value: float, lower: float, upper: float) -> float:
 def _resolve_kitt_speed_hz(error_ratio: float) -> float:
     """Resolve Pulse animation speed from error ratio."""
     bounded_ratio = _clamp(error_ratio, 0.0, 1.0)
+    return 2.0 + 12.0 * bounded_ratio
+
+
+def _resolve_kitt_scanner_speed_hz(error_ratio: float) -> float:
+    """Resolve Scanner-only animation speed from error ratio."""
+    bounded_ratio = _clamp(error_ratio, 0.0, 1.0)
     base_speed = 2.0 + 12.0 * bounded_ratio
     # Slow healthy scanner motion, then blend back toward the original curve as severity rises.
     slowdown_blend = math.pow(bounded_ratio, 1.6)
@@ -318,7 +324,7 @@ def _resolve_kitt_scanner_position(width: int, now_utc: datetime, error_ratio: f
     del now_utc  # Motion is driven by monotonic time for smoothness.
     if width <= 1:
         return 0.0
-    speed_hz = _resolve_kitt_speed_hz(error_ratio)
+    speed_hz = _resolve_kitt_scanner_speed_hz(error_ratio)
     center = (width - 1) / 2.0
     span = max(1.0, center)
     return center + math.sin((time.monotonic() * speed_hz) + (phase_offset * 0.008)) * span

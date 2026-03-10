@@ -36,7 +36,7 @@ from main import (  # noqa: E402
 from paraping.stats import resolve_site_tag1_labels  # noqa: E402
 from paraping.ui_render import (  # noqa: E402
     _resolve_kitt_gradient_rings,
-    _resolve_kitt_speed_hz,
+    _resolve_kitt_scanner_speed_hz,
     build_colored_sparkline,
     build_colored_timeline,
     build_display_entries,
@@ -1563,9 +1563,9 @@ class TestActivityIndicator(unittest.TestCase):
 
     def test_kitt_scanner_healthy_speed_is_reduced_relative_to_original_curve(self):
         """Healthy scanner speed should be noticeably slower than the legacy 2.0Hz baseline."""
-        self.assertLess(_resolve_kitt_speed_hz(0.0), 1.5)
-        self.assertGreater(_resolve_kitt_speed_hz(0.8), _resolve_kitt_speed_hz(0.0))
-        self.assertGreater(_resolve_kitt_speed_hz(0.8), 8.0)
+        self.assertLess(_resolve_kitt_scanner_speed_hz(0.0), 1.5)
+        self.assertGreater(_resolve_kitt_scanner_speed_hz(0.8), _resolve_kitt_scanner_speed_hz(0.0))
+        self.assertGreater(_resolve_kitt_scanner_speed_hz(0.8), 8.0)
 
     def test_kitt_scanner_palette_stage_thresholds(self):
         """Scanner colors should follow the same severity palette as gradient mode."""
