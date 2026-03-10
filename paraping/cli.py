@@ -784,8 +784,11 @@ def _handle_user_input(
 
     def _handle_kitt_toggle() -> None:
         state["kitt_mode_enabled"] = not state["kitt_mode_enabled"]
-        if state["kitt_mode_enabled"] and state["pulse_position"] == "none":
-            restored_position = state["last_pulse_position"] or state["pulse_toggle_default"]
+        pulse_position = state.get("pulse_position", "none")
+        last_pulse_position = state.get("last_pulse_position", "bottom")
+        pulse_toggle_default = state.get("pulse_toggle_default", "bottom")
+        if state["kitt_mode_enabled"] and pulse_position == "none":
+            restored_position = last_pulse_position or pulse_toggle_default
             state["pulse_position"] = restored_position
             state["last_pulse_position"] = restored_position
         state["status_message"] = "Pulse mode enabled" if state["kitt_mode_enabled"] else "Pulse mode disabled"
