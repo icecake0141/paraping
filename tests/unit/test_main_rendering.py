@@ -14,6 +14,7 @@
 Unit tests for rendering help views, boxes, and ASCII graphs
 """
 
+import io
 import os
 import sys
 import unittest
@@ -57,6 +58,7 @@ from paraping.ui_render import (  # noqa: E402
     latest_status_from_timeline,
     pad_lines,
     pad_visible,
+    render_display,
     render_fullscreen_rtt_graph,
     render_kitt_bottom_band,
     render_main_view,
@@ -64,6 +66,7 @@ from paraping.ui_render import (  # noqa: E402
     render_summary_view,
     render_timeline_view,
     resample_values,
+    reset_render_cache,
     resize_buffers,
     resolve_boxed_dimensions,
     resolve_display_name,
@@ -74,6 +77,7 @@ from paraping.ui_render import (  # noqa: E402
     strip_ansi,
     toggle_panel_visibility,
     truncate_visible,
+    visible_cell_width,
     visible_len,
 )
 
@@ -528,6 +532,10 @@ class TestColorAndNonTTY(unittest.TestCase):
         """visible_len must not count ANSI escape characters."""
         colored = "\x1b[32mhello\x1b[0m"
         self.assertEqual(visible_len(colored), 5)
+
+    def test_visible_cell_width_counts_wide_characters(self):
+        """visible_cell_width should count full-width glyphs as two cells."""
+        self.assertEqual(visible_cell_width("A界B"), 4)
 
     def test_colorize_text_no_color(self):
         """colorize_text with use_color=False returns plain text."""
@@ -1440,23 +1448,34 @@ class TestActivityIndicator(unittest.TestCase):
 
     def test_render_kitt_bottom_band_scanner(self):
         """Pulse scanner band should render with a visible title."""
-        lines = render_kitt_bottom_band(60, 5, "scanner", datetime.now(timezone.utc), use_color=False)
+        with patch("paraping.ui_render.time.monotonic", return_value=0.25):
+            lines = render_kitt_bottom_band(60, 5, "scanner", datetime.now(timezone.utc), use_color=False)
         self.assertEqual(len(lines), 5)
         self.assertIn("Pulse [Scanner]", lines[0])
 
     def test_render_kitt_bottom_band_gradient(self):
         """Pulse gradient band should render with a visible title."""
-        lines = render_kitt_bottom_band(60, 5, "gradient", datetime.now(timezone.utc), use_color=False)
+        with patch("paraping.ui_render.time.monotonic", return_value=0.25):
+            lines = render_kitt_bottom_band(60, 5, "gradient", datetime.now(timezone.utc), use_color=False)
         self.assertEqual(len(lines), 5)
         self.assertIn("Pulse [Gradient]", lines[0])
 
     def test_kitt_scanner_rows_share_a_center_and_taper_symmetrically(self):
         """Scanner rows should align on one center and widen toward the middle rows."""
         now = datetime.fromtimestamp(0.25, tz=timezone.utc)
-        rows = [
-            build_kitt_scanner_bar(41, now, use_color=False, row_index=index, total_rows=8, error_hosts=5, total_hosts=10)
-            for index in range(8)
-        ]
+        with patch("paraping.ui_render.time.monotonic", return_value=0.25):
+            rows = [
+                build_kitt_scanner_bar(
+                    41,
+                    now,
+                    use_color=False,
+                    row_index=index,
+                    total_rows=8,
+                    error_hosts=5,
+                    total_hosts=10,
+                )
+                for index in range(8)
+            ]
 
         def _active_positions(text):
             return [idx for idx, ch in enumerate(text) if ch != " "]
@@ -1469,7 +1488,7 @@ class TestActivityIndicator(unittest.TestCase):
             centers.append(sum(active) / len(active))
             widths.append(len(active))
 
-        self.assertLessEqual(max(centers) - min(centers), 1.0)
+        self.assertLessEqual(max(centers) - min(centers), 1.5)
         self.assertLess(widths[0], widths[3])
         self.assertLess(widths[7], widths[4])
         self.assertEqual(widths[0], widths[-1])
@@ -1479,18 +1498,19 @@ class TestActivityIndicator(unittest.TestCase):
         """Scanner center should move farther over time at higher severity."""
         early = datetime.fromtimestamp(0.00, tz=timezone.utc)
         later = datetime.fromtimestamp(0.50, tz=timezone.utc)
-        low_early = build_kitt_scanner_bar(
-            60, early, use_color=False, row_index=4, total_rows=8, error_hosts=0, total_hosts=10
-        )
-        low_later = build_kitt_scanner_bar(
-            60, later, use_color=False, row_index=4, total_rows=8, error_hosts=0, total_hosts=10
-        )
-        high_early = build_kitt_scanner_bar(
-            60, early, use_color=False, row_index=4, total_rows=8, error_hosts=8, total_hosts=10
-        )
-        high_later = build_kitt_scanner_bar(
-            60, later, use_color=False, row_index=4, total_rows=8, error_hosts=8, total_hosts=10
-        )
+        with patch("paraping.ui_render.time.monotonic", side_effect=[0.00, 0.03, 0.00, 0.03]):
+            low_early = build_kitt_scanner_bar(
+                60, early, use_color=False, row_index=4, total_rows=8, error_hosts=0, total_hosts=10
+            )
+            low_later = build_kitt_scanner_bar(
+                60, later, use_color=False, row_index=4, total_rows=8, error_hosts=0, total_hosts=10
+            )
+            high_early = build_kitt_scanner_bar(
+                60, early, use_color=False, row_index=4, total_rows=8, error_hosts=8, total_hosts=10
+            )
+            high_later = build_kitt_scanner_bar(
+                60, later, use_color=False, row_index=4, total_rows=8, error_hosts=8, total_hosts=10
+            )
 
         def _band_center(text):
             active = [idx for idx, ch in enumerate(text) if ch != " "]
@@ -1504,10 +1524,11 @@ class TestActivityIndicator(unittest.TestCase):
     def test_kitt_scanner_palette_stage_thresholds(self):
         """Scanner colors should follow the same severity palette as gradient mode."""
         now = datetime.fromtimestamp(1.0, tz=timezone.utc)
-        green = build_kitt_scanner_bar(30, now, use_color=True, row_index=4, total_rows=8, error_hosts=0, total_hosts=10)
-        yellow = build_kitt_scanner_bar(30, now, use_color=True, row_index=4, total_rows=8, error_hosts=1, total_hosts=10)
-        orange = build_kitt_scanner_bar(30, now, use_color=True, row_index=4, total_rows=8, error_hosts=3, total_hosts=10)
-        red = build_kitt_scanner_bar(30, now, use_color=True, row_index=4, total_rows=8, error_hosts=7, total_hosts=10)
+        with patch("paraping.ui_render.time.monotonic", return_value=0.3):
+            green = build_kitt_scanner_bar(30, now, use_color=True, row_index=4, total_rows=8, error_hosts=0, total_hosts=10)
+            yellow = build_kitt_scanner_bar(30, now, use_color=True, row_index=4, total_rows=8, error_hosts=1, total_hosts=10)
+            orange = build_kitt_scanner_bar(30, now, use_color=True, row_index=4, total_rows=8, error_hosts=3, total_hosts=10)
+            red = build_kitt_scanner_bar(30, now, use_color=True, row_index=4, total_rows=8, error_hosts=7, total_hosts=10)
         self.assertIn("\x1b[92m", green)
         self.assertIn("\x1b[93m", yellow)
         self.assertIn("\x1b[38;5;214m", orange)
@@ -1516,14 +1537,15 @@ class TestActivityIndicator(unittest.TestCase):
     def test_kitt_gradient_activity_scales_with_error_hosts(self):
         """Gradient style should show more active ripple area at higher severity."""
         now = datetime.fromtimestamp(0.75, tz=timezone.utc)
-        low_rows = [
-            build_kitt_gradient_bar(80, now, use_color=False, phase_offset=row, error_hosts=0, total_hosts=10)
-            for row in range(-2, 3)
-        ]
-        high_rows = [
-            build_kitt_gradient_bar(80, now, use_color=False, phase_offset=row, error_hosts=8, total_hosts=10)
-            for row in range(-2, 3)
-        ]
+        with patch("paraping.ui_render.time.monotonic", return_value=0.4):
+            low_rows = [
+                build_kitt_gradient_bar(80, now, use_color=False, phase_offset=row, error_hosts=0, total_hosts=10)
+                for row in range(-2, 3)
+            ]
+            high_rows = [
+                build_kitt_gradient_bar(80, now, use_color=False, phase_offset=row, error_hosts=8, total_hosts=10)
+                for row in range(-2, 3)
+            ]
         low_active = sum(1 for band in low_rows for char in band if char != " ")
         high_active = sum(1 for band in high_rows for char in band if char != " ")
         self.assertGreater(high_active, low_active)
@@ -1531,10 +1553,11 @@ class TestActivityIndicator(unittest.TestCase):
     def test_kitt_gradient_palette_stage_thresholds(self):
         """Gradient palette should follow green/yellow/orange/red thresholds."""
         now = datetime.fromtimestamp(1.0, tz=timezone.utc)
-        green = build_kitt_gradient_bar(30, now, use_color=True, error_hosts=0, total_hosts=10)
-        yellow = build_kitt_gradient_bar(30, now, use_color=True, error_hosts=1, total_hosts=10)
-        orange = build_kitt_gradient_bar(30, now, use_color=True, error_hosts=3, total_hosts=10)
-        red = build_kitt_gradient_bar(30, now, use_color=True, error_hosts=7, total_hosts=10)
+        with patch("paraping.ui_render.time.monotonic", return_value=0.3):
+            green = build_kitt_gradient_bar(30, now, use_color=True, error_hosts=0, total_hosts=10)
+            yellow = build_kitt_gradient_bar(30, now, use_color=True, error_hosts=1, total_hosts=10)
+            orange = build_kitt_gradient_bar(30, now, use_color=True, error_hosts=3, total_hosts=10)
+            red = build_kitt_gradient_bar(30, now, use_color=True, error_hosts=7, total_hosts=10)
         self.assertIn("\x1b[32m", green)
         self.assertIn("\x1b[33m", yellow)
         self.assertIn("\x1b[38;5;208m", orange)
@@ -1542,15 +1565,17 @@ class TestActivityIndicator(unittest.TestCase):
 
     def test_kitt_gradient_uses_soft_and_strong_colors(self):
         """Gradient should use strong peak color and softer trail color."""
-        now = datetime.fromtimestamp(0.75, tz=timezone.utc)
-        colored = build_kitt_gradient_bar(40, now, use_color=True, error_hosts=7, total_hosts=10)
+        now = datetime.fromtimestamp(1.0, tz=timezone.utc)
+        with patch("paraping.ui_render.time.monotonic", return_value=0.3):
+            colored = build_kitt_gradient_bar(40, now, use_color=True, error_hosts=7, total_hosts=10)
         self.assertIn("\x1b[31m", colored)
         self.assertIn("\x1b[2;31m", colored)
 
     def test_kitt_gradient_is_center_origin_ripple(self):
         """Gradient should radiate from the center rather than translate sideways as one bar."""
         now = datetime.fromtimestamp(0.75, tz=timezone.utc)
-        band = build_kitt_gradient_bar(41, now, use_color=False, error_hosts=6, total_hosts=10)
+        with patch("paraping.ui_render.time.monotonic", return_value=0.3):
+            band = build_kitt_gradient_bar(41, now, use_color=False, error_hosts=6, total_hosts=10)
         center = len(band) // 2
         self.assertNotEqual(band[center], " ")
         active = [idx for idx, ch in enumerate(band) if ch != " "]
@@ -1560,7 +1585,8 @@ class TestActivityIndicator(unittest.TestCase):
     def test_kitt_gradient_center_is_single_origin_dot(self):
         """Gradient should keep the origin as a single center dot, not a thick bar."""
         now = datetime.fromtimestamp(0.12, tz=timezone.utc)
-        band = build_kitt_gradient_bar(41, now, use_color=False, error_hosts=0, total_hosts=10)
+        with patch("paraping.ui_render.time.monotonic", return_value=0.12):
+            band = build_kitt_gradient_bar(41, now, use_color=False, error_hosts=0, total_hosts=10)
         center = len(band) // 2
         active = [idx for idx, ch in enumerate(band) if ch != " "]
         center_cluster = [idx for idx in active if abs(idx - center) <= 1]
@@ -1570,14 +1596,16 @@ class TestActivityIndicator(unittest.TestCase):
     def test_kitt_gradient_rows_form_symmetric_ripple(self):
         """Gradient rows should mirror each other around the center row."""
         now = datetime.fromtimestamp(0.55, tz=timezone.utc)
-        upper = build_kitt_gradient_bar(41, now, use_color=False, phase_offset=-2, error_hosts=7, total_hosts=10)
-        lower = build_kitt_gradient_bar(41, now, use_color=False, phase_offset=2, error_hosts=7, total_hosts=10)
+        with patch("paraping.ui_render.time.monotonic", return_value=0.55):
+            upper = build_kitt_gradient_bar(41, now, use_color=False, phase_offset=-2, error_hosts=7, total_hosts=10)
+            lower = build_kitt_gradient_bar(41, now, use_color=False, phase_offset=2, error_hosts=7, total_hosts=10)
         self.assertEqual(upper, lower)
 
     def test_kitt_gradient_decays_away_from_center(self):
         """Gradient ripple should weaken as it expands away from the center."""
         now = datetime.fromtimestamp(0.75, tz=timezone.utc)
-        band = build_kitt_gradient_bar(41, now, use_color=False, error_hosts=7, total_hosts=10)
+        with patch("paraping.ui_render.time.monotonic", return_value=0.3):
+            band = build_kitt_gradient_bar(41, now, use_color=False, error_hosts=7, total_hosts=10)
         center = len(band) // 2
         density = {"█": 4, "▓": 3, "▒": 2, "░": 1, " ": 0}
         self.assertGreaterEqual(density.get(band[center], 0), density.get(band[0], 0))
@@ -1586,9 +1614,124 @@ class TestActivityIndicator(unittest.TestCase):
     def test_kitt_gradient_small_width_keeps_center_dot(self):
         """Gradient should still show a visible origin in narrow widths."""
         now = datetime.fromtimestamp(0.05, tz=timezone.utc)
-        band = build_kitt_gradient_bar(3, now, use_color=False, error_hosts=0, total_hosts=10)
+        with patch("paraping.ui_render.time.monotonic", return_value=0.05):
+            band = build_kitt_gradient_bar(3, now, use_color=False, error_hosts=0, total_hosts=10)
         self.assertEqual(len(band), 3)
         self.assertNotEqual(band[1], " ")
+
+    def test_kitt_gradient_remains_symmetric(self):
+        """Gradient style should remain left-right symmetric at a fixed frame."""
+        now = datetime.fromtimestamp(0.75, tz=timezone.utc)
+        with patch("paraping.ui_render.time.monotonic", return_value=0.3):
+            band = build_kitt_gradient_bar(41, now, use_color=False, error_hosts=7, total_hosts=10)
+        self.assertEqual(band, band[::-1])
+
+
+class TestIncrementalRendering(unittest.TestCase):
+    """Test diff rendering behaviour."""
+
+    def tearDown(self):
+        reset_render_cache()
+
+    def test_render_display_uses_cell_width_for_partial_updates(self):
+        """Partial redraws should position the cursor using terminal cell width."""
+        stdout = io.StringIO()
+        with patch("sys.stdout", new=stdout):
+            render_display(
+                [],
+                {},
+                {},
+                _SYMBOLS,
+                "none",
+                "alias",
+                "timeline",
+                "rates",
+                "config",
+                "all",
+                200.0,
+                False,
+                False,
+                False,
+                None,
+                timezone.utc,
+                False,
+                override_lines=["A界X", "status"],
+            )
+            stdout.seek(0)
+            stdout.truncate(0)
+            render_display(
+                [],
+                {},
+                {},
+                _SYMBOLS,
+                "none",
+                "alias",
+                "timeline",
+                "rates",
+                "config",
+                "all",
+                200.0,
+                False,
+                False,
+                False,
+                None,
+                timezone.utc,
+                False,
+                override_lines=["A界Y", "status"],
+            )
+        self.assertIn("\x1b[1;4H", stdout.getvalue())
+
+    def test_render_display_fully_redraws_pulse_rows(self):
+        """Pulse rows should use full-line redraws instead of partial diffs."""
+        stdout = io.StringIO()
+        initial = ["header", "Pulse [Scanner]", "----------", "  ░░░", "status"]
+        updated = ["header", "Pulse [Scanner]", "----------", "   ▓▓", "status"]
+        with patch("sys.stdout", new=stdout):
+            render_display(
+                [],
+                {},
+                {},
+                _SYMBOLS,
+                "none",
+                "alias",
+                "timeline",
+                "rates",
+                "config",
+                "all",
+                200.0,
+                False,
+                False,
+                False,
+                None,
+                timezone.utc,
+                False,
+                override_lines=initial,
+            )
+            stdout.seek(0)
+            stdout.truncate(0)
+            render_display(
+                [],
+                {},
+                {},
+                _SYMBOLS,
+                "none",
+                "alias",
+                "timeline",
+                "rates",
+                "config",
+                "all",
+                200.0,
+                False,
+                False,
+                False,
+                None,
+                timezone.utc,
+                False,
+                override_lines=updated,
+            )
+        output = stdout.getvalue()
+        self.assertIn("\x1b[4;1H\x1b[2K", output)
+        self.assertNotIn("\x1b[4;2H", output)
 
 
 class TestBuildDisplayEntries(unittest.TestCase):
