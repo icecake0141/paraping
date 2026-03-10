@@ -1683,6 +1683,17 @@ class TestActivityIndicator(unittest.TestCase):
         self.assertNotEqual(band[0], " ")
         self.assertNotEqual(band[-1], " ")
 
+    def test_kitt_gradient_reaches_outer_radius_on_wide_view(self):
+        """Gradient should preserve visible outer ripples on wider terminals too."""
+        now = datetime.fromtimestamp(0.7, tz=timezone.utc)
+        with patch("paraping.ui_render.time.monotonic", return_value=0.7):
+            band = build_kitt_gradient_bar(81, now, use_color=False, error_hosts=7, total_hosts=10)
+        active = [idx for idx, char in enumerate(band) if char != " "]
+        center = len(band) // 2
+        self.assertTrue(active)
+        self.assertGreaterEqual(center - active[0], 35)
+        self.assertGreaterEqual(active[-1] - center, 35)
+
     def test_kitt_gradient_ring_spacing_is_not_too_dense(self):
         """Gradient rings should be spaced apart enough to read as expanding waves."""
         rings = _resolve_kitt_gradient_rings(4.4, 20.0, 0.7)
