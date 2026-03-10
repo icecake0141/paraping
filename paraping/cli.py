@@ -1131,8 +1131,9 @@ def _update_render_state(state: Dict[str, Any]) -> None:
 def _render_frame(args: argparse.Namespace, state: Dict[str, Any]) -> None:
     """Render a frame when needed based on update and refresh timing state."""
     now = time.time()
+    refresh_interval = 0.05 if state["kitt_mode_enabled"] else state["refresh_interval"]
     should_render = state["force_render"] or (
-        not state["paused"] and (state["updated"] or (now - state["last_render"]) >= state["refresh_interval"])
+        not state["paused"] and (state["updated"] or (now - state["last_render"]) >= refresh_interval)
     )
     if not should_render:
         return

@@ -19,11 +19,13 @@ including ANSI text utilities, color/timeline building, layout computation,
 view rendering, graph utilities, formatting functions, and terminal utilities.
 """
 
+import math
 import os
 import re
 import sys
 import textwrap
 import time
+import unicodedata
 from collections import deque
 from datetime import datetime, timezone, tzinfo
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
@@ -78,6 +80,24 @@ def strip_ansi(text: str) -> str:
 def visible_len(text: str) -> int:
     """Get the visible length of text (excluding ANSI codes)."""
     return len(strip_ansi(text))
+
+
+def visible_cell_width(text: str) -> int:
+    """Get the terminal cell width of text, excluding ANSI codes."""
+    width = 0
+    index = 0
+    while index < len(text):
+        if text[index] == "\x1b":
+            match = ANSI_ESCAPE_RE.match(text, index)
+            if match:
+                index = match.end()
+                continue
+        char = text[index]
+        index += 1
+        if unicodedata.combining(char):
+            continue
+        width += 2 if unicodedata.east_asian_width(char) in ("F", "W") else 1
+    return width
 
 
 def truncate_visible(text: str, width: int) -> Tuple[str, int]:
@@ -290,16 +310,13 @@ def _resolve_kitt_profile(body_height: int, preferred_rows: int = 8) -> Tuple[in
 
 def _resolve_kitt_scanner_position(width: int, now_utc: datetime, error_ratio: float, phase_offset: int = 0) -> float:
     """Resolve the shared scanner center for the current frame."""
+    del now_utc  # Motion is driven by monotonic time for smoothness.
     if width <= 1:
         return 0.0
     speed_hz = _resolve_kitt_speed_hz(error_ratio)
-    span = max(1, width - 1)
-    cycle = span * 2
-    tick = int(now_utc.timestamp() * speed_hz) + phase_offset
-    position = tick % cycle
-    if position > span:
-        position = cycle - position
-    return float(position)
+    center = (width - 1) / 2.0
+    span = max(1.0, center)
+    return center + math.sin((time.monotonic() * speed_hz) + (phase_offset * 0.008)) * span
 
 
 def _scanner_row_profile(row_index: int, total_rows: int) -> float:
@@ -324,12 +341,118 @@ def _kitt_density_to_char(level: float) -> str:
     return " "
 
 
+def _sample_kitt_density(samples: Sequence[float]) -> float:
+    """Blend intensity samples to soften single-cell motion."""
+    if not samples:
+        return 0.0
+    peak = max(samples)
+    average = sum(samples) / len(samples)
+    return _clamp((peak * 0.7) + (average * 0.3), 0.0, 1.0)
+
+
 def _kitt_colorize(char: str, level: float, use_color: bool, strong_color: str, soft_color: str) -> str:
     """Colorize a drawable KITT character according to its intensity."""
     if not use_color or char == " ":
         return char
     color = strong_color if level >= 0.45 else soft_color
     return f"{color}{char}{ANSI_RESET}"
+
+
+def _render_kitt_levels(
+    levels: Sequence[float],
+    use_color: bool,
+    strong_color: str,
+    soft_color: str,
+    core_color: str = "",
+) -> str:
+    """Render a normalized intensity row into colored characters."""
+    if not levels:
+        return ""
+    strong_threshold = max(0.3, max(levels, default=0.0) * 0.82)
+    chars: List[str] = []
+    for level in levels:
+        char = _kitt_density_to_char(level)
+        if not use_color or char == " ":
+            chars.append(char)
+        elif core_color and level >= 0.92:
+            chars.append(f"{core_color}{char}{ANSI_RESET}")
+        else:
+            color = strong_color if level >= strong_threshold else soft_color
+            chars.append(f"{color}{char}{ANSI_RESET}")
+    return "".join(chars)
+
+
+def _build_kitt_scanner_levels(
+    width: int,
+    now_utc: datetime,
+    row_index: int,
+    total_rows: int,
+    error_ratio: float,
+) -> List[float]:
+    """Build a smooth scanner intensity map for one row."""
+    if width <= 0:
+        return []
+    row_strength = _scanner_row_profile(row_index, total_rows)
+    center = _resolve_kitt_scanner_position(width, now_utc, error_ratio, phase_offset=0)
+    base_half_width = max(3.0, width * (0.08 + 0.14 * error_ratio))
+    half_width = max(2.5, base_half_width * (0.75 + row_strength * 0.6))
+    skirt_width = half_width * (1.45 + (1.0 - row_strength) * 0.2)
+    vertical_emphasis = 0.55 + (row_strength * 0.75)
+    levels: List[float] = []
+    for index in range(width):
+        sample_points = (index - 0.35, index, index + 0.35)
+        samples = []
+        for sample in sample_points:
+            distance = abs(sample - center)
+            if distance > skirt_width:
+                samples.append(0.0)
+                continue
+            if distance <= half_width:
+                core = 1.0 - (distance / max(half_width, 0.001))
+                intensity = 0.45 + (core**0.55) * 0.75
+            else:
+                tail_distance = (distance - half_width) / max(skirt_width - half_width, 0.001)
+                intensity = max(0.0, 0.32 * ((1.0 - tail_distance) ** 1.8))
+            samples.append(intensity * vertical_emphasis)
+        levels.append(_sample_kitt_density(samples))
+    return levels
+
+
+def _build_kitt_gradient_levels(width: int, now_utc: datetime, error_ratio: float, phase_offset: int = 0) -> List[float]:
+    """Build a smooth center-out ripple intensity map."""
+    del now_utc
+    if width <= 0:
+        return []
+    center = (width - 1) / 2.0
+    row_offset = float(phase_offset)
+    max_radius = max(1.0, (center * center + row_offset * row_offset) ** 0.5)
+    speed = _resolve_kitt_speed_hz(error_ratio)
+    ring_speed = 1.1 + 2.8 * error_ratio
+    ring_spacing = max(3.0, 8.0 - (3.5 * error_ratio))
+    spawn_count = max(2, min(6, 2 + int(round(error_ratio * 4))))
+    phase_time = time.monotonic() * (0.6 + (0.12 * speed))
+    levels: List[float] = []
+    for index in range(width):
+        distance_x = index - center
+        pseudo_radius = (distance_x * distance_x + row_offset * row_offset) ** 0.5
+        level = 0.0
+        is_center_dot = abs(distance_x) <= 0.5 and abs(row_offset) <= 0.5
+        if is_center_dot:
+            level = max(level, 0.75 + (0.2 * error_ratio))
+        for ring_index in range(spawn_count):
+            ring_radius = ((phase_time * ring_speed) + (ring_index * ring_spacing)) % (max_radius + 3.0)
+            if ring_radius < 1.5:
+                continue
+            ring_width = max(0.7, 1.6 - (0.7 * error_ratio) + (ring_index * 0.08))
+            distance = abs(pseudo_radius - ring_radius)
+            if distance > ring_width:
+                continue
+            wave_strength = 1.0 - (distance / max(0.001, ring_width))
+            radial_decay = max(0.28, 1.0 - (pseudo_radius / (max_radius + 0.5)))
+            ring_decay = max(0.35, 1.0 - (ring_radius / (max_radius + 2.0)))
+            level = max(level, wave_strength * radial_decay * ring_decay)
+        levels.append(_clamp(level, 0.0, 1.0))
+    return levels
 
 
 def build_kitt_scanner_bar(
@@ -350,28 +473,10 @@ def build_kitt_scanner_bar(
     del speed_hz  # Severity-driven speed now controls the effect.
     del trail_width  # Width is derived from vertical profile and severity.
     error_ratio = _compute_error_ratio(error_hosts, total_hosts)
-    position = _resolve_kitt_scanner_position(width, now_utc, error_ratio, phase_offset=phase_offset)
-    row_strength = _scanner_row_profile(row_index, total_rows)
-    base_half_width = max(3.0, width * (0.07 + 0.13 * error_ratio))
-    half_width = max(2.0, base_half_width * row_strength)
     strong_color, soft_color = _resolve_kitt_palette(error_ratio)
     core_color = _resolve_kitt_core_color(error_ratio)
-    chars: List[str] = []
-    for index in range(width):
-        distance = abs(index - position)
-        if distance > half_width:
-            chars.append(" ")
-            continue
-        horizontal_strength = 1.0 - (distance / max(1.0, half_width))
-        level = _clamp((horizontal_strength**0.75) * row_strength, 0.0, 1.0)
-        char = _kitt_density_to_char(level)
-        if not use_color or char == " ":
-            chars.append(char)
-        elif distance <= 0.5 and row_strength >= 0.8:
-            chars.append(f"{core_color}{char}{ANSI_RESET}")
-        else:
-            chars.append(_kitt_colorize(char, level, use_color, strong_color, soft_color))
-    return "".join(chars)
+    levels = _build_kitt_scanner_levels(width, now_utc, row_index + phase_offset, total_rows, error_ratio)
+    return _render_kitt_levels(levels, use_color, strong_color, soft_color, core_color=core_color)
 
 
 def _compute_error_ratio(error_hosts: int, total_hosts: int) -> float:
@@ -398,46 +503,9 @@ def build_kitt_gradient_bar(
     del speed_hz  # Gradient style speed is severity-driven.
     del band_width  # Gradient width is severity-driven.
     error_ratio = _compute_error_ratio(error_hosts, total_hosts)
-    speed = _resolve_kitt_speed_hz(error_ratio)
     strong_color, soft_color = _resolve_kitt_palette(error_ratio)
-    center = (width - 1) / 2.0
-    row_offset = float(phase_offset)
-    max_radius = max(1.0, (center * center + row_offset * row_offset) ** 0.5)
-    ring_speed = 1.1 + 2.8 * error_ratio
-    ring_spacing = max(3.0, 8.0 - (3.5 * error_ratio))
-    spawn_count = max(2, min(6, 2 + int(round(error_ratio * 4))))
-    phase_time = now_utc.timestamp() * (0.6 + (0.12 * speed))
-    levels: List[float] = []
-    for index in range(width):
-        distance_x = index - center
-        pseudo_radius = (distance_x * distance_x + row_offset * row_offset) ** 0.5
-        level = 0.0
-        is_center_dot = abs(distance_x) <= 0.5 and abs(row_offset) <= 0.5
-        if is_center_dot:
-            level = max(level, 0.75 + (0.2 * error_ratio))
-        for ring_index in range(spawn_count):
-            ring_radius = ((phase_time * ring_speed) + (ring_index * ring_spacing)) % (max_radius + 3.0)
-            if ring_radius < 1.5:
-                continue
-            ring_width = max(0.7, 1.6 - (0.7 * error_ratio) + (ring_index * 0.08))
-            distance = abs(pseudo_radius - ring_radius)
-            if distance > ring_width:
-                continue
-            wave_strength = 1.0 - (distance / max(0.001, ring_width))
-            radial_decay = max(0.28, 1.0 - (pseudo_radius / (max_radius + 0.5)))
-            ring_decay = max(0.35, 1.0 - (ring_radius / (max_radius + 2.0)))
-            level = max(level, wave_strength * radial_decay * ring_decay)
-        levels.append(_clamp(level, 0.0, 1.0))
-    chars: List[str] = []
-    for index, level in enumerate(levels):
-        char = _kitt_density_to_char(level)
-        if not use_color or char == " ":
-            chars.append(char)
-        elif abs(index - center) <= 0.5 and abs(row_offset) <= 0.5:
-            chars.append(f"{strong_color}{char}{ANSI_RESET}")
-        else:
-            chars.append(_kitt_colorize(char, level, use_color, strong_color, soft_color))
-    return "".join(chars)
+    levels = _build_kitt_gradient_levels(width, now_utc, error_ratio, phase_offset=phase_offset)
+    return _render_kitt_levels(levels, use_color, strong_color, soft_color, core_color=strong_color)
 
 
 def render_kitt_bottom_band(
@@ -2432,6 +2500,9 @@ def render_display(  # noqa: C901
         return
 
     max_lines = max(len(LAST_RENDER_LINES), len(combined_lines))
+    pulse_start = _find_pulse_start(combined_lines)
+    if pulse_start is None:
+        pulse_start = _find_pulse_start(LAST_RENDER_LINES)
     output_chunks = []
     for index in range(max_lines):
         previous_line = LAST_RENDER_LINES[index] if index < len(LAST_RENDER_LINES) else None
@@ -2444,11 +2515,14 @@ def render_display(  # noqa: C901
         if not current_line:
             output_chunks.append(f"\x1b[{index + 1};1H\x1b[2K")
             continue
+        if pulse_start is not None and index >= pulse_start:
+            output_chunks.append(f"\x1b[{index + 1};1H\x1b[2K{current_line}")
+            continue
         diff_start = _find_safe_diff_start(previous_line, current_line)
         if diff_start <= 0:
             output_chunks.append(f"\x1b[{index + 1};1H{current_line}\x1b[K")
             continue
-        col = visible_len(current_line[:diff_start]) + 1
+        col = visible_cell_width(current_line[:diff_start]) + 1
         output_chunks.append(f"\x1b[{index + 1};{col}H{current_line[diff_start:]}\x1b[K")
 
     if output_chunks:
@@ -2462,6 +2536,14 @@ def reset_render_cache() -> None:
     """Force the next render call to redraw the full frame."""
     global LAST_RENDER_LINES
     LAST_RENDER_LINES = None
+
+
+def _find_pulse_start(lines: Sequence[str]) -> Optional[int]:
+    """Return the first Pulse band line index if present."""
+    for index, line in enumerate(lines):
+        if strip_ansi(line).startswith("Pulse ["):
+            return index
+    return None
 
 
 def _find_safe_diff_start(previous_line: str, current_line: str) -> int:
