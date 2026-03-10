@@ -439,11 +439,19 @@ def _build_kitt_gradient_levels(width: int, now_utc: datetime, error_ratio: floa
             level = max(level, 0.72 + (0.18 * error_ratio) + pulse)
         for ring_radius, ring_width, freshness in rings:
             distance = abs(pseudo_radius - ring_radius)
-            if distance > ring_width:
+            shoulder_distance = pseudo_radius - ring_radius
+            if distance > ring_width * 1.9:
                 continue
-            wave_strength = 1.0 - (distance / max(0.001, ring_width))
-            radial_decay = max(0.5, 1.0 - (pseudo_radius / (max_radius + 0.8)))
-            ring_decay = max(0.65, 1.0 - (ring_radius / (max_radius + ring_width + 1.0)))
+            if distance <= ring_width:
+                wave_strength = 1.0 - (distance / max(0.001, ring_width))
+            elif shoulder_distance > 0:
+                shoulder_ratio = (distance - ring_width) / max(0.001, ring_width * 0.9)
+                wave_strength = max(0.0, (0.12 + 0.08 * error_ratio) * (1.0 - shoulder_ratio))
+            else:
+                tail_ratio = (distance - ring_width) / max(0.001, ring_width * 0.9)
+                wave_strength = max(0.0, (0.18 + 0.12 * error_ratio) * (1.0 - tail_ratio))
+            radial_decay = max(0.68, 1.0 - (pseudo_radius / (max_radius + 1.2)))
+            ring_decay = max(0.74, 1.0 - (ring_radius / (max_radius + ring_width + 1.8)))
             level = max(level, wave_strength * radial_decay * ring_decay * freshness)
         levels.append(_clamp(level, 0.0, 1.0))
     return levels
@@ -485,9 +493,9 @@ def _resolve_kitt_gradient_rings(phase_time: float, max_radius: float, error_rat
     """Resolve outward-only ripple rings that expire after leaving the visible area."""
     ring_speed = 1.1 + 2.8 * error_ratio
     spawn_interval = max(1.6, 2.8 - (0.8 * error_ratio))
-    visible_ring_count = max(2, min(4, 2 + int(round(error_ratio * 2))))
-    max_ring_width = max(0.7, 1.55 - (0.55 * error_ratio) + ((visible_ring_count - 1) * 0.07))
+    max_ring_width = max(1.1, 2.35 - (0.4 * error_ratio) + (error_ratio * 0.35))
     ring_lifetime = (max_radius + max_ring_width + 0.8) / max(0.001, ring_speed)
+    visible_ring_count = max(2, min(6, 1 + int(math.ceil(ring_lifetime / max(0.001, spawn_interval)))))
     rings: List[Tuple[float, float, float]] = []
     latest_spawn_time = math.floor(phase_time / spawn_interval) * spawn_interval
     for ring_index in range(visible_ring_count):
@@ -498,8 +506,11 @@ def _resolve_kitt_gradient_rings(phase_time: float, max_radius: float, error_rat
         ring_radius = age * ring_speed
         if ring_radius < 1.85 or ring_radius > max_radius + max_ring_width:
             continue
-        ring_width = max(0.7, 1.55 - (0.55 * error_ratio) + (ring_index * 0.07))
-        freshness = max(0.6, 1.0 - (age / max(0.001, ring_lifetime)))
+        ring_width = max(
+            1.1,
+            1.75 + (0.7 * error_ratio) + (ring_index * 0.16) + (ring_radius / max(6.0, max_radius)) * 1.1,
+        )
+        freshness = max(0.72, 1.0 - (age / max(0.001, ring_lifetime)))
         rings.append((ring_radius, ring_width, freshness))
     return rings
 
