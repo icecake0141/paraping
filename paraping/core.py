@@ -132,6 +132,7 @@ def compute_history_page_step(
     show_asn: bool,
     asn_width: int = 8,
     header_lines: int = 2,
+    pulse_position: str = "none",
 ) -> int:
     """Compatibility shim for page-step computation."""
     return compute_history_page_step_v2(
@@ -140,6 +141,7 @@ def compute_history_page_step(
         stats=stats,
         symbols=symbols,
         panel_position=panel_position,
+        pulse_position=pulse_position,
         mode_label=mode_label,
         sort_mode=sort_mode,
         filter_mode=filter_mode,
@@ -163,6 +165,7 @@ def get_cached_page_step(
     filter_mode: str,
     slow_threshold: float,
     show_asn: bool,
+    pulse_position: str = "none",
 ) -> Tuple[int, int, Optional[TerminalSizeLike]]:
     """
     Get the page step for history navigation, using cached value if available.
@@ -182,6 +185,7 @@ def get_cached_page_step(
         stats=stats,
         symbols=symbols,
         panel_position=panel_position,
+        pulse_position=pulse_position,
         mode_label=mode_label,
         sort_mode=sort_mode,
         filter_mode=filter_mode,

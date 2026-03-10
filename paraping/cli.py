@@ -53,6 +53,7 @@ from paraping.ui_render import (
     compute_host_scroll_bounds,
     compute_main_layout,
     compute_panel_sizes,
+    compute_pulse_panel_sizes,
     cycle_panel_position,
     flash_screen,
     format_timestamp,
@@ -81,7 +82,9 @@ from paraping_v2.shadow import apply_shadow_v2_event
 REMOVED_HOST_RETENTION_SECONDS = 10.0
 
 
-def _compute_initial_timeline_width(host_labels: List[str], term_size: Any, panel_position: str) -> int:
+def _compute_initial_timeline_width(
+    host_labels: List[str], term_size: Any, panel_position: str, pulse_position: str = "none"
+) -> int:
     """
     Compute the initial timeline width for buffer sizing.
 
@@ -105,6 +108,7 @@ def _compute_initial_timeline_width(host_labels: List[str], term_size: Any, pane
     status_box_height = 3 if normalized_size.lines >= 4 and normalized_size.columns >= 2 else 1
     panel_height = max(1, normalized_size.lines - status_box_height)
     main_width, main_height, _, _, _ = compute_panel_sizes(normalized_size.columns, panel_height, panel_position)
+    main_width, main_height, _, _, _ = compute_pulse_panel_sizes(main_width, main_height, pulse_position)
     # Always use header_lines=2 for consistent initial sizing
     _, _, timeline_width, _ = compute_main_layout(host_labels, main_width, main_height, header_lines=2)
     try:
@@ -127,6 +131,7 @@ def _compute_runtime_timeline_width(state: Dict[str, Any], term_size: Any) -> in
     status_box_height = 3 if normalized_size.lines >= 4 and normalized_size.columns >= 2 else 1
     panel_height = max(1, normalized_size.lines - status_box_height)
     main_width, main_height, _, _, _ = compute_panel_sizes(normalized_size.columns, panel_height, state["panel_position"])
+    main_width, main_height, _, _, _ = compute_pulse_panel_sizes(main_width, main_height, state.get("pulse_position", "none"))
     mode_label = state["modes"][state["mode_index"]]
     include_asn = should_show_asn(state["host_infos"], mode_label, state["show_asn"], normalized_size.columns, asn_width=8)
     display_names = build_display_names(state["host_infos"], mode_label, include_asn, asn_width=8)
@@ -395,10 +400,13 @@ def _setup_hosts_and_state(args: argparse.Namespace) -> Optional[Dict[str, Any]]
             return None
     snapshot_tz: tzinfo = display_tz if args.snapshot_timezone == "display" else timezone.utc
     panel_position = args.panel_position
+    pulse_position = "bottom" if getattr(args, "kitt", False) else "none"
     symbols: Dict[str, str] = {"success": ".", "fail": "x", "slow": "!", "pending": "-"}
     host_infos, host_info_map = build_host_infos(all_hosts)
     host_labels = [info["alias"] for info in host_infos]
-    timeline_width = _compute_initial_timeline_width(host_labels, get_terminal_size(fallback=(80, 24)), panel_position)
+    timeline_width = _compute_initial_timeline_width(
+        host_labels, get_terminal_size(fallback=(80, 24)), panel_position, pulse_position
+    )
     ping_helper_path = os.path.abspath(os.path.expanduser(args.ping_helper))
     if not os.path.exists(ping_helper_path):
         print(
@@ -424,6 +432,9 @@ def _setup_hosts_and_state(args: argparse.Namespace) -> Optional[Dict[str, Any]]
         "panel_position": panel_position,
         "panel_toggle_default": panel_position if panel_position != "none" else "right",
         "last_panel_position": panel_position if panel_position != "none" else None,
+        "pulse_position": pulse_position,
+        "pulse_toggle_default": "bottom",
+        "last_pulse_position": pulse_position if pulse_position != "none" else "bottom",
         "symbols": symbols,
         "host_infos": host_infos,
         "host_info_map": host_info_map,
@@ -773,7 +784,15 @@ def _handle_user_input(
 
     def _handle_kitt_toggle() -> None:
         state["kitt_mode_enabled"] = not state["kitt_mode_enabled"]
+        pulse_position = state.get("pulse_position", "none")
+        last_pulse_position = state.get("last_pulse_position", "bottom")
+        pulse_toggle_default = state.get("pulse_toggle_default", "bottom")
+        if state["kitt_mode_enabled"] and pulse_position == "none":
+            restored_position = last_pulse_position or pulse_toggle_default
+            state["pulse_position"] = restored_position
+            state["last_pulse_position"] = restored_position
         state["status_message"] = "Pulse mode enabled" if state["kitt_mode_enabled"] else "Pulse mode disabled"
+        state["cached_page_step"] = None
         state["force_render"] = True
         state["updated"] = True
 
@@ -868,6 +887,30 @@ def _handle_user_input(
         state["force_render"] = True
         state["updated"] = True
 
+    def _handle_pulse_panel_toggle() -> None:
+        state["pulse_position"], state["last_pulse_position"] = toggle_panel_visibility(
+            state["pulse_position"],
+            state["last_pulse_position"],
+            default_position=state["pulse_toggle_default"],
+        )
+        state["status_message"] = "Pulse panel hidden" if state["pulse_position"] == "none" else "Pulse panel shown"
+        state["cached_page_step"] = None
+        state["force_render"] = True
+        state["updated"] = True
+
+    def _handle_pulse_panel_position_cycle() -> None:
+        reference_position = (
+            state["pulse_position"]
+            if state["pulse_position"] != "none"
+            else state["last_pulse_position"] or state["pulse_toggle_default"]
+        )
+        state["pulse_position"] = cycle_panel_position(reference_position, default_position=state["pulse_toggle_default"])
+        state["last_pulse_position"] = state["pulse_position"]
+        state["status_message"] = f"Pulse panel position: {state['pulse_position'].upper()}"
+        state["cached_page_step"] = None
+        state["force_render"] = True
+        state["updated"] = True
+
     def _handle_display_pause_toggle() -> None:
         state["display_paused"] = not state["display_paused"]
         state["paused"] = state["display_paused"] or state["dormant"]
@@ -920,6 +963,7 @@ def _handle_user_input(
             group_sort_enabled=state["summary_scope_modes"][state["summary_scope_mode_index"]] == "group",
             kitt_mode_enabled=state["kitt_mode_enabled"],
             kitt_style=state["kitt_style_modes"][state["kitt_style_index"]],
+            pulse_position=state["pulse_position"],
         )
         with open(snapshot_name, "w", encoding="utf-8") as snapshot_file:
             snapshot_file.write("\n".join(snapshot_lines) + "\n")
@@ -941,6 +985,7 @@ def _handle_user_input(
                 state["filter_modes"][state["filter_mode_index"]],
                 args.slow_threshold,
                 state["show_asn"],
+                pulse_position=state["pulse_position"],
             )
             state["v2_history_offset"] = min(state["v2_history_offset"] + page_step, len(state["v2_history_buffer"]) - 1)
             state["force_render"] = True
@@ -964,6 +1009,7 @@ def _handle_user_input(
                 state["filter_modes"][state["filter_mode_index"]],
                 args.slow_threshold,
                 state["show_asn"],
+                pulse_position=state["pulse_position"],
             )
             state["v2_history_offset"] = max(0, state["v2_history_offset"] - page_step)
             state["force_render"] = True
@@ -993,6 +1039,7 @@ def _handle_user_input(
             summary_scope=state["summary_scope_modes"][state["summary_scope_mode_index"]],
             group_by=state["group_by_modes"][state["group_by_mode_index"]],
             group_sort_enabled=state["summary_scope_modes"][state["summary_scope_mode_index"]] == "group",
+            pulse_position=state["pulse_position"],
         )
         if delta < 0 and state["host_scroll_offset"] > 0 and total_hosts > 0:
             state["host_scroll_offset"] = max(0, state["host_scroll_offset"] - 1)
@@ -1031,6 +1078,8 @@ def _handle_user_input(
         "summary_fullscreen_toggle": _handle_summary_fullscreen_toggle,
         "panel_toggle": _handle_panel_toggle,
         "panel_position_cycle": _handle_panel_position_cycle,
+        "pulse_panel_toggle": _handle_pulse_panel_toggle,
+        "pulse_panel_position_cycle": _handle_pulse_panel_position_cycle,
         "display_pause_toggle": _handle_display_pause_toggle,
         "dormant_toggle": _handle_dormant_toggle,
         "snapshot_save": _handle_snapshot_save,
@@ -1157,6 +1206,7 @@ def _render_frame(args: argparse.Namespace, state: Dict[str, Any]) -> None:
         summary_scope=state["summary_scope_modes"][state["summary_scope_mode_index"]],
         group_by=state["group_by_modes"][state["group_by_mode_index"]],
         group_sort_enabled=state["summary_scope_modes"][state["summary_scope_mode_index"]] == "group",
+        pulse_position=state["pulse_position"],
     )
     state["host_scroll_offset"] = min(state["host_scroll_offset"], max_offset)
     override_lines = None
@@ -1250,6 +1300,7 @@ def _render_frame(args: argparse.Namespace, state: Dict[str, Any]) -> None:
         group_sort_enabled=state["summary_scope_modes"][state["summary_scope_mode_index"]] == "group",
         kitt_mode_enabled=state["kitt_mode_enabled"],
         kitt_style=state["kitt_style_modes"][state["kitt_style_index"]],
+        pulse_position=state["pulse_position"],
     )
     state["last_render"] = now
     state["updated"] = False
