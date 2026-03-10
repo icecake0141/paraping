@@ -40,7 +40,7 @@ KEYMAPS: Dict[str, Dict[str, str]] = {
         "b": "bell_toggle",
         "p": "display_pause_toggle",
         "P": "dormant_toggle",
-        # NOTE: conflicts with vim-style navigation; use y/Y for Knight Rider.
+        # NOTE: conflicts with vim-style navigation; use y/Y for Pulse mode.
         "y": "kitt_toggle",
         "Y": "kitt_style_cycle",
     },
@@ -91,8 +91,8 @@ ACTION_METADATA: Dict[str, Dict[str, str]] = {
     "bell_toggle": {"label": "toggle bell on ping failure", "category": "layout"},
     "display_pause_toggle": {"label": "toggle display pause", "category": "runtime"},
     "dormant_toggle": {"label": "toggle Dormant Mode", "category": "runtime"},
-    "kitt_toggle": {"label": "toggle Knight Rider mode", "category": "effects"},
-    "kitt_style_cycle": {"label": "cycle Knight Rider style (scanner/gradient)", "category": "effects"},
+    "kitt_toggle": {"label": "toggle Pulse mode", "category": "effects"},
+    "kitt_style_cycle": {"label": "cycle Pulse style (scanner/gradient)", "category": "effects"},
     "select_prev": {"label": "move selection up", "category": "selection"},
     "select_next": {"label": "move selection down", "category": "selection"},
     "select_confirm": {"label": "confirm selected host", "category": "selection"},

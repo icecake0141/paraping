@@ -47,8 +47,8 @@ class TestKeymapHelpAndConflicts(unittest.TestCase):
         self.assertIn("?: toggle help", lines)
         self.assertIn("d: cycle display mode", lines)
         self.assertIn("u: force full redraw", lines)
-        self.assertIn("y: toggle Knight Rider mode", lines)
-        self.assertIn("Y: cycle Knight Rider style", lines)
+        self.assertIn("y: toggle Pulse mode", lines)
+        self.assertIn("Y: cycle Pulse style", lines)
 
     def test_key_conflicts_are_empty(self):
         self.assertEqual(find_key_conflicts(), {})

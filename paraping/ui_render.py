@@ -247,7 +247,7 @@ def _clamp(value: float, lower: float, upper: float) -> float:
 
 
 def _resolve_kitt_speed_hz(error_ratio: float) -> float:
-    """Resolve Knight Rider animation speed from error ratio."""
+    """Resolve Pulse animation speed from error ratio."""
     bounded_ratio = _clamp(error_ratio, 0.0, 1.0)
     return 2.0 + 12.0 * bounded_ratio
 
@@ -259,7 +259,7 @@ def _resolve_kitt_peak_level(error_ratio: float, levels: int) -> int:
 
 
 def _resolve_kitt_palette(error_ratio: float) -> Tuple[str, str]:
-    """Resolve strong/soft ANSI colors for Knight Rider severity."""
+    """Resolve strong/soft ANSI colors for Pulse severity."""
     if error_ratio <= 0.0:
         return "\x1b[32m", "\x1b[2;32m"
     if error_ratio <= 0.20:
@@ -343,7 +343,7 @@ def build_kitt_scanner_bar(
     error_hosts: int = 0,
     total_hosts: int = 0,
 ) -> str:
-    """Build one row of the Knight Rider scanner effect."""
+    """Build one row of the Pulse scanner effect."""
     if width <= 0:
         return ""
     del speed_hz  # Severity-driven speed now controls the effect.
@@ -391,7 +391,7 @@ def build_kitt_gradient_bar(
     error_hosts: int = 0,
     total_hosts: int = 0,
 ) -> str:
-    """Build one row of the center-out ripple Knight Rider effect."""
+    """Build one row of the center-out ripple Pulse effect."""
     if width <= 0:
         return ""
     del speed_hz  # Gradient style speed is severity-driven.
@@ -448,7 +448,7 @@ def render_kitt_bottom_band(
     error_hosts: int = 0,
     total_hosts: int = 0,
 ) -> List[str]:
-    """Render the lower Knight Rider accent area."""
+    """Render the lower Pulse accent area."""
     if width <= 0 or height <= 0:
         return []
     if height < 3:
@@ -456,7 +456,7 @@ def render_kitt_bottom_band(
 
     normalized_style = style if style in ("scanner", "gradient") else "scanner"
     style_label = "Scanner" if normalized_style == "scanner" else "Gradient"
-    lines = [f"Knight Rider [{style_label}]".ljust(width)[:width], "-" * width]
+    lines = [f"Pulse [{style_label}]".ljust(width)[:width], "-" * width]
     body_height = max(1, height - 2)
     active_rows, start_row = _resolve_kitt_profile(body_height)
     for row in range(body_height):

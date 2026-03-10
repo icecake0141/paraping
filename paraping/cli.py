@@ -773,7 +773,7 @@ def _handle_user_input(
 
     def _handle_kitt_toggle() -> None:
         state["kitt_mode_enabled"] = not state["kitt_mode_enabled"]
-        state["status_message"] = "Knight Rider mode enabled" if state["kitt_mode_enabled"] else "Knight Rider mode disabled"
+        state["status_message"] = "Pulse mode enabled" if state["kitt_mode_enabled"] else "Pulse mode disabled"
         state["force_render"] = True
         state["updated"] = True
 
@@ -781,9 +781,9 @@ def _handle_user_input(
         if state["kitt_mode_enabled"]:
             state["kitt_style_index"] = (state["kitt_style_index"] + 1) % len(state["kitt_style_modes"])
             current_style = state["kitt_style_modes"][state["kitt_style_index"]]
-            state["status_message"] = f"Knight Rider style: {current_style}"
+            state["status_message"] = f"Pulse style: {current_style}"
         else:
-            state["status_message"] = "Knight Rider mode is off (press 'y' first)"
+            state["status_message"] = "Pulse mode is off (press 'y' first)"
         state["force_render"] = True
         state["updated"] = True
 
