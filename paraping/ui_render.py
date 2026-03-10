@@ -270,7 +270,11 @@ def _clamp(value: float, lower: float, upper: float) -> float:
 def _resolve_kitt_speed_hz(error_ratio: float) -> float:
     """Resolve Pulse animation speed from error ratio."""
     bounded_ratio = _clamp(error_ratio, 0.0, 1.0)
-    return 2.0 + 12.0 * bounded_ratio
+    base_speed = 2.0 + 12.0 * bounded_ratio
+    # Slow healthy scanner motion, then blend back toward the original curve as severity rises.
+    slowdown_blend = math.pow(bounded_ratio, 1.6)
+    slowdown_factor = 0.7 + (0.3 * slowdown_blend)
+    return base_speed * slowdown_factor
 
 
 def _resolve_kitt_peak_level(error_ratio: float, levels: int) -> int:
@@ -303,7 +307,8 @@ def _resolve_kitt_core_color(error_ratio: float) -> str:
 
 def _resolve_kitt_profile(body_height: int, preferred_rows: int = 8) -> Tuple[int, int]:
     """Resolve active scanner height and vertical start within the available band."""
-    active_rows = max(1, min(body_height, preferred_rows))
+    del preferred_rows  # Scanner rows now expand to fill the available band height.
+    active_rows = max(1, body_height)
     start_row = max(0, (body_height - active_rows) // 2)
     return active_rows, start_row
 
