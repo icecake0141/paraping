@@ -241,6 +241,96 @@ def compute_activity_indicator_width(
     return remaining
 
 
+def _clamp(value: float, lower: float, upper: float) -> float:
+    """Clamp a float between inclusive lower/upper bounds."""
+    return max(lower, min(upper, value))
+
+
+def _resolve_kitt_speed_hz(error_ratio: float) -> float:
+    """Resolve Knight Rider animation speed from error ratio."""
+    bounded_ratio = _clamp(error_ratio, 0.0, 1.0)
+    return 2.0 + 12.0 * bounded_ratio
+
+
+def _resolve_kitt_peak_level(error_ratio: float, levels: int) -> int:
+    """Resolve the maximum drawable intensity level for the current severity."""
+    bounded_ratio = _clamp(error_ratio, 0.0, 1.0)
+    return min(levels, max(1, int(round(1 + (levels - 1) * bounded_ratio))))
+
+
+def _resolve_kitt_palette(error_ratio: float) -> Tuple[str, str]:
+    """Resolve strong/soft ANSI colors for Knight Rider severity."""
+    if error_ratio <= 0.0:
+        return "\x1b[32m", "\x1b[2;32m"
+    if error_ratio <= 0.20:
+        return "\x1b[33m", "\x1b[2;33m"
+    if error_ratio <= 0.50:
+        return "\x1b[38;5;208m", "\x1b[38;5;214m"
+    return "\x1b[31m", "\x1b[2;31m"
+
+
+def _resolve_kitt_core_color(error_ratio: float) -> str:
+    """Resolve a stronger core ANSI color for the scanner center."""
+    if error_ratio <= 0.0:
+        return "\x1b[92m"
+    if error_ratio <= 0.20:
+        return "\x1b[93m"
+    if error_ratio <= 0.50:
+        return "\x1b[38;5;214m"
+    return "\x1b[91m"
+
+
+def _resolve_kitt_profile(body_height: int, preferred_rows: int = 8) -> Tuple[int, int]:
+    """Resolve active scanner height and vertical start within the available band."""
+    active_rows = max(1, min(body_height, preferred_rows))
+    start_row = max(0, (body_height - active_rows) // 2)
+    return active_rows, start_row
+
+
+def _resolve_kitt_scanner_position(width: int, now_utc: datetime, error_ratio: float, phase_offset: int = 0) -> float:
+    """Resolve the shared scanner center for the current frame."""
+    if width <= 1:
+        return 0.0
+    speed_hz = _resolve_kitt_speed_hz(error_ratio)
+    span = max(1, width - 1)
+    cycle = span * 2
+    tick = int(now_utc.timestamp() * speed_hz) + phase_offset
+    position = tick % cycle
+    if position > span:
+        position = cycle - position
+    return float(position)
+
+
+def _scanner_row_profile(row_index: int, total_rows: int) -> float:
+    """Return a 0..1 row-strength factor, highest in the vertical center."""
+    if total_rows <= 1:
+        return 1.0
+    center = (total_rows - 1) / 2.0
+    distance = abs(row_index - center)
+    return max(0.25, 1.0 - (distance / max(1.0, center + 0.5)))
+
+
+def _kitt_density_to_char(level: float) -> str:
+    """Map normalized density to the drawable character used for the effect."""
+    if level >= 0.85:
+        return "█"
+    if level >= 0.60:
+        return "▓"
+    if level >= 0.35:
+        return "▒"
+    if level >= 0.15:
+        return "░"
+    return " "
+
+
+def _kitt_colorize(char: str, level: float, use_color: bool, strong_color: str, soft_color: str) -> str:
+    """Colorize a drawable KITT character according to its intensity."""
+    if not use_color or char == " ":
+        return char
+    color = strong_color if level >= 0.45 else soft_color
+    return f"{color}{char}{ANSI_RESET}"
+
+
 def build_kitt_scanner_bar(
     width: int,
     now_utc: datetime,
@@ -248,36 +338,38 @@ def build_kitt_scanner_bar(
     speed_hz: int = 12,
     trail_width: int = 6,
     phase_offset: int = 0,
+    row_index: int = 0,
+    total_rows: int = 1,
+    error_hosts: int = 0,
+    total_hosts: int = 0,
 ) -> str:
-    """Build a Knight Rider-style moving scanner bar."""
+    """Build one row of the Knight Rider scanner effect."""
     if width <= 0:
         return ""
-    span = max(1, width - 1)
-    cycle = span * 2
-    tick = int(now_utc.timestamp() * speed_hz) + phase_offset
-    position = tick % cycle
-    if position > span:
-        position = cycle - position
-
+    del speed_hz  # Severity-driven speed now controls the effect.
+    del trail_width  # Width is derived from vertical profile and severity.
+    error_ratio = _compute_error_ratio(error_hosts, total_hosts)
+    position = _resolve_kitt_scanner_position(width, now_utc, error_ratio, phase_offset=phase_offset)
+    row_strength = _scanner_row_profile(row_index, total_rows)
+    base_half_width = max(3.0, width * (0.07 + 0.13 * error_ratio))
+    half_width = max(2.0, base_half_width * row_strength)
+    strong_color, soft_color = _resolve_kitt_palette(error_ratio)
+    core_color = _resolve_kitt_core_color(error_ratio)
     chars: List[str] = []
     for index in range(width):
         distance = abs(index - position)
-        if distance > trail_width:
+        if distance > half_width:
             chars.append(" ")
             continue
-        if distance == 0:
-            base = "█"
-            color = "\x1b[91m"
-        elif distance <= 2:
-            base = "▓"
-            color = "\x1b[31m"
-        elif distance <= 4:
-            base = "▒"
-            color = "\x1b[31m"
+        horizontal_strength = 1.0 - (distance / max(1.0, half_width))
+        level = _clamp((horizontal_strength**0.75) * row_strength, 0.0, 1.0)
+        char = _kitt_density_to_char(level)
+        if not use_color or char == " ":
+            chars.append(char)
+        elif distance <= 0.5 and row_strength >= 0.8:
+            chars.append(f"{core_color}{char}{ANSI_RESET}")
         else:
-            base = "░"
-            color = "\x1b[90m"
-        chars.append(f"{color}{base}{ANSI_RESET}" if use_color else base)
+            chars.append(_kitt_colorize(char, level, use_color, strong_color, soft_color))
     return "".join(chars)
 
 
@@ -287,31 +379,6 @@ def _compute_error_ratio(error_hosts: int, total_hosts: int) -> float:
         return 0.0
     bounded_error_hosts = min(max(0, error_hosts), total_hosts)
     return bounded_error_hosts / total_hosts
-
-
-def _resolve_kitt_speed_hz(error_ratio: float) -> float:
-    """Resolve Knight Rider gradient movement speed from error ratio."""
-    min_speed_hz = 2.0
-    max_speed_hz = 14.0
-    bounded_ratio = min(max(error_ratio, 0.0), 1.0)
-    return min_speed_hz + (max_speed_hz - min_speed_hz) * bounded_ratio
-
-
-def _resolve_kitt_peak_level(error_ratio: float, levels: int) -> int:
-    """Resolve the maximum gradient level that represents current severity."""
-    bounded_ratio = min(max(error_ratio, 0.0), 1.0)
-    return min(levels, max(1, int(round(1 + (levels - 1) * bounded_ratio))))
-
-
-def _resolve_kitt_palette(error_ratio: float) -> Tuple[str, str]:
-    """Resolve strong/soft ANSI colors for Knight Rider gradient severity."""
-    if error_ratio <= 0.0:
-        return "\x1b[32m", "\x1b[2;32m"
-    if error_ratio <= 0.20:
-        return "\x1b[33m", "\x1b[2;33m"
-    if error_ratio <= 0.50:
-        return "\x1b[38;5;208m", "\x1b[38;5;214m"
-    return "\x1b[31m", "\x1b[2;31m"
 
 
 def build_kitt_gradient_bar(
@@ -324,39 +391,51 @@ def build_kitt_gradient_bar(
     error_hosts: int = 0,
     total_hosts: int = 0,
 ) -> str:
-    """Build a flowing gradient-like Knight Rider bar."""
+    """Build one row of the center-out ripple Knight Rider effect."""
     if width <= 0:
         return ""
     del speed_hz  # Gradient style speed is severity-driven.
     del band_width  # Gradient width is severity-driven.
     error_ratio = _compute_error_ratio(error_hosts, total_hosts)
-    effective_speed_hz = _resolve_kitt_speed_hz(error_ratio)
-    span = max(1, width - 1)
-    cycle = span * 2
-    tick = int(now_utc.timestamp() * effective_speed_hz) + phase_offset
-    position = tick % cycle
-    if position > span:
-        position = cycle - position
-
-    gradient_chars = [" ", "░", "▒", "▓", "█", "▓", "▒", "░", " "]
-    levels = len(gradient_chars) - 1
-    peak_level = _resolve_kitt_peak_level(error_ratio, levels)
+    speed = _resolve_kitt_speed_hz(error_ratio)
     strong_color, soft_color = _resolve_kitt_palette(error_ratio)
-    effective_band_width = max(4, int(round(6 + (1.0 - error_ratio) * 8)))
-    chars: List[str] = []
+    center = (width - 1) / 2.0
+    ring_speed = 1.5 + 5.5 * error_ratio
+    spawn_density = 1.0 + 4.0 * error_ratio
+    max_radius = max(1.0, center)
+    spawn_count = max(1, min(6, 1 + int(round(1 + error_ratio * 4))))
+    phase_time = (now_utc.timestamp() * speed) + phase_offset
+    levels: List[float] = []
     for index in range(width):
-        distance = abs(index - position)
-        if distance >= effective_band_width:
-            chars.append(" ")
-            continue
-        ratio = 1.0 - (distance / max(1, effective_band_width))
-        level = min(peak_level, max(1, int(round(ratio * peak_level))))
-        char = gradient_chars[level]
-        if use_color and char != " ":
-            color = strong_color if distance == 0 else soft_color
-            chars.append(f"{color}{char}{ANSI_RESET}")
-        else:
+        radius = abs(index - center)
+        level = 0.0
+        # A soft center glow keeps the origin visible between ripple fronts.
+        center_glow = max(0.0, 1.0 - (radius / max(1.0, 2.5 + (1.0 - error_ratio) * 1.5)))
+        level = max(level, center_glow * (0.25 + 0.35 * error_ratio))
+        for ring_index in range(spawn_count):
+            spawn_offset = ring_index / spawn_density
+            ring_phase = (phase_time - spawn_offset) * ring_speed
+            if ring_phase < 0:
+                continue
+            ring_radius = ring_phase % (max_radius + 4.0)
+            ring_width = 0.8 + 1.8 * (1.0 - error_ratio) + (ring_index * 0.1)
+            distance = abs(radius - ring_radius)
+            if distance > ring_width:
+                continue
+            wave_strength = 1.0 - (distance / max(0.001, ring_width))
+            age_decay = max(0.2, 1.0 - (ring_phase / (max_radius + 6.0)))
+            level = max(level, wave_strength * age_decay)
+        levels.append(_clamp(level, 0.0, 1.0))
+    peak_level = max(levels, default=0.0)
+    strong_threshold = max(0.25, peak_level * 0.8)
+    chars: List[str] = []
+    for level in levels:
+        char = _kitt_density_to_char(level)
+        if not use_color or char == " ":
             chars.append(char)
+        else:
+            color = strong_color if level >= strong_threshold else soft_color
+            chars.append(f"{color}{char}{ANSI_RESET}")
     return "".join(chars)
 
 
@@ -379,9 +458,10 @@ def render_kitt_bottom_band(
     style_label = "Scanner" if normalized_style == "scanner" else "Gradient"
     lines = [f"Knight Rider [{style_label}]".ljust(width)[:width], "-" * width]
     body_height = max(1, height - 2)
+    active_rows, start_row = _resolve_kitt_profile(body_height)
     for row in range(body_height):
-        phase = row * 2
         if normalized_style == "gradient":
+            phase = row - start_row
             bar = build_kitt_gradient_bar(
                 width,
                 now_utc,
@@ -391,7 +471,18 @@ def render_kitt_bottom_band(
                 total_hosts=total_hosts,
             )
         else:
-            bar = build_kitt_scanner_bar(width, now_utc, use_color, phase_offset=phase)
+            if row < start_row or row >= start_row + active_rows:
+                bar = " " * width
+            else:
+                bar = build_kitt_scanner_bar(
+                    width,
+                    now_utc,
+                    use_color,
+                    row_index=row - start_row,
+                    total_rows=active_rows,
+                    error_hosts=error_hosts,
+                    total_hosts=total_hosts,
+                )
         lines.append(pad_visible(bar, width))
     return pad_lines(lines, width, height)
 

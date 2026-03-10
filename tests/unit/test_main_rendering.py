@@ -39,6 +39,7 @@ from paraping.ui_render import (  # noqa: E402
     build_display_entries,
     build_display_names,
     build_kitt_gradient_bar,
+    build_kitt_scanner_bar,
     build_status_line,
     build_status_metrics,
     build_time_axis,
@@ -1407,14 +1408,47 @@ class TestActivityIndicator(unittest.TestCase):
         self.assertEqual(len(lines), 5)
         self.assertIn("Knight Rider [Gradient]", lines[0])
 
-    def test_kitt_gradient_speed_scales_with_error_hosts(self):
-        """Gradient style should move faster as fail-host ratio increases."""
+    def test_kitt_scanner_rows_share_a_center_and_taper_symmetrically(self):
+        """Scanner rows should align on one center and widen toward the middle rows."""
+        now = datetime.fromtimestamp(0.25, tz=timezone.utc)
+        rows = [
+            build_kitt_scanner_bar(41, now, use_color=False, row_index=index, total_rows=8, error_hosts=5, total_hosts=10)
+            for index in range(8)
+        ]
+
+        def _active_positions(text):
+            return [idx for idx, ch in enumerate(text) if ch != " "]
+
+        centers = []
+        widths = []
+        for row in rows:
+            active = _active_positions(row)
+            self.assertTrue(active)
+            centers.append(sum(active) / len(active))
+            widths.append(len(active))
+
+        self.assertLessEqual(max(centers) - min(centers), 1.0)
+        self.assertLess(widths[0], widths[3])
+        self.assertLess(widths[7], widths[4])
+        self.assertEqual(widths[0], widths[-1])
+        self.assertEqual(widths[1], widths[-2])
+
+    def test_kitt_scanner_speed_scales_with_error_hosts(self):
+        """Scanner center should move farther over time at higher severity."""
         early = datetime.fromtimestamp(0.00, tz=timezone.utc)
         later = datetime.fromtimestamp(0.50, tz=timezone.utc)
-        low_early = build_kitt_gradient_bar(40, early, use_color=False, error_hosts=0, total_hosts=10)
-        low_later = build_kitt_gradient_bar(40, later, use_color=False, error_hosts=0, total_hosts=10)
-        high_early = build_kitt_gradient_bar(40, early, use_color=False, error_hosts=8, total_hosts=10)
-        high_later = build_kitt_gradient_bar(40, later, use_color=False, error_hosts=8, total_hosts=10)
+        low_early = build_kitt_scanner_bar(
+            60, early, use_color=False, row_index=4, total_rows=8, error_hosts=0, total_hosts=10
+        )
+        low_later = build_kitt_scanner_bar(
+            60, later, use_color=False, row_index=4, total_rows=8, error_hosts=0, total_hosts=10
+        )
+        high_early = build_kitt_scanner_bar(
+            60, early, use_color=False, row_index=4, total_rows=8, error_hosts=8, total_hosts=10
+        )
+        high_later = build_kitt_scanner_bar(
+            60, later, use_color=False, row_index=4, total_rows=8, error_hosts=8, total_hosts=10
+        )
 
         def _band_center(text):
             active = [idx for idx, ch in enumerate(text) if ch != " "]
@@ -1424,6 +1458,37 @@ class TestActivityIndicator(unittest.TestCase):
         low_shift = abs(_band_center(low_later) - _band_center(low_early))
         high_shift = abs(_band_center(high_later) - _band_center(high_early))
         self.assertGreater(high_shift, low_shift)
+
+    def test_kitt_scanner_palette_stage_thresholds(self):
+        """Scanner colors should follow the same severity palette as gradient mode."""
+        now = datetime.fromtimestamp(1.0, tz=timezone.utc)
+        green = build_kitt_scanner_bar(30, now, use_color=True, row_index=4, total_rows=8, error_hosts=0, total_hosts=10)
+        yellow = build_kitt_scanner_bar(30, now, use_color=True, row_index=4, total_rows=8, error_hosts=1, total_hosts=10)
+        orange = build_kitt_scanner_bar(30, now, use_color=True, row_index=4, total_rows=8, error_hosts=3, total_hosts=10)
+        red = build_kitt_scanner_bar(30, now, use_color=True, row_index=4, total_rows=8, error_hosts=7, total_hosts=10)
+        self.assertIn("\x1b[92m", green)
+        self.assertIn("\x1b[93m", yellow)
+        self.assertIn("\x1b[38;5;214m", orange)
+        self.assertIn("\x1b[91m", red)
+
+    def test_kitt_gradient_speed_scales_with_error_hosts(self):
+        """Gradient style should add more simultaneous ripple fronts at higher severity."""
+        now = datetime.fromtimestamp(0.75, tz=timezone.utc)
+        low = build_kitt_gradient_bar(80, now, use_color=False, error_hosts=0, total_hosts=10)
+        high = build_kitt_gradient_bar(80, now, use_color=False, error_hosts=8, total_hosts=10)
+
+        def _segments(text):
+            spans = 0
+            in_span = False
+            for char in text:
+                if char != " " and not in_span:
+                    spans += 1
+                    in_span = True
+                elif char == " ":
+                    in_span = False
+            return spans
+
+        self.assertGreater(_segments(high), _segments(low))
 
     def test_kitt_gradient_palette_stage_thresholds(self):
         """Gradient palette should follow green/yellow/orange/red thresholds."""
@@ -1443,6 +1508,25 @@ class TestActivityIndicator(unittest.TestCase):
         colored = build_kitt_gradient_bar(40, now, use_color=True, error_hosts=7, total_hosts=10)
         self.assertIn("\x1b[31m", colored)
         self.assertIn("\x1b[2;31m", colored)
+
+    def test_kitt_gradient_is_center_origin_ripple(self):
+        """Gradient should radiate from the center rather than translate sideways as one bar."""
+        now = datetime.fromtimestamp(0.75, tz=timezone.utc)
+        band = build_kitt_gradient_bar(41, now, use_color=False, error_hosts=6, total_hosts=10)
+        center = len(band) // 2
+        self.assertNotEqual(band[center], " ")
+        active = [idx for idx, ch in enumerate(band) if ch != " "]
+        self.assertTrue(any(idx < center for idx in active))
+        self.assertTrue(any(idx > center for idx in active))
+
+    def test_kitt_gradient_decays_away_from_center(self):
+        """Gradient ripple should weaken as it expands away from the center."""
+        now = datetime.fromtimestamp(0.75, tz=timezone.utc)
+        band = build_kitt_gradient_bar(41, now, use_color=False, error_hosts=7, total_hosts=10)
+        center = len(band) // 2
+        density = {"█": 4, "▓": 3, "▒": 2, "░": 1, " ": 0}
+        self.assertGreaterEqual(density.get(band[center], 0), density.get(band[0], 0))
+        self.assertGreaterEqual(density.get(band[center], 0), density.get(band[-1], 0))
 
 
 class TestBuildDisplayEntries(unittest.TestCase):
