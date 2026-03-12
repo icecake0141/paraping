@@ -1412,6 +1412,9 @@ class TestScrollOverflow(unittest.TestCase):
 class TestActivityIndicator(unittest.TestCase):
     """Test activity indicator building."""
 
+    def tearDown(self):
+        reset_render_cache()
+
     def test_build_activity_indicator_zero_width(self):
         """build_activity_indicator with width=0 should return empty string."""
         from paraping.ui_render import build_activity_indicator
@@ -1538,7 +1541,7 @@ class TestActivityIndicator(unittest.TestCase):
         """Scanner center should move farther over time at higher severity."""
         early = datetime.fromtimestamp(0.00, tz=timezone.utc)
         later = datetime.fromtimestamp(0.50, tz=timezone.utc)
-        with patch("paraping.ui_render.time.monotonic", side_effect=[0.00, 0.03, 0.00, 0.03]):
+        with patch("paraping.ui_render.time.monotonic", side_effect=[0.00, 0.03, 1.00, 1.03]):
             low_early = build_kitt_scanner_bar(
                 60, early, use_color=False, row_index=4, total_rows=8, error_hosts=0, total_hosts=10
             )
@@ -1560,6 +1563,42 @@ class TestActivityIndicator(unittest.TestCase):
         low_shift = abs(_band_center(low_later) - _band_center(low_early))
         high_shift = abs(_band_center(high_later) - _band_center(high_early))
         self.assertGreater(high_shift, low_shift)
+
+    def test_kitt_scanner_severity_change_keeps_motion_continuous(self):
+        """Severity changes should accelerate motion without causing a long-distance jump."""
+        early = datetime.fromtimestamp(10.00, tz=timezone.utc)
+        later = datetime.fromtimestamp(10.05, tz=timezone.utc)
+        with patch("paraping.ui_render.time.monotonic", side_effect=[10.00, 10.05]):
+            before = build_kitt_scanner_bar(
+                60, early, use_color=False, row_index=4, total_rows=8, error_hosts=0, total_hosts=10
+            )
+            after = build_kitt_scanner_bar(
+                60, later, use_color=False, row_index=4, total_rows=8, error_hosts=1, total_hosts=10
+            )
+
+        before_active = {idx for idx, ch in enumerate(before) if ch != " "}
+        after_active = {idx for idx, ch in enumerate(after) if ch != " "}
+        self.assertTrue(before_active)
+        self.assertTrue(after_active)
+        self.assertGreaterEqual(len(before_active & after_active), 6)
+
+    def test_kitt_scanner_reset_render_cache_resets_animation_state(self):
+        """Resetting render cache should also reset scanner animation state."""
+        now = datetime.fromtimestamp(2.0, tz=timezone.utc)
+        with patch("paraping.ui_render.time.monotonic", side_effect=[0.00, 0.12, 0.00]):
+            initial = build_kitt_scanner_bar(
+                41, now, use_color=False, row_index=4, total_rows=8, error_hosts=3, total_hosts=10
+            )
+            shifted = build_kitt_scanner_bar(
+                41, now, use_color=False, row_index=4, total_rows=8, error_hosts=3, total_hosts=10
+            )
+            reset_render_cache()
+            restarted = build_kitt_scanner_bar(
+                41, now, use_color=False, row_index=4, total_rows=8, error_hosts=3, total_hosts=10
+            )
+
+        self.assertNotEqual(initial, shifted)
+        self.assertEqual(initial, restarted)
 
     def test_kitt_scanner_healthy_speed_is_reduced_relative_to_original_curve(self):
         """Healthy scanner speed should be noticeably slower than the legacy 2.0Hz baseline."""

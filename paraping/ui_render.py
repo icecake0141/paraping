@@ -65,6 +65,11 @@ STATUS_METRICS_TEMPLATE = STATUS_METRICS_SEPARATOR.join(
 
 # Global state for rendering
 LAST_RENDER_LINES: Optional[List[str]] = None
+KITT_SCANNER_STATE: Dict[str, float] = {
+    "last_monotonic": -1.0,
+    "scanner_phase": 0.0,
+    "last_error_ratio": 0.0,
+}
 
 
 # ============================================================================
@@ -319,15 +324,38 @@ def _resolve_kitt_profile(body_height: int, preferred_rows: int = 8) -> Tuple[in
     return active_rows, start_row
 
 
-def _resolve_kitt_scanner_position(width: int, now_utc: datetime, error_ratio: float, phase_offset: int = 0) -> float:
+def _advance_kitt_scanner_phase(now_monotonic: float, error_ratio: float) -> float:
+    """Advance the shared scanner phase while preserving continuity across speed changes."""
+    last_monotonic = KITT_SCANNER_STATE["last_monotonic"]
+    speed_hz = _resolve_kitt_scanner_speed_hz(error_ratio)
+    if last_monotonic < 0.0 or now_monotonic < last_monotonic:
+        KITT_SCANNER_STATE["last_monotonic"] = now_monotonic
+        KITT_SCANNER_STATE["last_error_ratio"] = error_ratio
+        return KITT_SCANNER_STATE["scanner_phase"]
+    delta = max(0.0, now_monotonic - last_monotonic)
+    KITT_SCANNER_STATE["scanner_phase"] += delta * speed_hz
+    KITT_SCANNER_STATE["last_monotonic"] = now_monotonic
+    KITT_SCANNER_STATE["last_error_ratio"] = error_ratio
+    return KITT_SCANNER_STATE["scanner_phase"]
+
+
+def _resolve_kitt_scanner_position(
+    width: int,
+    now_utc: datetime,
+    error_ratio: float,
+    phase_offset: int = 0,
+    now_monotonic: Optional[float] = None,
+) -> float:
     """Resolve the shared scanner center for the current frame."""
     del now_utc  # Motion is driven by monotonic time for smoothness.
     if width <= 1:
         return 0.0
-    speed_hz = _resolve_kitt_scanner_speed_hz(error_ratio)
+    if now_monotonic is None:
+        now_monotonic = time.monotonic()
+    phase = _advance_kitt_scanner_phase(now_monotonic, error_ratio)
     center = (width - 1) / 2.0
     span = max(1.0, center)
-    return center + math.sin((time.monotonic() * speed_hz) + (phase_offset * 0.008)) * span
+    return center + math.sin(phase + (phase_offset * 0.008)) * span
 
 
 def _scanner_row_profile(row_index: int, total_rows: int) -> float:
@@ -399,12 +427,14 @@ def _build_kitt_scanner_levels(
     row_index: int,
     total_rows: int,
     error_ratio: float,
+    center: Optional[float] = None,
 ) -> List[float]:
     """Build a smooth scanner intensity map for one row."""
     if width <= 0:
         return []
     row_strength = _scanner_row_profile(row_index, total_rows)
-    center = _resolve_kitt_scanner_position(width, now_utc, error_ratio, phase_offset=0)
+    if center is None:
+        center = _resolve_kitt_scanner_position(width, now_utc, error_ratio, phase_offset=0)
     base_half_width = max(3.0, width * (0.08 + 0.14 * error_ratio))
     half_width = max(2.5, base_half_width * (0.75 + row_strength * 0.6))
     skirt_width = half_width * (1.45 + (1.0 - row_strength) * 0.2)
@@ -505,7 +535,8 @@ def build_kitt_scanner_bar(
     error_ratio = _compute_error_ratio(error_hosts, total_hosts)
     strong_color, soft_color = _resolve_kitt_palette(error_ratio)
     core_color = _resolve_kitt_core_color(error_ratio)
-    levels = _build_kitt_scanner_levels(width, now_utc, row_index + phase_offset, total_rows, error_ratio)
+    center = _resolve_kitt_scanner_position(width, now_utc, error_ratio, phase_offset=phase_offset)
+    levels = _build_kitt_scanner_levels(width, now_utc, row_index + phase_offset, total_rows, error_ratio, center=center)
     return _render_kitt_levels(levels, use_color, strong_color, soft_color, core_color=core_color)
 
 
@@ -587,6 +618,16 @@ def render_pulse_panel(
     lines = [f"Pulse [{style_label}]".ljust(width)[:width], "-" * width]
     body_height = max(1, height - 2)
     active_rows, start_row = _resolve_kitt_profile(body_height)
+    scanner_center: Optional[float] = None
+    if normalized_style == "scanner":
+        error_ratio = _compute_error_ratio(error_hosts, total_hosts)
+        scanner_center = _resolve_kitt_scanner_position(
+            width,
+            now_utc,
+            error_ratio,
+            phase_offset=0,
+            now_monotonic=time.monotonic(),
+        )
     for row in range(body_height):
         if normalized_style == "gradient":
             bar = build_kitt_gradient_bar(
@@ -602,15 +643,18 @@ def render_pulse_panel(
             if row < start_row or row >= start_row + active_rows:
                 bar = " " * width
             else:
-                bar = build_kitt_scanner_bar(
+                error_ratio = _compute_error_ratio(error_hosts, total_hosts)
+                strong_color, soft_color = _resolve_kitt_palette(error_ratio)
+                core_color = _resolve_kitt_core_color(error_ratio)
+                levels = _build_kitt_scanner_levels(
                     width,
                     now_utc,
-                    use_color,
-                    row_index=row - start_row,
-                    total_rows=active_rows,
-                    error_hosts=error_hosts,
-                    total_hosts=total_hosts,
+                    row - start_row,
+                    active_rows,
+                    error_ratio,
+                    center=scanner_center,
                 )
+                bar = _render_kitt_levels(levels, use_color, strong_color, soft_color, core_color=core_color)
         lines.append(pad_visible(bar, width))
     return pad_lines(lines, width, height)
 
@@ -2711,6 +2755,9 @@ def reset_render_cache() -> None:
     """Force the next render call to redraw the full frame."""
     global LAST_RENDER_LINES
     LAST_RENDER_LINES = None
+    KITT_SCANNER_STATE["last_monotonic"] = -1.0
+    KITT_SCANNER_STATE["scanner_phase"] = 0.0
+    KITT_SCANNER_STATE["last_error_ratio"] = 0.0
 
 
 def _find_pulse_start(lines: Sequence[str]) -> Optional[int]:
