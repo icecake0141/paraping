@@ -209,6 +209,24 @@ class TestSchedulerNextPingTimes(unittest.TestCase):
         self.assertAlmostEqual(next_times["192.0.2.2"], resume_time + 0.1, places=6)
         self.assertAlmostEqual(next_times["192.0.2.3"], resume_time + 0.2, places=6)
 
+    def test_reset_timing_after_interval_change_recomputes_schedule(self):
+        """Changing interval and resetting timing should rebuild schedule from current time."""
+        scheduler = Scheduler(interval=1.0, stagger=0.1)
+        scheduler.add_host("192.0.2.1")
+        scheduler.add_host("192.0.2.2")
+
+        initial_times = scheduler.get_next_ping_times(1000.0)
+        scheduler.mark_ping_sent("192.0.2.1", initial_times["192.0.2.1"])
+        scheduler.mark_ping_sent("192.0.2.2", initial_times["192.0.2.2"])
+
+        scheduler.set_interval(2.5)
+        scheduler.set_stagger(0.25)
+        scheduler.reset_timing(1050.0)
+
+        next_times = scheduler.get_next_ping_times(1050.0)
+        self.assertEqual(next_times["192.0.2.1"], 1050.0)
+        self.assertAlmostEqual(next_times["192.0.2.2"], 1050.25, places=6)
+
 
 class TestSchedulerMarkPingSent(unittest.TestCase):
     """Test cases for marking pings as sent"""

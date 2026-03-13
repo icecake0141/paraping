@@ -80,6 +80,9 @@ from paraping_v2.sequence_tracker import SequenceTracker
 from paraping_v2.shadow import apply_shadow_v2_event
 
 REMOVED_HOST_RETENTION_SECONDS = 10.0
+INTERVAL_STEP_SECONDS = 0.1
+MIN_INTERVAL_SECONDS = 0.1
+MAX_INTERVAL_SECONDS = 60.0
 
 
 def _compute_initial_timeline_width(
@@ -173,6 +176,42 @@ def _check_terminal_resize_and_request_redraw(state: Dict[str, Any], now_monoton
     state["last_term_size"] = None
     state["force_render"] = True
     state["updated"] = True
+
+
+def _compute_scheduler_stagger(interval_seconds: float, host_count: int) -> float:
+    """Compute per-host stagger for the current host count."""
+    return interval_seconds / host_count if host_count > 0 else 0.0
+
+
+def _round_interval_seconds(interval_seconds: float) -> float:
+    """Round interval updates to one decimal place for stable hotkey stepping."""
+    return round(interval_seconds + 1e-9, 1)
+
+
+def _update_runtime_interval(
+    state: Dict[str, Any],
+    scheduler: Scheduler,
+    ping_lock: threading.Lock,
+    next_interval_seconds: float,
+) -> str:
+    """Apply a runtime interval update when it passes bounds and rate-limit validation."""
+    rounded_interval = _round_interval_seconds(next_interval_seconds)
+    current_interval = float(state.get("interval_seconds", rounded_interval))
+    if rounded_interval < MIN_INTERVAL_SECONDS or rounded_interval > MAX_INTERVAL_SECONDS:
+        return f"Interval unchanged: {current_interval:.1f}s"
+
+    active_host_count = _active_host_count(state)
+    is_valid, _rate, error_message = validate_global_rate_limit(active_host_count, rounded_interval)
+    if not is_valid:
+        return f"Interval change rejected: {error_message}"
+
+    with ping_lock:
+        scheduler.set_interval(rounded_interval)
+        scheduler.set_stagger(_compute_scheduler_stagger(rounded_interval, scheduler.get_host_count()))
+        scheduler.reset_timing(time.time())
+
+    state["interval_seconds"] = rounded_interval
+    return f"Interval: {rounded_interval:.1f}s"
 
 
 def _configure_logging(
@@ -560,7 +599,7 @@ def _apply_manual_reload(
         with ping_lock:
             scheduler.remove_host(info["host"])
             host_count = scheduler.get_host_count()
-            scheduler.set_stagger(args.interval / host_count if host_count > 0 else 0.0)
+            scheduler.set_stagger(_compute_scheduler_stagger(state["interval_seconds"], host_count))
         removed_count += 1
 
     now = time.time()
@@ -580,7 +619,7 @@ def _apply_manual_reload(
                 with ping_lock:
                     scheduler.add_host(info["host"], host_id=info["id"])
                     host_count = scheduler.get_host_count()
-                    scheduler.set_stagger(args.interval / host_count if host_count > 0 else 0.0)
+                    scheduler.set_stagger(_compute_scheduler_stagger(state["interval_seconds"], host_count))
                 state["done_host_ids"].discard(info["id"])
                 _start_host_worker(info, args, state, scheduler, ping_lock, sequence_tracker)
                 info["rdns_pending"] = True
@@ -598,7 +637,7 @@ def _apply_manual_reload(
         with ping_lock:
             scheduler.add_host(new_info["host"], host_id=new_info["id"])
             host_count = scheduler.get_host_count()
-            scheduler.set_stagger(args.interval / host_count if host_count > 0 else 0.0)
+            scheduler.set_stagger(_compute_scheduler_stagger(state["interval_seconds"], host_count))
         state["done_host_ids"].discard(new_info["id"])
         _start_host_worker(new_info, args, state, scheduler, ping_lock, sequence_tracker)
         new_info["rdns_pending"] = True
@@ -770,6 +809,20 @@ def _handle_user_input(
     def _handle_force_redraw() -> None:
         reset_render_cache()
         state["status_message"] = "Full redraw requested"
+        state["force_render"] = True
+        state["updated"] = True
+
+    def _handle_interval_change(delta_seconds: float) -> None:
+        if scheduler is None or ping_lock is None:
+            state["status_message"] = "Interval change unavailable in this context"
+        else:
+            current_interval = float(state.get("interval_seconds", args.interval))
+            target_interval = current_interval + delta_seconds
+            if delta_seconds < 0:
+                target_interval = max(MIN_INTERVAL_SECONDS, target_interval)
+            else:
+                target_interval = min(MAX_INTERVAL_SECONDS, target_interval)
+            state["status_message"] = _update_runtime_interval(state, scheduler, ping_lock, target_interval)
         state["force_render"] = True
         state["updated"] = True
 
@@ -957,7 +1010,7 @@ def _handle_user_input(
             False,
             state["host_scroll_offset"],
             state["summary_fullscreen"],
-            interval_seconds=args.interval,
+            interval_seconds=state["interval_seconds"],
             summary_scope=state["summary_scope_modes"][state["summary_scope_mode_index"]],
             group_by=state["group_by_modes"][state["group_by_mode_index"]],
             group_sort_enabled=state["summary_scope_modes"][state["summary_scope_mode_index"]] == "group",
@@ -1063,6 +1116,8 @@ def _handle_user_input(
     action_handlers = {
         "reload_hosts": _handle_reload,
         "force_redraw": _handle_force_redraw,
+        "interval_decrease": lambda: _handle_interval_change(-INTERVAL_STEP_SECONDS),
+        "interval_increase": lambda: _handle_interval_change(INTERVAL_STEP_SECONDS),
         "display_name_cycle": _handle_display_mode_cycle,
         "display_view_cycle": _handle_view_cycle,
         "kitt_toggle": _handle_kitt_toggle,
@@ -1293,7 +1348,7 @@ def _render_frame(args: argparse.Namespace, state: Dict[str, Any]) -> None:
         state["host_scroll_offset"],
         state["summary_fullscreen"],
         override_lines=override_lines,
-        interval_seconds=args.interval,
+        interval_seconds=state["interval_seconds"],
         dormant=state["dormant"],
         summary_scope=state["summary_scope_modes"][state["summary_scope_mode_index"]],
         group_by=state["group_by_modes"][state["group_by_mode_index"]],
@@ -1398,6 +1453,7 @@ def run(args: argparse.Namespace) -> None:
         "worker_threads": {},
         "next_host_id": (max((info["id"] for info in setup["host_infos"]), default=-1) + 1),
         "updated": True,
+        "interval_seconds": args.interval,
         "last_render": 0.0,
         "refresh_interval": 0.10,
         "last_observed_term_size": initial_term_size,
@@ -1436,7 +1492,10 @@ def run(args: argparse.Namespace) -> None:
         original_term = termios.tcgetattr(stdin_fd)
 
     num_hosts = len(state["host_infos"])
-    scheduler = Scheduler(interval=args.interval, stagger=(args.interval / num_hosts if num_hosts > 0 else 0.0))
+    scheduler = Scheduler(
+        interval=state["interval_seconds"],
+        stagger=_compute_scheduler_stagger(state["interval_seconds"], num_hosts),
+    )
     ping_lock = threading.Lock()
     sequence_tracker = SequenceTracker(max_outstanding=3)
     for info in state["host_infos"]:

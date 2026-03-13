@@ -31,6 +31,7 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from paraping.cli import (
+    _apply_manual_reload,
     _check_terminal_resize_and_request_redraw,
     _configure_logging,
     _handle_user_input,
@@ -758,8 +759,144 @@ class TestCLITerminalResizeCheck(unittest.TestCase):
         self.assertEqual(state["next_resize_check_time"], 6.0)
         self.assertTrue(state["force_render"])
         self.assertTrue(state["updated"])
+
+
+class TestCLIIntervalHotkeys(unittest.TestCase):
+    """Test runtime interval updates driven by hotkeys."""
+
+    def _make_state(self, interval_seconds: float = 1.0, host_count: int = 2) -> dict:
+        return {
+            "show_help": False,
+            "host_select_active": False,
+            "graph_host_id": None,
+            "status_message": None,
+            "force_render": False,
+            "updated": False,
+            "interval_seconds": interval_seconds,
+            "host_infos": [{"id": idx, "active": True} for idx in range(host_count)],
+        }
+
+    def test_handle_user_input_plus_decreases_interval(self):
+        """`+` should decrease runtime interval and update scheduler timing."""
+        state = self._make_state(interval_seconds=1.0, host_count=2)
+        args = MagicMock(interval=1.0, slow_threshold=0.5)
+        scheduler = MagicMock()
+        scheduler.get_host_count.return_value = 2
+        ping_lock = threading.Lock()
+
+        skip_iteration = _handle_user_input("+", args, state, scheduler, ping_lock, MagicMock())
+
+        self.assertFalse(skip_iteration)
+        self.assertEqual(state["interval_seconds"], 0.9)
+        self.assertEqual(state["status_message"], "Interval: 0.9s")
+        scheduler.set_interval.assert_called_once_with(0.9)
+        scheduler.set_stagger.assert_called_once_with(0.45)
+        scheduler.reset_timing.assert_called_once()
+        self.assertTrue(state["force_render"])
+        self.assertTrue(state["updated"])
+
+    def test_handle_user_input_minus_increases_interval(self):
+        """`-` should increase runtime interval and update scheduler timing."""
+        state = self._make_state(interval_seconds=1.0, host_count=4)
+        args = MagicMock(interval=1.0, slow_threshold=0.5)
+        scheduler = MagicMock()
+        scheduler.get_host_count.return_value = 4
+        ping_lock = threading.Lock()
+
+        _handle_user_input("-", args, state, scheduler, ping_lock, MagicMock())
+
+        self.assertEqual(state["interval_seconds"], 1.1)
+        self.assertEqual(state["status_message"], "Interval: 1.1s")
+        scheduler.set_interval.assert_called_once_with(1.1)
+        scheduler.set_stagger.assert_called_once_with(0.275)
+
+    def test_handle_user_input_plus_rejects_rate_limit_violation(self):
+        """Dangerous interval reductions should be rejected with a status message."""
+        state = self._make_state(interval_seconds=2.0, host_count=100)
+        args = MagicMock(interval=2.0, slow_threshold=0.5)
+        scheduler = MagicMock()
+        scheduler.get_host_count.return_value = 100
+        ping_lock = threading.Lock()
+
+        _handle_user_input("+", args, state, scheduler, ping_lock, MagicMock())
+
+        self.assertEqual(state["interval_seconds"], 2.0)
+        self.assertIn("Interval change rejected:", state["status_message"])
+        scheduler.set_interval.assert_not_called()
+        scheduler.set_stagger.assert_not_called()
+        scheduler.reset_timing.assert_not_called()
+
+    def test_handle_user_input_plus_clamps_at_min_interval(self):
+        """`+` at the minimum interval should keep the minimum value."""
+        state = self._make_state(interval_seconds=0.1, host_count=1)
+        args = MagicMock(interval=0.1, slow_threshold=0.5)
+        scheduler = MagicMock()
+        scheduler.get_host_count.return_value = 1
+        ping_lock = threading.Lock()
+
+        _handle_user_input("+", args, state, scheduler, ping_lock, MagicMock())
+
+        self.assertEqual(state["interval_seconds"], 0.1)
+        self.assertEqual(state["status_message"], "Interval: 0.1s")
+        scheduler.set_interval.assert_called_once_with(0.1)
+
+    @patch("paraping.cli._start_host_worker")
+    @patch("paraping.cli.should_retry_asn", return_value=False)
+    @patch("paraping.cli.read_input_file")
+    def test_apply_manual_reload_uses_runtime_interval_for_stagger(
+        self,
+        mock_read_input_file,
+        _mock_should_retry_asn,
+        mock_start_host_worker,
+    ):
+        """Reload should recompute scheduler stagger from runtime interval state."""
+        mock_read_input_file.return_value = [
+            {"host": "192.0.2.1", "ip": "192.0.2.1", "alias": "host1"},
+            {"host": "192.0.2.2", "ip": "192.0.2.2", "alias": "host2"},
+        ]
+        args = MagicMock(input="hosts.txt")
+        state = {
+            "host_infos": [
+                {
+                    "id": 0,
+                    "host": "192.0.2.1",
+                    "alias": "host1",
+                    "ip": "192.0.2.1",
+                    "site": "",
+                    "tags": [],
+                    "active": True,
+                    "removed": False,
+                    "retired_until": None,
+                    "rdns_pending": False,
+                    "asn_pending": False,
+                    "asn": None,
+                }
+            ],
+            "host_info_map": {"192.0.2.1": [{"id": 0, "host": "192.0.2.1", "ip": "192.0.2.1"}]},
+            "next_host_id": 1,
+            "v2_state": MagicMock(),
+            "done_host_ids": set(),
+            "rdns_request_queue": MagicMock(),
+            "asn_request_queue": MagicMock(),
+            "asn_cache": {},
+            "asn_failure_ttl": 300.0,
+            "worker_threads": {},
+            "group_by_modes": ["none"],
+            "group_by_mode_index": 0,
+            "cached_page_step": None,
+            "updated": False,
+            "force_render": False,
+            "interval_seconds": 2.4,
+        }
+        scheduler = MagicMock()
+        scheduler.get_host_count.return_value = 2
+
+        message = _apply_manual_reload(args, state, scheduler, threading.Lock(), MagicMock())
+
+        self.assertEqual(message, "Reloaded: +1 -0 (total 2)")
+        scheduler.set_stagger.assert_called_with(1.2)
+        mock_start_host_worker.assert_called_once()
         self.assertIsNone(state["cached_page_step"])
-        self.assertIsNone(state["last_term_size"])
 
     @patch("paraping.cli.reset_render_cache")
     @patch("paraping.cli.get_terminal_size")

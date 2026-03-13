@@ -15,6 +15,8 @@ KEYMAPS: Dict[str, Dict[str, str]] = {
     "main": {
         "d": "display_name_cycle",
         "v": "display_view_cycle",
+        "+": "interval_decrease",
+        "-": "interval_increase",
         "x": "host_select_open",
         "j": "host_scroll_down",
         "k": "host_scroll_up",
@@ -72,6 +74,8 @@ ACTION_METADATA: Dict[str, Dict[str, str]] = {
     "quit": {"label": "quit", "category": "global"},
     "display_name_cycle": {"label": "cycle display mode (ip/rdns/alias)", "category": "main"},
     "display_view_cycle": {"label": "cycle view (timeline/sparkline/square)", "category": "main"},
+    "interval_decrease": {"label": "decrease ping interval by 0.1s", "category": "runtime"},
+    "interval_increase": {"label": "increase ping interval by 0.1s", "category": "runtime"},
     "host_select_open": {"label": "select host for fullscreen RTT graph", "category": "main"},
     "history_prev": {"label": "history page previous", "category": "main"},
     "history_next": {"label": "history page next", "category": "main"},
@@ -117,6 +121,8 @@ HELP_ACTION_GROUPS: Sequence[Tuple[str, Sequence[Tuple[str, Sequence[str]]]]] = 
         (
             ("display_name_cycle", ("main",)),
             ("display_view_cycle", ("main",)),
+            ("interval_decrease", ("main",)),
+            ("interval_increase", ("main",)),
             ("host_select_open", ("main", "graph")),
             ("history_prev", ("main",)),
             ("history_next", ("main",)),
