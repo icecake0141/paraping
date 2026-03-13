@@ -37,6 +37,7 @@ class TestKeymapResolveAction(unittest.TestCase):
         self.assertEqual(resolve_action("\x1b", "host_select"), "back")
         self.assertEqual(resolve_action("v", "graph"), "graph_toggle")
         self.assertEqual(resolve_action("x", "graph"), "host_select_open")
+        self.assertEqual(resolve_action("S", "main"), "settings_save")
 
 
 class TestKeymapHelpAndConflicts(unittest.TestCase):
@@ -51,6 +52,7 @@ class TestKeymapHelpAndConflicts(unittest.TestCase):
         self.assertIn("Y: cycle Pulse style", lines)
         self.assertIn("n: toggle Pulse panel", lines)
         self.assertIn("N: cycle Pulse panel position", lines)
+        self.assertIn("S: save current settings", lines)
 
     def test_key_conflicts_are_empty(self):
         self.assertEqual(find_key_conflicts(), {})

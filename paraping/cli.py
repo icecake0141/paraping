@@ -34,7 +34,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from paraping.cli_options import CLI_OPTION_SPECS, OptionSpec
-from paraping.config import load_config
+from paraping.config import DEFAULT_CONFIG_PATH, load_config, save_config_overrides
 from paraping.core import (
     _normalize_term_size,
     build_host_infos,
@@ -144,6 +144,26 @@ def _compute_runtime_timeline_width(state: Dict[str, Any], term_size: Any) -> in
         return max(1, int(timeline_width))
     except (TypeError, ValueError):
         return 1
+
+
+def _build_runtime_config_overrides(state: Dict[str, Any]) -> Dict[str, Any]:
+    """Collect the current state that should persist across launches."""
+    return {
+        "display_name": state["modes"][state["mode_index"]],
+        "view": state["display_modes"][state["display_mode_index"]],
+        "sort": state["sort_modes"][state["sort_mode_index"]],
+        "filter": state["filter_modes"][state["filter_mode_index"]],
+        "show_asn": bool(state["show_asn"]),
+        "summary_mode": state["summary_modes"][state["summary_mode_index"]],
+        "summary_scope": state["summary_scope_modes"][state["summary_scope_mode_index"]],
+        "group_by": state["group_by_modes"][state["group_by_mode_index"]],
+        "panel_position": state["panel_position"],
+        "color": bool(state["use_color"]),
+        "bell_on_fail": bool(state["bell_on_fail"]),
+        "kitt": bool(state["kitt_mode_enabled"]),
+        "kitt_style": state["kitt_style_modes"][state["kitt_style_index"]],
+        "summary_fullscreen": bool(state["summary_fullscreen"]),
+    }
 
 
 def _check_terminal_resize_and_request_redraw(state: Dict[str, Any], now_monotonic: float) -> None:
@@ -1023,6 +1043,16 @@ def _handle_user_input(
         state["status_message"] = f"Saved: {snapshot_name}"
         state["updated"] = True
 
+    def _handle_settings_save() -> None:
+        try:
+            save_config_overrides(_build_runtime_config_overrides(state))
+        except (ImportError, OSError, ValueError) as exc:
+            state["status_message"] = f"Settings save failed: {exc}"
+        else:
+            state["status_message"] = f"Saved settings: {DEFAULT_CONFIG_PATH}"
+        state["force_render"] = True
+        state["updated"] = True
+
     def _handle_history_prev() -> None:
         if state["v2_history_offset"] < len(state["v2_history_buffer"]) - 1:
             page_step, state["cached_page_step"], state["last_term_size"] = get_cached_page_step(
@@ -1138,6 +1168,7 @@ def _handle_user_input(
         "display_pause_toggle": _handle_display_pause_toggle,
         "dormant_toggle": _handle_dormant_toggle,
         "snapshot_save": _handle_snapshot_save,
+        "settings_save": _handle_settings_save,
         "history_prev": _handle_history_prev,
         "history_next": _handle_history_next,
         "host_select_open": _handle_host_select_open,

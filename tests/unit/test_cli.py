@@ -711,6 +711,110 @@ class TestCLIInputHandling(unittest.TestCase):
         self.assertTrue(state["force_render"])
         self.assertTrue(state["updated"])
 
+    @patch("paraping.cli.save_config_overrides")
+    def test_handle_user_input_settings_save_persists_runtime_config_subset(self, mock_save_config_overrides):
+        """`S` should persist only startup-relevant runtime settings."""
+        state = {
+            "show_help": False,
+            "host_select_active": False,
+            "graph_host_id": None,
+            "modes": ["ip", "rdns", "alias"],
+            "mode_index": 0,
+            "display_modes": ["timeline", "sparkline", "square"],
+            "display_mode_index": 1,
+            "sort_modes": ["config", "failures", "streak", "latency", "host"],
+            "sort_mode_index": 3,
+            "filter_modes": ["failures", "latency", "all"],
+            "filter_mode_index": 0,
+            "show_asn": False,
+            "summary_modes": ["rates", "rtt", "ttl", "streak"],
+            "summary_mode_index": 2,
+            "summary_scope_modes": ["host", "group"],
+            "summary_scope_mode_index": 1,
+            "group_by_modes": ["none", "asn", "site"],
+            "group_by_mode_index": 1,
+            "panel_position": "top",
+            "use_color": True,
+            "bell_on_fail": True,
+            "kitt_mode_enabled": True,
+            "kitt_style_modes": ["scanner", "gradient"],
+            "kitt_style_index": 1,
+            "summary_fullscreen": True,
+            "dormant": True,
+            "display_paused": True,
+            "paused": True,
+            "status_message": None,
+            "force_render": False,
+            "updated": False,
+        }
+
+        skip_iteration = _handle_user_input("S", MagicMock(slow_threshold=0.5), state)
+
+        self.assertFalse(skip_iteration)
+        mock_save_config_overrides.assert_called_once_with(
+            {
+                "display_name": "ip",
+                "view": "sparkline",
+                "sort": "latency",
+                "filter": "failures",
+                "show_asn": False,
+                "summary_mode": "ttl",
+                "summary_scope": "group",
+                "group_by": "asn",
+                "panel_position": "top",
+                "color": True,
+                "bell_on_fail": True,
+                "kitt": True,
+                "kitt_style": "gradient",
+                "summary_fullscreen": True,
+            }
+        )
+        self.assertEqual(state["status_message"], f"Saved settings: {os.path.expanduser('~/.paraping.conf')}")
+        self.assertTrue(state["force_render"])
+        self.assertTrue(state["updated"])
+
+    @patch("paraping.cli.save_config_overrides", side_effect=OSError("disk full"))
+    def test_handle_user_input_settings_save_reports_error(self, mock_save_config_overrides):
+        """`S` should report persistence errors without crashing the loop."""
+        state = {
+            "show_help": False,
+            "host_select_active": False,
+            "graph_host_id": None,
+            "modes": ["ip"],
+            "mode_index": 0,
+            "display_modes": ["timeline"],
+            "display_mode_index": 0,
+            "sort_modes": ["config"],
+            "sort_mode_index": 0,
+            "filter_modes": ["all"],
+            "filter_mode_index": 0,
+            "show_asn": True,
+            "summary_modes": ["rates"],
+            "summary_mode_index": 0,
+            "summary_scope_modes": ["host"],
+            "summary_scope_mode_index": 0,
+            "group_by_modes": ["none"],
+            "group_by_mode_index": 0,
+            "panel_position": "right",
+            "use_color": False,
+            "bell_on_fail": False,
+            "kitt_mode_enabled": False,
+            "kitt_style_modes": ["scanner"],
+            "kitt_style_index": 0,
+            "summary_fullscreen": False,
+            "status_message": None,
+            "force_render": False,
+            "updated": False,
+        }
+
+        skip_iteration = _handle_user_input("S", MagicMock(slow_threshold=0.5), state)
+
+        self.assertFalse(skip_iteration)
+        mock_save_config_overrides.assert_called_once()
+        self.assertEqual(state["status_message"], "Settings save failed: disk full")
+        self.assertTrue(state["force_render"])
+        self.assertTrue(state["updated"])
+
 
 class TestCLITerminalResizeCheck(unittest.TestCase):
     """Test low-frequency terminal resize detection and full redraw requests."""

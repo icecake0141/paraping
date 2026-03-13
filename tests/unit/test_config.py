@@ -23,6 +23,7 @@ Covers:
 - handle_options integration with config (--no-config flag, override precedence)
 """
 
+import configparser
 import os
 import sys
 import tempfile
@@ -33,7 +34,7 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from paraping.cli import _apply_config_to_args, handle_options
-from paraping.config import _is_yaml_file, load_config, load_ini_config, load_yaml_config
+from paraping.config import _is_yaml_file, load_config, load_ini_config, load_yaml_config, save_config_overrides
 
 
 class TestParseBool(unittest.TestCase):
@@ -359,6 +360,74 @@ class TestLoadConfig(unittest.TestCase):
         with patch("paraping.config.DEFAULT_CONFIG_PATH", "/tmp/definitely_missing_paraping.conf"):
             cfg = load_config()
             self.assertEqual(cfg, {})
+
+
+class TestSaveConfigOverrides(unittest.TestCase):
+    """Tests for persisting runtime-selected config values."""
+
+    def _write(self, suffix: str, content: str) -> str:
+        f = tempfile.NamedTemporaryFile("w", suffix=suffix, delete=False, encoding="utf-8")
+        f.write(content)
+        f.close()
+        return f.name
+
+    def test_updates_ini_defaults_and_preserves_hosts_and_unknown_sections(self):
+        path = self._write(
+            ".conf",
+            (
+                "[default]\ncolor = false\npanel_position = left\ncustom_key = keepme\n\n"
+                "[hosts]\n8.8.8.8\n\n[extra]\nmode = custom\n"
+            ),
+        )
+        try:
+            save_config_overrides({"color": True, "panel_position": "bottom", "summary_mode": "ttl"}, path)
+
+            cfg = load_config(path)
+            self.assertTrue(cfg["color"])
+            self.assertEqual(cfg["panel_position"], "bottom")
+            self.assertEqual(cfg["summary_mode"], "ttl")
+
+            parser = configparser.ConfigParser(allow_no_value=True, delimiters=("=", ":"))
+            parser.read(path, encoding="utf-8")
+            self.assertEqual(parser.get("default", "custom_key"), "keepme")
+            self.assertTrue(parser.has_section("hosts"))
+            self.assertIn("8.8.8.8", dict(parser.items("hosts")))
+            self.assertEqual(parser.get("extra", "mode"), "custom")
+        finally:
+            os.unlink(path)
+
+    def test_updates_yaml_defaults_and_preserves_hosts_and_unknown_top_level_keys(self):
+        path = self._write(
+            ".yaml",
+            (
+                "default:\n  color: false\n  panel_position: left\n  custom_key: keepme\n"
+                "hosts:\n  - 8.8.8.8\nextra:\n  mode: custom\n"
+            ),
+        )
+        try:
+            save_config_overrides({"color": True, "panel_position": "bottom", "summary_mode": "ttl"}, path)
+
+            cfg = load_config(path)
+            self.assertTrue(cfg["color"])
+            self.assertEqual(cfg["panel_position"], "bottom")
+            self.assertEqual(cfg["summary_mode"], "ttl")
+            self.assertEqual(cfg["hosts"], ["8.8.8.8"])
+
+            with open(path, "r", encoding="utf-8") as fh:
+                saved_text = fh.read()
+            self.assertIn("custom_key: keepme", saved_text)
+            self.assertIn("extra:", saved_text)
+            self.assertIn("- 8.8.8.8", saved_text)
+        finally:
+            os.unlink(path)
+
+    def test_creates_new_ini_file_when_missing(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = os.path.join(temp_dir, "paraping.conf")
+            save_config_overrides({"color": True, "summary_fullscreen": False}, path)
+            cfg = load_config(path)
+            self.assertTrue(cfg["color"])
+            self.assertFalse(cfg["summary_fullscreen"])
 
 
 class TestApplyConfigToArgs(unittest.TestCase):
