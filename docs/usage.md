@@ -92,6 +92,7 @@ make run ARGS='-f hosts.txt'
 - `y`: Pulse mode toggle
 - `Y`: Pulse style cycle (scanner/gradient)
 - `s`: save snapshot file
+- `S`: save current startup-relevant settings to `~/.paraping.conf`
 - `ESC`: exit graph/selector
 
 ## Related Documents
@@ -183,6 +184,7 @@ make run ARGS='-f hosts.txt'
 - `y`: Pulse モード切替
 - `Y`: Pulse スタイル切替（scanner/gradient）
 - `s`: スナップショット保存
+- `S`: 現在の起動時設定を `~/.paraping.conf` に保存
 - `ESC`: グラフ/選択を終了
 
 ## 関連ドキュメント

@@ -23,5 +23,5 @@ def test_usage_doc_lists_new_cli_boolean_pairs() -> None:
 
 def test_usage_doc_lists_centralized_hotkeys() -> None:
     text = _usage_text()
-    for token in ("`?`", "`d`", "`x`", "`h` / `l`", "`j` / `k`", "`u`", "`y`", "`Y`"):
+    for token in ("`?`", "`d`", "`x`", "`h` / `l`", "`j` / `k`", "`u`", "`y`", "`Y`", "`S`"):
         assert token in text
