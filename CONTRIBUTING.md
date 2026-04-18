@@ -39,8 +39,8 @@ source .venv/bin/activate
 
 ## Pre-commit Hooks
 
-Once installed the hooks run automatically on `git commit`. To run them
-manually against all files at any time:
+Once installed the hooks run automatically on `git commit` (required quality
+gate on staged changes). To run a full-repository audit manually, as needed:
 
 ```bash
 pre-commit run --all-files
@@ -86,7 +86,16 @@ make test
 
 Before opening a PR, please ensure:
 
-- [ ] `pre-commit run --all-files` passes with no errors.
+- [ ] Optional (recommended periodically): `pre-commit run --all-files`.
 - [ ] `make test` passes locally.
 - [ ] New behaviour is covered by tests.
 - [ ] Relevant documentation is updated.
+
+## GitHub Actions Security Checklist
+
+When a PR changes files under `.github/workflows/`, also ensure:
+
+- [ ] Do not use `pull_request_target` with `actions/checkout` referencing `${{ github.event.pull_request.head.sha }}`.
+- [ ] Do not interpolate `${{ github.head_ref }}` or `${{ github.event.* }}` directly in `run:`; pass via `env:` and quote shell variables.
+- [ ] Keep `permissions:` minimal (`contents: read` by default; grant write scopes only to workflows that require them).
+- [ ] Do not pass `${{ secrets.* }}` or `${{ github.token }}` to outbound commands such as `curl`, `wget`, `nc`, or `bash -c`.

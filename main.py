@@ -50,24 +50,21 @@ from concurrent.futures import ThreadPoolExecutor
 
 # pylint: enable=unused-import
 
-# Import and re-export from the refactored modules
-from paraping.core import (  # noqa: F401
-    build_host_infos,
-    compute_history_page_step,
-    get_cached_page_step,
-    HISTORY_DURATION_MINUTES,
-    MAX_HOST_THREADS,
-    parse_host_file_line,
-    read_input_file,
-    SNAPSHOT_INTERVAL_SECONDS,
-)
-
 # pylint: enable=unused-import
 
 _TEST_PATCH_REFS = (os, queue, select, socket, sys, termios, threading, tty, ThreadPoolExecutor)
 # Keep references for tests that patch main.<module> symbols.
 
 _LAZY_EXPORTS = {
+    # Core
+    "read_input_file": ("paraping.core", "read_input_file"),
+    "parse_host_file_line": ("paraping.core", "parse_host_file_line"),
+    "compute_history_page_step": ("paraping.core", "compute_history_page_step"),
+    "get_cached_page_step": ("paraping.core", "get_cached_page_step"),
+    "build_host_infos": ("paraping.core", "build_host_infos"),
+    "MAX_HOST_THREADS": ("paraping.core", "MAX_HOST_THREADS"),
+    "HISTORY_DURATION_MINUTES": ("paraping.core", "HISTORY_DURATION_MINUTES"),
+    "SNAPSHOT_INTERVAL_SECONDS": ("paraping.core", "SNAPSHOT_INTERVAL_SECONDS"),
     # Network ASN (kept for compatibility)
     "resolve_asn": ("paraping.network_asn", "resolve_asn"),
     "asn_worker": ("paraping.network_asn", "asn_worker"),
@@ -182,7 +179,7 @@ _EAGER_EXPORTS = [
 ]
 
 # Expose full compatibility surface, including lazy exports.
-__all__ = _EAGER_EXPORTS + list(_LAZY_EXPORTS.keys())
+__all__ = list(dict.fromkeys(_EAGER_EXPORTS + list(_LAZY_EXPORTS.keys())))
 
 
 # Backward compatibility: main(args) is now run(args), but keep main alias

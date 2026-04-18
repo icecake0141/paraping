@@ -110,7 +110,7 @@ class TestPanelToggle(unittest.TestCase):
 
 
 class TestKnightRiderHotkeys(unittest.TestCase):
-    """Test Knight Rider mode hotkeys."""
+    """Test Pulse mode hotkeys."""
 
     def _base_state(self):
         return {
@@ -127,26 +127,26 @@ class TestKnightRiderHotkeys(unittest.TestCase):
             "force_render": False,
         }
 
-    def test_k_toggles_kitt_mode(self):
-        """Pressing k should toggle Knight Rider mode on/off."""
+    def test_y_toggles_kitt_mode(self):
+        """Pressing y should toggle Pulse mode on/off."""
         state = self._base_state()
         args = argparse.Namespace(slow_threshold=0.5, interval=1.0)
-        _handle_user_input("k", args, state)
+        _handle_user_input("y", args, state)
         self.assertTrue(state["kitt_mode_enabled"])
         self.assertIn("enabled", state["status_message"])
-        _handle_user_input("k", args, state)
+        _handle_user_input("y", args, state)
         self.assertFalse(state["kitt_mode_enabled"])
         self.assertIn("disabled", state["status_message"])
 
-    def test_capital_k_cycles_style_only_when_enabled(self):
-        """Pressing K should cycle styles only when mode is enabled."""
+    def test_capital_y_cycles_style_only_when_enabled(self):
+        """Pressing Y should cycle Pulse styles only when mode is enabled."""
         state = self._base_state()
         args = argparse.Namespace(slow_threshold=0.5, interval=1.0)
-        _handle_user_input("K", args, state)
+        _handle_user_input("Y", args, state)
         self.assertEqual(state["kitt_style_index"], 0)
         self.assertIn("off", state["status_message"])
         state["kitt_mode_enabled"] = True
-        _handle_user_input("K", args, state)
+        _handle_user_input("Y", args, state)
         self.assertEqual(state["kitt_style_index"], 1)
         self.assertIn("gradient", state["status_message"])
 
@@ -231,10 +231,10 @@ class TestQuitHotkey(unittest.TestCase):
     @patch("paraping.cli.ThreadPoolExecutor")
     @patch("paraping.cli.threading.Thread")
     @patch("paraping.cli.read_key")
-    def test_quit_key_uppercase_exits_immediately(
+    def test_help_toggle_and_quit_exit_immediately(
         self, mock_read_key, mock_thread, mock_executor, mock_term_size, mock_stdin, mock_event, mock_queue
     ):
-        """Test that pressing 'Q' key (uppercase) exits the program immediately"""
+        """Test that help toggles with '?' and then 'q' exits immediately."""
         # Mock terminal properties
         mock_stdin.isatty.return_value = True
         mock_term_size.return_value = os.terminal_size((80, 24))
@@ -258,12 +258,12 @@ class TestQuitHotkey(unittest.TestCase):
         ]
         mock_event.side_effect = [MagicMock(), MagicMock(), MagicMock()]
 
-        # Mock read_key to return 'Q' (uppercase) after a few iterations
-        mock_read_key.side_effect = [None, None, "Q"]
+        # Toggle help with '?', then quit with 'q'
+        mock_read_key.side_effect = [None, "?", "q"]
 
         args = argparse.Namespace(
             timeout=1,
-            count=0,  # Infinite count to ensure it would run forever without 'Q'
+            count=0,  # Infinite count to ensure it would run forever without 'q'
             interval=1.0,
             slow_threshold=0.5,
             verbose=False,
@@ -291,7 +291,7 @@ class TestQuitHotkey(unittest.TestCase):
         with patch("main.termios.tcgetattr", return_value=MagicMock()):
             with patch("main.termios.tcsetattr"):
                 with patch("main.tty.setcbreak"):
-                    # Should exit without raising exception when 'Q' is pressed
+                    # Should exit without raising exception when 'q' is pressed
                     main(args)
 
     @patch("paraping.cli.queue.Queue")
@@ -328,8 +328,8 @@ class TestQuitHotkey(unittest.TestCase):
         ]
         mock_event.side_effect = [MagicMock(), MagicMock(), MagicMock()]
 
-        # Mock read_key to open help screen with 'H', then press 'q' to quit
-        mock_read_key.side_effect = [None, "H", "q"]
+        # Mock read_key to open help screen with '?', then press 'q' to quit
+        mock_read_key.side_effect = [None, "?", "q"]
 
         args = argparse.Namespace(
             timeout=1,

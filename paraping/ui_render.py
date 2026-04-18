@@ -19,15 +19,18 @@ including ANSI text utilities, color/timeline building, layout computation,
 view rendering, graph utilities, formatting functions, and terminal utilities.
 """
 
+import math
 import os
 import re
 import sys
 import textwrap
 import time
+import unicodedata
 from collections import deque
 from datetime import datetime, timezone, tzinfo
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
+from paraping.keymap import build_help_items
 from paraping.stats import (
     build_summary_all_suffix,
     build_summary_suffix,
@@ -40,6 +43,7 @@ from paraping.stats import (
     resolve_group_components,
     resolve_group_labels,
     resolve_primary_group_label,
+    resolve_site_tag1_labels,
 )
 
 # ANSI and display constants (imported from main)
@@ -61,6 +65,11 @@ STATUS_METRICS_TEMPLATE = STATUS_METRICS_SEPARATOR.join(
 
 # Global state for rendering
 LAST_RENDER_LINES: Optional[List[str]] = None
+KITT_SCANNER_STATE: Dict[str, float] = {
+    "last_monotonic": -1.0,
+    "scanner_phase": 0.0,
+    "last_error_ratio": 0.0,
+}
 
 
 # ============================================================================
@@ -76,6 +85,24 @@ def strip_ansi(text: str) -> str:
 def visible_len(text: str) -> int:
     """Get the visible length of text (excluding ANSI codes)."""
     return len(strip_ansi(text))
+
+
+def visible_cell_width(text: str) -> int:
+    """Get the terminal cell width of text, excluding ANSI codes."""
+    width = 0
+    index = 0
+    while index < len(text):
+        if text[index] == "\x1b":
+            match = ANSI_ESCAPE_RE.match(text, index)
+            if match:
+                index = match.end()
+                continue
+        char = text[index]
+        index += 1
+        if unicodedata.combining(char):
+            continue
+        width += 2 if unicodedata.east_asian_width(char) in ("F", "W") else 1
+    return width
 
 
 def truncate_visible(text: str, width: int) -> Tuple[str, int]:
@@ -240,6 +267,254 @@ def compute_activity_indicator_width(
     return remaining
 
 
+def _clamp(value: float, lower: float, upper: float) -> float:
+    """Clamp a float between inclusive lower/upper bounds."""
+    return max(lower, min(upper, value))
+
+
+def _resolve_kitt_speed_hz(error_ratio: float) -> float:
+    """Resolve Pulse animation speed from error ratio."""
+    bounded_ratio = _clamp(error_ratio, 0.0, 1.0)
+    return 2.0 + 12.0 * bounded_ratio
+
+
+def _resolve_kitt_scanner_speed_hz(error_ratio: float) -> float:
+    """Resolve Scanner-only animation speed from error ratio."""
+    bounded_ratio = _clamp(error_ratio, 0.0, 1.0)
+    base_speed = 2.0 + 12.0 * bounded_ratio
+    # Slow healthy scanner motion, then blend back toward the original curve as severity rises.
+    slowdown_blend = math.pow(bounded_ratio, 1.6)
+    slowdown_factor = 0.7 + (0.3 * slowdown_blend)
+    return base_speed * slowdown_factor
+
+
+def _resolve_kitt_peak_level(error_ratio: float, levels: int) -> int:
+    """Resolve the maximum drawable intensity level for the current severity."""
+    bounded_ratio = _clamp(error_ratio, 0.0, 1.0)
+    return min(levels, max(1, int(round(1 + (levels - 1) * bounded_ratio))))
+
+
+def _resolve_kitt_palette(error_ratio: float) -> Tuple[str, str]:
+    """Resolve strong/soft ANSI colors for Pulse severity."""
+    if error_ratio <= 0.0:
+        return "\x1b[32m", "\x1b[2;32m"
+    if error_ratio <= 0.20:
+        return "\x1b[33m", "\x1b[2;33m"
+    if error_ratio <= 0.50:
+        return "\x1b[38;5;208m", "\x1b[38;5;214m"
+    return "\x1b[31m", "\x1b[2;31m"
+
+
+def _resolve_kitt_core_color(error_ratio: float) -> str:
+    """Resolve a stronger core ANSI color for the scanner center."""
+    if error_ratio <= 0.0:
+        return "\x1b[92m"
+    if error_ratio <= 0.20:
+        return "\x1b[93m"
+    if error_ratio <= 0.50:
+        return "\x1b[38;5;214m"
+    return "\x1b[91m"
+
+
+def _resolve_kitt_profile(body_height: int, preferred_rows: int = 8) -> Tuple[int, int]:
+    """Resolve active scanner height and vertical start within the available band."""
+    del preferred_rows  # Scanner rows now expand to fill the available band height.
+    active_rows = max(1, body_height)
+    start_row = max(0, (body_height - active_rows) // 2)
+    return active_rows, start_row
+
+
+def _advance_kitt_scanner_phase(now_monotonic: float, error_ratio: float) -> float:
+    """Advance the shared scanner phase while preserving continuity across speed changes."""
+    last_monotonic = KITT_SCANNER_STATE["last_monotonic"]
+    speed_hz = _resolve_kitt_scanner_speed_hz(error_ratio)
+    if last_monotonic < 0.0 or now_monotonic < last_monotonic:
+        KITT_SCANNER_STATE["last_monotonic"] = now_monotonic
+        KITT_SCANNER_STATE["last_error_ratio"] = error_ratio
+        return KITT_SCANNER_STATE["scanner_phase"]
+    delta = max(0.0, now_monotonic - last_monotonic)
+    KITT_SCANNER_STATE["scanner_phase"] += delta * speed_hz
+    KITT_SCANNER_STATE["last_monotonic"] = now_monotonic
+    KITT_SCANNER_STATE["last_error_ratio"] = error_ratio
+    return KITT_SCANNER_STATE["scanner_phase"]
+
+
+def _resolve_kitt_scanner_position(
+    width: int,
+    now_utc: datetime,
+    error_ratio: float,
+    phase_offset: int = 0,
+    now_monotonic: Optional[float] = None,
+) -> float:
+    """Resolve the shared scanner center for the current frame."""
+    del now_utc  # Motion is driven by monotonic time for smoothness.
+    if width <= 1:
+        return 0.0
+    if now_monotonic is None:
+        now_monotonic = time.monotonic()
+    phase = _advance_kitt_scanner_phase(now_monotonic, error_ratio)
+    center = (width - 1) / 2.0
+    span = max(1.0, center)
+    return center + math.sin(phase + (phase_offset * 0.008)) * span
+
+
+def _scanner_row_profile(row_index: int, total_rows: int) -> float:
+    """Return a 0..1 row-strength factor, highest in the vertical center."""
+    if total_rows <= 1:
+        return 1.0
+    center = (total_rows - 1) / 2.0
+    distance = abs(row_index - center)
+    return max(0.25, 1.0 - (distance / max(1.0, center + 0.5)))
+
+
+def _kitt_density_to_char(level: float) -> str:
+    """Map normalized density to the drawable character used for the effect."""
+    if level >= 0.85:
+        return "█"
+    if level >= 0.60:
+        return "▓"
+    if level >= 0.35:
+        return "▒"
+    if level >= 0.15:
+        return "░"
+    return " "
+
+
+def _sample_kitt_density(samples: Sequence[float]) -> float:
+    """Blend intensity samples to soften single-cell motion."""
+    if not samples:
+        return 0.0
+    peak = max(samples)
+    average = sum(samples) / len(samples)
+    return _clamp((peak * 0.7) + (average * 0.3), 0.0, 1.0)
+
+
+def _kitt_colorize(char: str, level: float, use_color: bool, strong_color: str, soft_color: str) -> str:
+    """Colorize a drawable KITT character according to its intensity."""
+    if not use_color or char == " ":
+        return char
+    color = strong_color if level >= 0.45 else soft_color
+    return f"{color}{char}{ANSI_RESET}"
+
+
+def _render_kitt_levels(
+    levels: Sequence[float],
+    use_color: bool,
+    strong_color: str,
+    soft_color: str,
+    core_color: str = "",
+) -> str:
+    """Render a normalized intensity row into colored characters."""
+    if not levels:
+        return ""
+    strong_threshold = max(0.3, max(levels, default=0.0) * 0.82)
+    chars: List[str] = []
+    for level in levels:
+        char = _kitt_density_to_char(level)
+        if not use_color or char == " ":
+            chars.append(char)
+        elif core_color and level >= 0.92:
+            chars.append(f"{core_color}{char}{ANSI_RESET}")
+        else:
+            color = strong_color if level >= strong_threshold else soft_color
+            chars.append(f"{color}{char}{ANSI_RESET}")
+    return "".join(chars)
+
+
+def _build_kitt_scanner_levels(
+    width: int,
+    now_utc: datetime,
+    row_index: int,
+    total_rows: int,
+    error_ratio: float,
+    center: Optional[float] = None,
+) -> List[float]:
+    """Build a smooth scanner intensity map for one row."""
+    if width <= 0:
+        return []
+    row_strength = _scanner_row_profile(row_index, total_rows)
+    if center is None:
+        center = _resolve_kitt_scanner_position(width, now_utc, error_ratio, phase_offset=0)
+    base_half_width = max(3.0, width * (0.08 + 0.14 * error_ratio))
+    half_width = max(2.5, base_half_width * (0.75 + row_strength * 0.6))
+    skirt_width = half_width * (1.45 + (1.0 - row_strength) * 0.2)
+    vertical_emphasis = 0.55 + (row_strength * 0.75)
+    levels: List[float] = []
+    for index in range(width):
+        sample_points = (index - 0.35, index, index + 0.35)
+        samples = []
+        for sample in sample_points:
+            distance = abs(sample - center)
+            if distance > skirt_width:
+                samples.append(0.0)
+                continue
+            if distance <= half_width:
+                core = 1.0 - (distance / max(half_width, 0.001))
+                intensity = 0.45 + (core**0.55) * 0.75
+            else:
+                tail_distance = (distance - half_width) / max(skirt_width - half_width, 0.001)
+                intensity = max(0.0, 0.32 * ((1.0 - tail_distance) ** 1.8))
+            samples.append(intensity * vertical_emphasis)
+        levels.append(_sample_kitt_density(samples))
+    return levels
+
+
+def _build_kitt_gradient_levels(
+    width: int,
+    body_height: int,
+    row_index: int,
+    now_utc: datetime,
+    error_ratio: float,
+) -> List[float]:
+    """Build a smooth center-out ripple intensity map for one Pulse body row."""
+    if width <= 0:
+        return []
+    del now_utc  # Motion is driven by monotonic time for smoothness.
+    bounded_height = max(1, body_height)
+    bounded_row_index = min(max(0, row_index), bounded_height - 1)
+    center_x = (width - 1) / 2.0
+    center_y = (bounded_height - 1) / 2.0
+    max_radius = max(
+        1.0,
+        max(
+            ((corner_x - center_x) ** 2 + (corner_y - center_y) ** 2) ** 0.5
+            for corner_x in (0.0, float(width - 1))
+            for corner_y in (0.0, float(bounded_height - 1))
+        ),
+    )
+    phase_time = time.monotonic()
+    rings = _resolve_kitt_gradient_rings(phase_time, max_radius, error_ratio)
+    levels: List[float] = []
+    for index in range(width):
+        distance_x = index - center_x
+        distance_y = bounded_row_index - center_y
+        radius = (distance_x * distance_x + distance_y * distance_y) ** 0.5
+        level = 0.0
+        is_center_dot = abs(distance_x) <= 0.5 and abs(distance_y) <= 0.5
+        if is_center_dot:
+            pulse = 0.08 * (0.5 + 0.5 * math.sin(phase_time * 2.4))
+            level = max(level, 0.72 + (0.18 * error_ratio) + pulse)
+        for ring_radius, ring_width, freshness in rings:
+            if ring_radius < 3.2 and radius < 3.2:
+                continue
+            distance = abs(radius - ring_radius)
+            if distance > ring_width * 1.9:
+                continue
+            if distance <= ring_width:
+                wave_strength = 1.0 - (distance / max(0.001, ring_width))
+            elif radius > ring_radius:
+                shoulder_ratio = (distance - ring_width) / max(0.001, ring_width * 0.9)
+                wave_strength = max(0.0, (0.12 + 0.08 * error_ratio) * (1.0 - shoulder_ratio))
+            else:
+                tail_ratio = (distance - ring_width) / max(0.001, ring_width * 0.9)
+                wave_strength = max(0.0, (0.18 + 0.12 * error_ratio) * (1.0 - tail_ratio))
+            radial_decay = max(0.68, 1.0 - (radius / (max_radius + 1.2)))
+            ring_decay = max(0.74, 1.0 - (ring_radius / (max_radius + ring_width + 1.8)))
+            level = max(level, wave_strength * radial_decay * ring_decay * freshness)
+        levels.append(_clamp(level, 0.0, 1.0))
+    return levels
+
+
 def build_kitt_scanner_bar(
     width: int,
     now_utc: datetime,
@@ -247,37 +522,58 @@ def build_kitt_scanner_bar(
     speed_hz: int = 12,
     trail_width: int = 6,
     phase_offset: int = 0,
+    row_index: int = 0,
+    total_rows: int = 1,
+    error_hosts: int = 0,
+    total_hosts: int = 0,
 ) -> str:
-    """Build a Knight Rider-style moving scanner bar."""
+    """Build one row of the Pulse scanner effect."""
     if width <= 0:
         return ""
-    span = max(1, width - 1)
-    cycle = span * 2
-    tick = int(now_utc.timestamp() * speed_hz) + phase_offset
-    position = tick % cycle
-    if position > span:
-        position = cycle - position
+    del speed_hz  # Severity-driven speed now controls the effect.
+    del trail_width  # Width is derived from vertical profile and severity.
+    error_ratio = _compute_error_ratio(error_hosts, total_hosts)
+    strong_color, soft_color = _resolve_kitt_palette(error_ratio)
+    core_color = _resolve_kitt_core_color(error_ratio)
+    center = _resolve_kitt_scanner_position(width, now_utc, error_ratio, phase_offset=phase_offset)
+    levels = _build_kitt_scanner_levels(width, now_utc, row_index + phase_offset, total_rows, error_ratio, center=center)
+    return _render_kitt_levels(levels, use_color, strong_color, soft_color, core_color=core_color)
 
-    chars: List[str] = []
-    for index in range(width):
-        distance = abs(index - position)
-        if distance > trail_width:
-            chars.append(" ")
+
+def _compute_error_ratio(error_hosts: int, total_hosts: int) -> float:
+    """Normalize fail-host count into a [0.0, 1.0] ratio."""
+    if total_hosts <= 0:
+        return 0.0
+    bounded_error_hosts = min(max(0, error_hosts), total_hosts)
+    return bounded_error_hosts / total_hosts
+
+
+def _resolve_kitt_gradient_rings(phase_time: float, max_radius: float, error_ratio: float) -> List[Tuple[float, float, float]]:
+    """Resolve outward-only ripple rings that expire after leaving the visible area."""
+    spawn_interval = 1.0
+    bounded_ratio = _clamp(error_ratio, 0.0, 1.0)
+    ring_speed = max(6.5, max_radius * 0.7)
+    visible_ring_count = 2 + int(math.ceil(bounded_ratio * 1.5))
+    max_ring_width = 1.0 + (0.55 * bounded_ratio)
+    ring_lifetime = (max_radius + max_ring_width + 0.8) / max(0.001, ring_speed)
+    visible_ring_count = max(visible_ring_count, min(4, 1 + int(math.ceil(ring_lifetime / max(0.001, spawn_interval)))))
+    rings: List[Tuple[float, float, float]] = []
+    latest_spawn_time = math.floor(phase_time / spawn_interval) * spawn_interval
+    for ring_index in range(visible_ring_count):
+        spawn_time = latest_spawn_time - (ring_index * spawn_interval)
+        age = phase_time - spawn_time
+        if age < 0.0 or age > ring_lifetime:
             continue
-        if distance == 0:
-            base = "█"
-            color = "\x1b[91m"
-        elif distance <= 2:
-            base = "▓"
-            color = "\x1b[31m"
-        elif distance <= 4:
-            base = "▒"
-            color = "\x1b[31m"
-        else:
-            base = "░"
-            color = "\x1b[90m"
-        chars.append(f"{color}{base}{ANSI_RESET}" if use_color else base)
-    return "".join(chars)
+        ring_radius = age * ring_speed
+        if ring_radius < 0.1 or ring_radius > max_radius + max_ring_width:
+            continue
+        ring_width = max(
+            1.1,
+            max_ring_width + (ring_index * 0.08) + (ring_radius / max(6.0, max_radius)) * 0.35,
+        )
+        freshness = max(0.65, 1.0 - (age / max(0.001, ring_lifetime)))
+        rings.append((ring_radius, ring_width, freshness))
+    return rings
 
 
 def build_kitt_gradient_bar(
@@ -286,35 +582,81 @@ def build_kitt_gradient_bar(
     use_color: bool,
     speed_hz: int = 10,
     band_width: int = 12,
-    phase_offset: int = 0,
+    row_index: int = 0,
+    body_height: int = 1,
+    error_hosts: int = 0,
+    total_hosts: int = 0,
 ) -> str:
-    """Build a flowing gradient-like Knight Rider bar."""
+    """Build one row of the center-out ripple Pulse effect."""
     if width <= 0:
         return ""
-    span = max(1, width - 1)
-    cycle = span * 2
-    tick = int(now_utc.timestamp() * speed_hz) + phase_offset
-    position = tick % cycle
-    if position > span:
-        position = cycle - position
+    del speed_hz  # Reserved for backward-compatible signature/semantics.
+    del band_width  # Reserved for backward-compatible signature/semantics.
+    error_ratio = _compute_error_ratio(error_hosts, total_hosts)
+    strong_color, soft_color = _resolve_kitt_palette(error_ratio)
+    levels = _build_kitt_gradient_levels(width, body_height, row_index, now_utc, error_ratio)
+    return _render_kitt_levels(levels, use_color, strong_color, soft_color, core_color=strong_color)
 
-    gradient_chars = [" ", "░", "▒", "▓", "█", "▓", "▒", "░", " "]
-    levels = len(gradient_chars) - 1
-    chars: List[str] = []
-    for index in range(width):
-        distance = abs(index - position)
-        if distance >= band_width:
-            chars.append(" ")
-            continue
-        ratio = 1.0 - (distance / max(1, band_width))
-        level = min(levels, max(1, int(round(ratio * levels))))
-        char = gradient_chars[level]
-        if use_color and char != " ":
-            color = "\x1b[91m" if level >= levels - 1 else "\x1b[31m"
-            chars.append(f"{color}{char}{ANSI_RESET}")
+
+def render_pulse_panel(
+    width: int,
+    height: int,
+    style: str,
+    now_utc: datetime,
+    use_color: bool,
+    error_hosts: int = 0,
+    total_hosts: int = 0,
+) -> List[str]:
+    """Render the Pulse accent area."""
+    if width <= 0 or height <= 0:
+        return []
+    if height < 3:
+        return []
+
+    normalized_style = style if style in ("scanner", "gradient") else "scanner"
+    style_label = "Scanner" if normalized_style == "scanner" else "Gradient"
+    lines = [f"Pulse [{style_label}]".ljust(width)[:width], "-" * width]
+    body_height = max(1, height - 2)
+    active_rows, start_row = _resolve_kitt_profile(body_height)
+    scanner_center: Optional[float] = None
+    if normalized_style == "scanner":
+        error_ratio = _compute_error_ratio(error_hosts, total_hosts)
+        scanner_center = _resolve_kitt_scanner_position(
+            width,
+            now_utc,
+            error_ratio,
+            phase_offset=0,
+            now_monotonic=time.monotonic(),
+        )
+    for row in range(body_height):
+        if normalized_style == "gradient":
+            bar = build_kitt_gradient_bar(
+                width,
+                now_utc,
+                use_color,
+                row_index=row,
+                body_height=body_height,
+                error_hosts=error_hosts,
+                total_hosts=total_hosts,
+            )
         else:
-            chars.append(char)
-    return "".join(chars)
+            if row < start_row or row >= start_row + active_rows:
+                bar = " " * width
+            else:
+                error_ratio = _compute_error_ratio(error_hosts, total_hosts)
+                strong_color, soft_color = _resolve_kitt_palette(error_ratio)
+                core_color = _resolve_kitt_core_color(error_ratio)
+                levels = _build_kitt_scanner_levels(
+                    width,
+                    now_utc,
+                    row - start_row,
+                    active_rows,
+                    error_ratio,
+                    center=scanner_center,
+                )
+                bar = _render_kitt_levels(levels, use_color, strong_color, soft_color, core_color=core_color)
+        lines.append(pad_visible(bar, width))
+    return pad_lines(lines, width, height)
 
 
 def render_kitt_bottom_band(
@@ -323,25 +665,19 @@ def render_kitt_bottom_band(
     style: str,
     now_utc: datetime,
     use_color: bool,
+    error_hosts: int = 0,
+    total_hosts: int = 0,
 ) -> List[str]:
-    """Render the lower Knight Rider accent area."""
-    if width <= 0 or height <= 0:
-        return []
-    if height < 3:
-        return []
-
-    normalized_style = style if style in ("scanner", "gradient") else "scanner"
-    style_label = "Scanner" if normalized_style == "scanner" else "Gradient"
-    lines = [f"Knight Rider [{style_label}]".ljust(width)[:width], "-" * width]
-    body_height = max(1, height - 2)
-    for row in range(body_height):
-        phase = row * 2
-        if normalized_style == "gradient":
-            bar = build_kitt_gradient_bar(width, now_utc, use_color, phase_offset=phase)
-        else:
-            bar = build_kitt_scanner_bar(width, now_utc, use_color, phase_offset=phase)
-        lines.append(pad_visible(bar, width))
-    return pad_lines(lines, width, height)
+    """Backward-compatible wrapper for the Pulse panel renderer."""
+    return render_pulse_panel(
+        width,
+        height,
+        style,
+        now_utc,
+        use_color,
+        error_hosts=error_hosts,
+        total_hosts=total_hosts,
+    )
 
 
 # ============================================================================
@@ -436,6 +772,35 @@ def compute_panel_sizes(
     return term_width, term_height, 0, 0, "none"
 
 
+def compute_pulse_panel_sizes(
+    term_width: int,
+    term_height: int,
+    pulse_position: str,
+    min_panel_width: int = 20,
+    min_panel_height: int = 3,
+    min_main_width: int = 20,
+    gap: int = 1,
+) -> Tuple[int, int, int, int, str]:
+    """Compute the main/pulse split for independent Pulse panel placement."""
+    if pulse_position == "none":
+        return term_width, term_height, 0, 0, "none"
+
+    if term_width < min_main_width or term_height < min_panel_height:
+        return term_width, term_height, 0, 0, "none"
+
+    if pulse_position in ("left", "right"):
+        pulse_width = max(min_panel_width, term_width // 4)
+        main_width = term_width - pulse_width - gap
+        if main_width < min_main_width or pulse_width < min_panel_width:
+            return term_width, term_height, 0, 0, "none"
+        return main_width, term_height, pulse_width, term_height, pulse_position
+
+    if pulse_position in ("top", "bottom"):
+        return term_width, term_height, term_width, 0, pulse_position
+
+    return term_width, term_height, 0, 0, "none"
+
+
 def _summary_render_width(width: int, boxed: bool) -> int:
     """Compute summary render width accounting for boxed borders."""
     if width <= 0:
@@ -510,6 +875,7 @@ def compute_host_scroll_bounds(
     group_sort_enabled: bool = False,
     asn_width: int = 8,
     header_lines: int = 2,
+    pulse_position: str = "none",
 ) -> Tuple[int, int, int]:
     """Compute the scroll bounds for the host list."""
     term_size = get_terminal_size(fallback=(80, 24))
@@ -528,6 +894,13 @@ def compute_host_scroll_bounds(
         panel_height,
         panel_position,
         min_main_height=min_main_height,
+    )
+    main_width, main_height, _, _, _ = compute_pulse_panel_sizes(
+        main_width,
+        main_height,
+        pulse_position,
+        min_main_width=20,
+        min_panel_height=3,
     )
     display_entries = build_display_entries(
         host_infos,
@@ -610,6 +983,33 @@ def pad_lines(lines: Sequence[str], width: int, height: int) -> List[str]:
     while len(padded) < height:
         padded.append("".ljust(width))
     return padded
+
+
+def extract_trailing_pulse_space(lines: Sequence[str], boxed: bool) -> Tuple[List[str], int]:
+    """Return trimmed lines and Pulse height derived from trailing empty rows."""
+    trimmed = list(lines)
+    if not trimmed:
+        return trimmed, 0
+
+    empty_rows = 0
+    if boxed and len(trimmed) >= 3:
+        while len(trimmed) - 2 - empty_rows > 0:
+            candidate = strip_ansi(trimmed[-2 - empty_rows])
+            if candidate.startswith("|") and candidate.endswith("|") and not candidate[1:-1].strip():
+                empty_rows += 1
+                continue
+            break
+        if empty_rows <= 1:
+            return trimmed, 0
+        del trimmed[len(trimmed) - 1 - empty_rows : len(trimmed) - 1]
+        return trimmed, empty_rows - 1
+
+    while trimmed and not strip_ansi(trimmed[-1]).strip():
+        empty_rows += 1
+        trimmed.pop()
+    if empty_rows <= 1:
+        return list(lines), 0
+    return trimmed, empty_rows - 1
 
 
 def box_lines(lines: Sequence[str], width: int, height: int) -> List[str]:
@@ -1229,36 +1629,37 @@ def build_group_header_line_map(
     group_by: str,
     group_summary_data: Sequence[Dict[str, Any]],
 ) -> Dict[str, List[str]]:
-    """Build group header text blocks keyed by primary group label."""
+    """Build group header text blocks keyed by group label."""
     if group_by == "site>tag1":
         site_entries = [entry for entry in group_summary_data if entry.get("row_kind") == "site"]
         tag_entries = [entry for entry in group_summary_data if entry.get("row_kind") == "tag1"]
         site_summary = {entry.get("group_label", entry["host"]): entry for entry in site_entries}
-        tag_by_site: Dict[str, List[Dict[str, Any]]] = {}
-        for entry in tag_entries:
-            parent = entry.get("parent_label")
-            if isinstance(parent, str):
-                tag_by_site.setdefault(parent, []).append(entry)
-
-        site_header_lines: Dict[str, List[str]] = {}
+        tag_summary = {entry.get("group_label", entry["host"]): entry for entry in tag_entries}
+        site_tag_header_lines: Dict[str, List[str]] = {}
         info_by_id = {info["id"]: info for info in active_host_infos}
         for host_id in ordered_host_ids:
             info = info_by_id.get(host_id)
             if info is None:
                 continue
-            site_label = resolve_primary_group_label(info, group_by)
-            if site_label in site_header_lines:
-                continue
-            site_entry = site_summary.get(site_label, {})
-            site_member_count = int(site_entry.get("member_count", 0))
-            site_loss_rate = float(site_entry.get("loss_rate", 0.0))
-            lines = [f"--- {site_label} ({site_member_count} hosts, loss {site_loss_rate:.1f}%) ---"]
-            for tag_entry in tag_by_site.get(site_label, []):
+            labels = resolve_site_tag1_labels(info)
+            site_label = labels["site_label"]
+            composite_label = labels["composite_label"]
+            if site_label not in site_tag_header_lines:
+                site_entry = site_summary.get(site_label, {})
+                site_member_count = int(site_entry.get("member_count", 0))
+                site_loss_rate = float(site_entry.get("loss_rate", 0.0))
+                site_tag_header_lines[site_label] = [
+                    f"--- {site_label} ({site_member_count} hosts, loss {site_loss_rate:.1f}%) ---"
+                ]
+            if composite_label not in site_tag_header_lines:
+                tag_entry = tag_summary.get(composite_label, {})
                 tag_member_count = int(tag_entry.get("member_count", 0))
                 tag_loss_rate = float(tag_entry.get("loss_rate", 0.0))
-                lines.append(f"  --- {tag_entry['host']} ({tag_member_count} hosts, loss {tag_loss_rate:.1f}%) ---")
-            site_header_lines[site_label] = lines
-        return site_header_lines
+                tag_label = str(tag_entry.get("host", labels["tag1_label"]))
+                site_tag_header_lines[composite_label] = [
+                    f"  --- {tag_label} ({tag_member_count} hosts, loss {tag_loss_rate:.1f}%) ---"
+                ]
+        return site_tag_header_lines
 
     summary_by_label = {entry["host"]: entry for entry in group_summary_data}
     info_by_id = {info["id"]: info for info in active_host_infos}
@@ -1281,6 +1682,47 @@ def build_group_header_line_map(
                 continue
         header_lines[primary_label] = [f"--- {primary_label}{suffix} ---"]
     return header_lines
+
+
+def resolve_group_header_lines(
+    host_id: Any,
+    group_by: str,
+    current_primary_group: Optional[str],
+    current_tree_group: Optional[str],
+    host_group_labels: Optional[Dict[int, str]],
+    host_tree_labels: Optional[Dict[int, str]],
+    group_header_lines: Optional[Mapping[str, Union[str, List[str]]]],
+) -> Tuple[List[str], Optional[str], Optional[str]]:
+    """Resolve which group headers should be inserted before a host row."""
+    if not host_group_labels:
+        return [], current_primary_group, current_tree_group
+
+    primary_group_label = host_group_labels.get(host_id)
+    if not primary_group_label:
+        return [], current_primary_group, current_tree_group
+
+    tree_group_label = host_tree_labels.get(host_id) if host_tree_labels else primary_group_label
+    header_stack: List[str] = []
+
+    def _as_lines(label: str, fallback: str) -> List[str]:
+        if not group_header_lines:
+            return [fallback]
+        header_value = group_header_lines.get(label, [fallback])
+        if isinstance(header_value, str):
+            return [header_value]
+        return list(header_value)
+
+    if group_by == "site>tag1":
+        if primary_group_label != current_primary_group:
+            header_stack.extend(_as_lines(primary_group_label, f"--- {primary_group_label} ---"))
+        if tree_group_label and tree_group_label != current_tree_group:
+            header_stack.extend(_as_lines(tree_group_label, f"  --- {tree_group_label} ---"))
+        return header_stack, primary_group_label, tree_group_label
+
+    if primary_group_label != current_primary_group:
+        header_stack.extend(_as_lines(primary_group_label, f"--- {primary_group_label} ---"))
+        return header_stack, primary_group_label, tree_group_label
+    return [], current_primary_group, current_tree_group
 
 
 def render_timeline_view(
@@ -1332,23 +1774,23 @@ def render_timeline_view(
     lines = []
     lines.append(header)
     lines.append("".join("-" for _ in range(render_width)))
-    current_group = None
+    current_primary_group = None
+    current_tree_group = None
     for entry in truncated_entries:
         host = entry[0]
         base_label = str(entry[1]) if len(entry) >= 2 else str(entry[0])
         label = label_overrides.get(host, base_label)
         is_removed = "[REMOVED]" in label
-        host_group_label = host_group_labels.get(host) if host_group_labels else None
-        if show_group_headers and host_group_label and host_group_label != current_group:
-            current_group = host_group_label
-            if group_header_lines:
-                header_value = group_header_lines.get(host_group_label, [f"--- {host_group_label} ---"])
-                if isinstance(header_value, str):
-                    header_stack = [header_value]
-                else:
-                    header_stack = header_value
-            else:
-                header_stack = [f"--- {host_group_label} ---"]
+        if show_group_headers:
+            header_stack, current_primary_group, current_tree_group = resolve_group_header_lines(
+                host,
+                group_by,
+                current_primary_group,
+                current_tree_group,
+                host_group_labels,
+                host_tree_labels,
+                group_header_lines,
+            )
             for header_line in header_stack:
                 lines.append(header_line[:render_width])
         timeline_symbols = list(buffers[host]["timeline"])
@@ -1420,23 +1862,23 @@ def render_sparkline_view(
     lines = []
     lines.append(header)
     lines.append("".join("-" for _ in range(render_width)))
-    current_group = None
+    current_primary_group = None
+    current_tree_group = None
     for entry in truncated_entries:
         host = entry[0]
         base_label = str(entry[1]) if len(entry) >= 2 else str(entry[0])
         label = label_overrides.get(host, base_label)
         is_removed = "[REMOVED]" in label
-        host_group_label = host_group_labels.get(host) if host_group_labels else None
-        if show_group_headers and host_group_label and host_group_label != current_group:
-            current_group = host_group_label
-            if group_header_lines:
-                header_value = group_header_lines.get(host_group_label, [f"--- {host_group_label} ---"])
-                if isinstance(header_value, str):
-                    header_stack = [header_value]
-                else:
-                    header_stack = header_value
-            else:
-                header_stack = [f"--- {host_group_label} ---"]
+        if show_group_headers:
+            header_stack, current_primary_group, current_tree_group = resolve_group_header_lines(
+                host,
+                group_by,
+                current_primary_group,
+                current_tree_group,
+                host_group_labels,
+                host_tree_labels,
+                group_header_lines,
+            )
             for header_line in header_stack:
                 lines.append(header_line[:render_width])
         rtt_values = list(buffers[host]["rtt_history"])[-timeline_width:]
@@ -1554,23 +1996,23 @@ def render_square_view(
     lines.append(header)
     lines.append("".join("-" for _ in range(render_width)))
 
-    current_group = None
+    current_primary_group = None
+    current_tree_group = None
     for entry in truncated_entries:
         host = entry[0]
         base_label = str(entry[1]) if len(entry) >= 2 else str(entry[0])
         label = label_overrides.get(host, base_label)
         is_removed = "[REMOVED]" in label
-        host_group_label = host_group_labels.get(host) if host_group_labels else None
-        if show_group_headers and host_group_label and host_group_label != current_group:
-            current_group = host_group_label
-            if group_header_lines:
-                header_value = group_header_lines.get(host_group_label, [f"--- {host_group_label} ---"])
-                if isinstance(header_value, str):
-                    header_stack = [header_value]
-                else:
-                    header_stack = header_value
-            else:
-                header_stack = [f"--- {host_group_label} ---"]
+        if show_group_headers:
+            header_stack, current_primary_group, current_tree_group = resolve_group_header_lines(
+                host,
+                group_by,
+                current_primary_group,
+                current_tree_group,
+                host_group_labels,
+                host_tree_labels,
+                group_header_lines,
+            )
             for header_line in header_stack:
                 lines.append(header_line[:render_width])
         timeline_symbols = list(buffers[host]["timeline"])
@@ -1743,29 +2185,7 @@ def render_help_view(width: int, height: int, boxed: bool = False) -> List[str]:
         "ParaPing - Help",
         "-" * render_width,
     ]
-    help_items = [
-        "  n: cycle display mode (ip/rdns/alias)",
-        "  v: cycle view (timeline/sparkline/square)",
-        "  g: select host for fullscreen RTT graph",
-        "  o: cycle sort (failures/streak/latency/host)",
-        "  f: cycle filter (failures/latency/all)",
-        "  a: toggle ASN display",
-        "  m: cycle summary info (rates/rtt/ttl/streak)",
-        "  c/b: color output / bell on ping failure",
-        "  F: toggle summary fullscreen view",
-        "  w: toggle summary panel (on/off)",
-        "  W: cycle summary panel position",
-        "  G: toggle summary scope (host/group)",
-        "  T: cycle group key (none/asn/site/tag1..tagN/site>tag1/tag1>site)",
-        "  k: toggle Knight Rider mode",
-        "  K: cycle Knight Rider style (scanner/gradient)",
-        "  p: pause display | P: toggle Dormant Mode",
-        "  R/s: reload hosts / save snapshot",
-        "  L: force full redraw",
-        "  <-/-> + up/down: page/list navigation",
-        "  ESC: exit fullscreen graph | q: quit",
-        "  H: show help (Press any key to close)",
-    ]
+    help_items = build_help_items()
 
     def _wrap_items(items: Sequence[str], line_width: int) -> List[str]:
         wrapped: List[str] = []
@@ -1817,7 +2237,7 @@ def render_host_selection_view(
 
     title = f"Select Host for RTT Graph [{mode_label}]"
     lines = [title[:width], "-" * width]
-    status_line = "n/p: move | Enter: select | ESC: cancel"
+    status_line = "j/k or ↑/↓: move | Enter: select | ESC: cancel"
     list_height = max(0, height - 3)
 
     if not display_entries:
@@ -1882,7 +2302,7 @@ def render_fullscreen_rtt_graph(
         min_val = max_val = 0.0
         range_line = "RTT range (Y-axis, ms): n/a"
 
-    status_line = "ESC: back | v: toggle graph | g: select host"
+    status_line = "ESC: back | v: toggle graph | x: select host"
 
     y_tick_labels = [
         f"{max_val:.1f}",
@@ -1970,6 +2390,7 @@ def build_display_lines(  # noqa: C901
     group_sort_enabled: bool = False,
     kitt_mode_enabled: bool = False,
     kitt_style: str = "scanner",
+    pulse_position: str = "none",
 ) -> List[str]:
     """Build all display lines for the current state."""
     # Algorithm overview:
@@ -2014,6 +2435,13 @@ def build_display_lines(  # noqa: C901
         panel_position,
         min_main_height=min_main_height,
     )
+    main_width, main_height, pulse_width, _pulse_height, resolved_pulse_position = compute_pulse_panel_sizes(
+        main_width,
+        main_height,
+        pulse_position if kitt_mode_enabled else "none",
+        min_main_width=20,
+        min_panel_height=3,
+    )
     active_host_infos = [info for info in host_infos if info.get("active", True)]
     active_host_ids = {info["id"] for info in active_host_infos}
     host_group_labels = {info["id"]: resolve_primary_group_label(info, group_by) for info in active_host_infos}
@@ -2049,7 +2477,6 @@ def build_display_lines(  # noqa: C901
             ordered_group_labels=group_order,
         )
     summary_source = group_summary_data if summary_scope == "group" and group_by != "none" else summary_data
-    kitt_band_height = 0
     if not summary_fullscreen and resolved_position in ("top", "bottom") and summary_height > 0:
         summary_render_width = _summary_render_width(summary_width, use_panel_boxes)
         summary_all_for_height = can_render_full_summary(summary_source, summary_render_width)
@@ -2065,12 +2492,14 @@ def build_display_lines(  # noqa: C901
         summary_height = max(summary_height, min(minimal_height, max_summary_height))
         main_height = max(min_main_height, panel_height - summary_height - gap_size)
     group_header_lines = build_group_header_line_map(active_host_infos, ordered_host_ids, group_by, group_summary_data)
-    if kitt_mode_enabled and not summary_fullscreen and not show_help and panel_height >= 8:
-        desired_band_height = max(3, panel_height // 4)
-        max_band_height = max(0, main_height - min_main_height)
-        if max_band_height >= 3:
-            kitt_band_height = min(desired_band_height, max_band_height)
-            main_height = max(min_main_height, main_height - kitt_band_height)
+    kitt_total_hosts = len(active_host_infos)
+    fail_symbol = symbols.get("fail")
+    kitt_error_hosts = 0
+    if fail_symbol:
+        for info in active_host_infos:
+            timeline = buffers.get(info["id"], {}).get("timeline")
+            if timeline and timeline[-1] == fail_symbol:
+                kitt_error_hosts += 1
     summary_all = False
     main_lines = []
     summary_lines = []
@@ -2127,27 +2556,57 @@ def build_display_lines(  # noqa: C901
         combined_lines = render_help_view(term_width, panel_height, boxed=use_panel_boxes)
     elif summary_fullscreen:
         combined_lines = summary_lines
-    elif resolved_position in ("left", "right"):
-        for main_line, summary_line in zip(main_lines, summary_lines):
-            if resolved_position == "left":
-                combined_lines.append(f"{summary_line}{gap}{main_line}")
-            else:
-                combined_lines.append(f"{main_line}{gap}{summary_line}")
-    elif resolved_position == "top":
-        combined_lines = summary_lines + [""] + main_lines
-    elif resolved_position == "bottom":
-        combined_lines = main_lines + [""] + summary_lines
     else:
-        combined_lines = main_lines
-    if kitt_mode_enabled and kitt_band_height > 0 and not show_help and not summary_fullscreen:
-        kitt_lines = render_kitt_bottom_band(
-            term_width,
-            kitt_band_height,
-            kitt_style,
-            now_utc,
-            use_color,
-        )
-        combined_lines.extend(kitt_lines)
+        pulse_lines: List[str] = []
+        if kitt_mode_enabled and resolved_pulse_position in ("left", "right") and pulse_width > 0:
+            pulse_lines = render_pulse_panel(
+                pulse_width,
+                main_height,
+                kitt_style,
+                now_utc,
+                use_color,
+                error_hosts=kitt_error_hosts,
+                total_hosts=kitt_total_hosts,
+            )
+        elif kitt_mode_enabled and resolved_pulse_position in ("top", "bottom"):
+            main_lines, pulse_height = extract_trailing_pulse_space(main_lines, boxed=use_panel_boxes)
+            if pulse_height >= 3:
+                pulse_lines = render_pulse_panel(
+                    main_width,
+                    pulse_height,
+                    kitt_style,
+                    now_utc,
+                    use_color,
+                    error_hosts=kitt_error_hosts,
+                    total_hosts=kitt_total_hosts,
+                )
+
+        if resolved_position in ("left", "right"):
+            for main_line, summary_line in zip(main_lines, summary_lines):
+                if resolved_position == "left":
+                    combined_lines.append(f"{summary_line}{gap}{main_line}")
+                else:
+                    combined_lines.append(f"{main_line}{gap}{summary_line}")
+        elif resolved_position == "top":
+            combined_lines = summary_lines + [""] + main_lines
+        elif resolved_position == "bottom":
+            combined_lines = main_lines + [""] + summary_lines
+        else:
+            combined_lines = main_lines
+
+        if pulse_lines:
+            if resolved_pulse_position in ("left", "right"):
+                merged_lines = []
+                for combined_line, pulse_line in zip(combined_lines, pulse_lines):
+                    if resolved_pulse_position == "left":
+                        merged_lines.append(f"{pulse_line}{gap}{combined_line}")
+                    else:
+                        merged_lines.append(f"{combined_line}{gap}{pulse_line}")
+                combined_lines = merged_lines
+            elif resolved_pulse_position == "top":
+                combined_lines = pulse_lines + [""] + combined_lines
+            elif resolved_pulse_position == "bottom":
+                combined_lines = combined_lines + [""] + pulse_lines
 
     status_metrics = build_status_metrics(active_host_infos, stats, interval_seconds=interval_seconds)
     status_details = f"{status_metrics} | {status_message}" if status_message else status_metrics
@@ -2206,6 +2665,7 @@ def render_display(  # noqa: C901
     group_sort_enabled: bool = False,
     kitt_mode_enabled: bool = False,
     kitt_style: str = "scanner",
+    pulse_position: str = "none",
 ) -> None:
     """Render the complete display to the terminal."""
     global LAST_RENDER_LINES
@@ -2243,6 +2703,7 @@ def render_display(  # noqa: C901
             group_sort_enabled=group_sort_enabled,
             kitt_mode_enabled=kitt_mode_enabled,
             kitt_style=kitt_style,
+            pulse_position=pulse_position,
         )
     if not combined_lines:
         return
@@ -2258,6 +2719,9 @@ def render_display(  # noqa: C901
         return
 
     max_lines = max(len(LAST_RENDER_LINES), len(combined_lines))
+    pulse_start = _find_pulse_start(combined_lines)
+    if pulse_start is None:
+        pulse_start = _find_pulse_start(LAST_RENDER_LINES)
     output_chunks = []
     for index in range(max_lines):
         previous_line = LAST_RENDER_LINES[index] if index < len(LAST_RENDER_LINES) else None
@@ -2270,11 +2734,14 @@ def render_display(  # noqa: C901
         if not current_line:
             output_chunks.append(f"\x1b[{index + 1};1H\x1b[2K")
             continue
+        if pulse_start is not None and index >= pulse_start:
+            output_chunks.append(f"\x1b[{index + 1};1H\x1b[2K{current_line}")
+            continue
         diff_start = _find_safe_diff_start(previous_line, current_line)
         if diff_start <= 0:
             output_chunks.append(f"\x1b[{index + 1};1H{current_line}\x1b[K")
             continue
-        col = visible_len(current_line[:diff_start]) + 1
+        col = visible_cell_width(current_line[:diff_start]) + 1
         output_chunks.append(f"\x1b[{index + 1};{col}H{current_line[diff_start:]}\x1b[K")
 
     if output_chunks:
@@ -2288,6 +2755,17 @@ def reset_render_cache() -> None:
     """Force the next render call to redraw the full frame."""
     global LAST_RENDER_LINES
     LAST_RENDER_LINES = None
+    KITT_SCANNER_STATE["last_monotonic"] = -1.0
+    KITT_SCANNER_STATE["scanner_phase"] = 0.0
+    KITT_SCANNER_STATE["last_error_ratio"] = 0.0
+
+
+def _find_pulse_start(lines: Sequence[str]) -> Optional[int]:
+    """Return the first Pulse band line index if present."""
+    for index, line in enumerate(lines):
+        if strip_ansi(line).startswith("Pulse ["):
+            return index
+    return None
 
 
 def _find_safe_diff_start(previous_line: str, current_line: str) -> int:

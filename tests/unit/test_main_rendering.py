@@ -14,6 +14,7 @@
 Unit tests for rendering help views, boxes, and ASCII graphs
 """
 
+import io
 import os
 import sys
 import unittest
@@ -34,10 +35,14 @@ from main import (  # noqa: E402
 )
 from paraping.stats import resolve_site_tag1_labels  # noqa: E402
 from paraping.ui_render import (  # noqa: E402
+    _resolve_kitt_gradient_rings,
+    _resolve_kitt_scanner_speed_hz,
     build_colored_sparkline,
     build_colored_timeline,
     build_display_entries,
     build_display_names,
+    build_kitt_gradient_bar,
+    build_kitt_scanner_bar,
     build_status_line,
     build_status_metrics,
     build_time_axis,
@@ -55,6 +60,7 @@ from paraping.ui_render import (  # noqa: E402
     latest_status_from_timeline,
     pad_lines,
     pad_visible,
+    render_display,
     render_fullscreen_rtt_graph,
     render_kitt_bottom_band,
     render_main_view,
@@ -62,6 +68,7 @@ from paraping.ui_render import (  # noqa: E402
     render_summary_view,
     render_timeline_view,
     resample_values,
+    reset_render_cache,
     resize_buffers,
     resolve_boxed_dimensions,
     resolve_display_name,
@@ -72,6 +79,7 @@ from paraping.ui_render import (  # noqa: E402
     strip_ansi,
     toggle_panel_visibility,
     truncate_visible,
+    visible_cell_width,
     visible_len,
 )
 
@@ -81,20 +89,20 @@ class TestHelpView(unittest.TestCase):
 
     def test_help_view_contains_close_hint(self):
         """Help view should include close hint text."""
-        lines = render_help_view(60, 24)
+        lines = render_help_view(100, 40)
         combined = "\n".join(lines)
-        self.assertIn("H: show help", combined)
-        self.assertIn("L: force full redraw", combined)
+        self.assertIn("?: toggle help", combined)
+        self.assertIn("u: force full redraw", combined)
         self.assertIn("P: toggle Dormant Mode", combined)
-        self.assertIn("k: toggle Knight Rider mode", combined)
-        self.assertIn("Press any key to close", combined)
+        self.assertIn("y: toggle Pulse mode", combined)
+        self.assertIn("Esc: go back", combined)
 
     def test_help_view_contains_group_hotkeys(self):
-        """Help view should include explicit G/T hotkey descriptions."""
-        lines = render_help_view(80, 24)
+        """Help view should include explicit g/t hotkey descriptions."""
+        lines = render_help_view(100, 40)
         combined = "\n".join(lines)
-        self.assertIn("G: toggle summary scope", combined)
-        self.assertIn("T: cycle group key", combined)
+        self.assertIn("g: cycle summary scope", combined)
+        self.assertIn("t: cycle group key", combined)
 
     def test_help_view_uses_two_columns_when_height_is_tight(self):
         """Tight height and wide width should still include right-column entries."""
@@ -527,6 +535,10 @@ class TestColorAndNonTTY(unittest.TestCase):
         colored = "\x1b[32mhello\x1b[0m"
         self.assertEqual(visible_len(colored), 5)
 
+    def test_visible_cell_width_counts_wide_characters(self):
+        """visible_cell_width should count full-width glyphs as two cells."""
+        self.assertEqual(visible_cell_width("A界B"), 4)
+
     def test_colorize_text_no_color(self):
         """colorize_text with use_color=False returns plain text."""
         result = colorize_text("hello", "success", use_color=False)
@@ -646,25 +658,22 @@ class TestColorAndNonTTY(unittest.TestCase):
         self.assertIn("└ internal.example", combined)
 
     def test_render_views_site_tag1_hierarchical_headers(self):
-        """site>tag1 should render site header once with nested tag1 headers."""
-        entries = [(0, "h0"), (1, "h1"), (2, "h2")]
-        buffers = _make_buffers([0, 1, 2], timeline_data=["."])
-        host_group_labels = {0: "site:tokyo", 1: "site:tokyo", 2: "site:osaka"}
+        """site>tag1 should render site and tag headers alongside matching hosts."""
+        entries = [(0, "h0"), (1, "h1"), (2, "h2"), (3, "h3")]
+        buffers = _make_buffers([0, 1, 2, 3], timeline_data=["."])
+        host_group_labels = {0: "site:tokyo", 1: "site:tokyo", 2: "site:tokyo", 3: "site:osaka"}
         host_tree_labels = {
             0: "site:tokyo>tag1:web",
-            1: "site:tokyo>tag1:db",
-            2: "site:osaka>tag1:web",
+            1: "site:tokyo>tag1:web",
+            2: "site:tokyo>tag1:db",
+            3: "site:osaka>tag1:web",
         }
         group_header_lines = {
-            "site:tokyo": [
-                "--- site:tokyo (2 hosts, loss 0.0%) ---",
-                "  --- tag1:web (1 hosts, loss 0.0%) ---",
-                "  --- tag1:db (1 hosts, loss 0.0%) ---",
-            ],
-            "site:osaka": [
-                "--- site:osaka (1 hosts, loss 0.0%) ---",
-                "  --- tag1:web (1 hosts, loss 0.0%) ---",
-            ],
+            "site:tokyo": ["--- site:tokyo (3 hosts, loss 0.0%) ---"],
+            "site:tokyo>tag1:web": ["  --- tag1:web (2 hosts, loss 0.0%) ---"],
+            "site:tokyo>tag1:db": ["  --- tag1:db (1 hosts, loss 0.0%) ---"],
+            "site:osaka": ["--- site:osaka (1 hosts, loss 0.0%) ---"],
+            "site:osaka>tag1:web": ["  --- tag1:web (1 hosts, loss 0.0%) ---"],
         }
 
         for render_fn in (render_timeline_view, render_sparkline_view, render_square_view):
@@ -683,11 +692,56 @@ class TestColorAndNonTTY(unittest.TestCase):
             )
             combined = "\n".join(lines)
             self.assertEqual(combined.count("--- site:tokyo"), 1)
-            self.assertIn("  --- tag1:web", combined)
-            self.assertIn("  --- tag1:db", combined)
-            self.assertIn("└ h0", combined)
-            self.assertIn("└ h1", combined)
-            self.assertIn("└ h2", combined)
+            self.assertEqual(combined.count("  --- tag1:web"), 2)
+            self.assertEqual(combined.count("  --- tag1:db"), 1)
+            self.assertLess(combined.index("  --- tag1:web (2 hosts, loss 0.0%) ---"), combined.index("├ h0"))
+            self.assertLess(combined.index("├ h0"), combined.index("└ h1"))
+            self.assertLess(combined.index("└ h1"), combined.index("  --- tag1:db (1 hosts, loss 0.0%) ---"))
+            self.assertLess(combined.index("  --- tag1:db (1 hosts, loss 0.0%) ---"), combined.index("└ h2"))
+            self.assertLess(
+                combined.index("--- site:osaka (1 hosts, loss 0.0%) ---"),
+                combined.index("  --- tag1:web (1 hosts, loss 0.0%) ---"),
+            )
+            self.assertLess(combined.index("  --- tag1:web (1 hosts, loss 0.0%) ---"), combined.index("└ h3"))
+
+    def test_render_views_site_tag1_scroll_repeats_needed_headers(self):
+        """Scrolled site>tag1 views should re-render the current site and tag headers."""
+        entries = [(0, "h0"), (1, "h1"), (2, "h2"), (3, "h3")]
+        buffers = _make_buffers([0, 1, 2, 3], timeline_data=["."])
+        host_group_labels = {0: "site:tokyo", 1: "site:tokyo", 2: "site:tokyo", 3: "site:osaka"}
+        host_tree_labels = {
+            0: "site:tokyo>tag1:web",
+            1: "site:tokyo>tag1:web",
+            2: "site:tokyo>tag1:db",
+            3: "site:osaka>tag1:web",
+        }
+        group_header_lines = {
+            "site:tokyo": ["--- site:tokyo (3 hosts, loss 0.0%) ---"],
+            "site:tokyo>tag1:web": ["  --- tag1:web (2 hosts, loss 0.0%) ---"],
+            "site:tokyo>tag1:db": ["  --- tag1:db (1 hosts, loss 0.0%) ---"],
+            "site:osaka": ["--- site:osaka (1 hosts, loss 0.0%) ---"],
+            "site:osaka>tag1:web": ["  --- tag1:web (1 hosts, loss 0.0%) ---"],
+        }
+
+        for render_fn in (render_timeline_view, render_sparkline_view, render_square_view):
+            lines = render_fn(
+                entries,
+                buffers,
+                _SYMBOLS,
+                width=100,
+                height=20,
+                header="H",
+                scroll_offset=2,
+                show_group_headers=True,
+                host_group_labels=host_group_labels,
+                host_tree_labels=host_tree_labels,
+                group_header_lines=group_header_lines,
+                group_by="site>tag1",
+            )
+            combined = "\n".join(lines)
+            self.assertIn("--- site:tokyo (3 hosts, loss 0.0%) ---", combined)
+            self.assertIn("  --- tag1:db (1 hosts, loss 0.0%) ---", combined)
+            self.assertLess(combined.index("--- site:tokyo (3 hosts, loss 0.0%) ---"), combined.index("└ h2"))
 
     def test_truncate_visible_preserves_ansi(self):
         """truncate_visible must count only visible chars and keep ANSI codes."""
@@ -1358,6 +1412,9 @@ class TestScrollOverflow(unittest.TestCase):
 class TestActivityIndicator(unittest.TestCase):
     """Test activity indicator building."""
 
+    def tearDown(self):
+        reset_render_cache()
+
     def test_build_activity_indicator_zero_width(self):
         """build_activity_indicator with width=0 should return empty string."""
         from paraping.ui_render import build_activity_indicator
@@ -1395,16 +1452,477 @@ class TestActivityIndicator(unittest.TestCase):
         self.assertEqual(result, 15)
 
     def test_render_kitt_bottom_band_scanner(self):
-        """Knight Rider scanner band should render with a visible title."""
-        lines = render_kitt_bottom_band(60, 5, "scanner", datetime.now(timezone.utc), use_color=False)
+        """Pulse scanner band should render with a visible title."""
+        with patch("paraping.ui_render.time.monotonic", return_value=0.25):
+            lines = render_kitt_bottom_band(60, 5, "scanner", datetime.now(timezone.utc), use_color=False)
         self.assertEqual(len(lines), 5)
-        self.assertIn("Knight Rider [Scanner]", lines[0])
+        self.assertIn("Pulse [Scanner]", lines[0])
 
     def test_render_kitt_bottom_band_gradient(self):
-        """Knight Rider gradient band should render with a visible title."""
-        lines = render_kitt_bottom_band(60, 5, "gradient", datetime.now(timezone.utc), use_color=False)
+        """Pulse gradient band should render with a visible title."""
+        with patch("paraping.ui_render.time.monotonic", return_value=0.25):
+            lines = render_kitt_bottom_band(60, 5, "gradient", datetime.now(timezone.utc), use_color=False)
         self.assertEqual(len(lines), 5)
-        self.assertIn("Knight Rider [Gradient]", lines[0])
+        self.assertIn("Pulse [Gradient]", lines[0])
+
+    def test_render_kitt_bottom_band_scanner_expands_to_fill_available_height(self):
+        """Scanner rows should use the full Pulse band body height on tall terminals."""
+        with patch("paraping.ui_render.time.monotonic", return_value=0.25):
+            lines = render_kitt_bottom_band(60, 12, "scanner", datetime.now(timezone.utc), use_color=False)
+
+        body_rows = lines[2:]
+        active_rows = [line for line in body_rows if line.strip()]
+        self.assertEqual(len(body_rows), 10)
+        self.assertEqual(len(active_rows), 10)
+
+    def test_kitt_scanner_rows_share_a_center_and_taper_symmetrically(self):
+        """Scanner rows should align on one center and widen toward the middle rows."""
+        now = datetime.fromtimestamp(0.25, tz=timezone.utc)
+        with patch("paraping.ui_render.time.monotonic", return_value=0.25):
+            rows = [
+                build_kitt_scanner_bar(
+                    41,
+                    now,
+                    use_color=False,
+                    row_index=index,
+                    total_rows=8,
+                    error_hosts=5,
+                    total_hosts=10,
+                )
+                for index in range(8)
+            ]
+
+        def _active_positions(text):
+            return [idx for idx, ch in enumerate(text) if ch != " "]
+
+        centers = []
+        widths = []
+        for row in rows:
+            active = _active_positions(row)
+            self.assertTrue(active)
+            centers.append(sum(active) / len(active))
+            widths.append(len(active))
+
+        self.assertLessEqual(max(centers) - min(centers), 1.5)
+        self.assertLess(widths[0], widths[3])
+        self.assertLess(widths[7], widths[4])
+        self.assertEqual(widths[0], widths[-1])
+        self.assertEqual(widths[1], widths[-2])
+
+    def test_kitt_scanner_rows_expand_symmetrically_with_taller_body(self):
+        """Scanner taper should remain symmetric when using a taller Pulse band."""
+        now = datetime.fromtimestamp(0.25, tz=timezone.utc)
+        with patch("paraping.ui_render.time.monotonic", return_value=0.25):
+            rows = [
+                build_kitt_scanner_bar(
+                    41,
+                    now,
+                    use_color=False,
+                    row_index=index,
+                    total_rows=12,
+                    error_hosts=5,
+                    total_hosts=10,
+                )
+                for index in range(12)
+            ]
+
+        widths = []
+        for row in rows:
+            active = [idx for idx, ch in enumerate(row) if ch != " "]
+            self.assertTrue(active)
+            widths.append(len(active))
+
+        self.assertLess(widths[0], widths[5])
+        self.assertLess(widths[-1], widths[6])
+        self.assertEqual(widths[0], widths[-1])
+        self.assertEqual(widths[1], widths[-2])
+
+    def test_kitt_scanner_speed_scales_with_error_hosts(self):
+        """Scanner center should move farther over time at higher severity."""
+        early = datetime.fromtimestamp(0.00, tz=timezone.utc)
+        later = datetime.fromtimestamp(0.50, tz=timezone.utc)
+        with patch("paraping.ui_render.time.monotonic", side_effect=[0.00, 0.03, 1.00, 1.03]):
+            low_early = build_kitt_scanner_bar(
+                60, early, use_color=False, row_index=4, total_rows=8, error_hosts=0, total_hosts=10
+            )
+            low_later = build_kitt_scanner_bar(
+                60, later, use_color=False, row_index=4, total_rows=8, error_hosts=0, total_hosts=10
+            )
+            high_early = build_kitt_scanner_bar(
+                60, early, use_color=False, row_index=4, total_rows=8, error_hosts=8, total_hosts=10
+            )
+            high_later = build_kitt_scanner_bar(
+                60, later, use_color=False, row_index=4, total_rows=8, error_hosts=8, total_hosts=10
+            )
+
+        def _band_center(text):
+            active = [idx for idx, ch in enumerate(text) if ch != " "]
+            self.assertTrue(active)
+            return sum(active) / len(active)
+
+        low_shift = abs(_band_center(low_later) - _band_center(low_early))
+        high_shift = abs(_band_center(high_later) - _band_center(high_early))
+        self.assertGreater(high_shift, low_shift)
+
+    def test_kitt_scanner_severity_change_keeps_motion_continuous(self):
+        """Severity changes should accelerate motion without causing a long-distance jump."""
+        early = datetime.fromtimestamp(10.00, tz=timezone.utc)
+        later = datetime.fromtimestamp(10.05, tz=timezone.utc)
+        with patch("paraping.ui_render.time.monotonic", side_effect=[10.00, 10.05]):
+            before = build_kitt_scanner_bar(
+                60, early, use_color=False, row_index=4, total_rows=8, error_hosts=0, total_hosts=10
+            )
+            after = build_kitt_scanner_bar(
+                60, later, use_color=False, row_index=4, total_rows=8, error_hosts=1, total_hosts=10
+            )
+
+        before_active = {idx for idx, ch in enumerate(before) if ch != " "}
+        after_active = {idx for idx, ch in enumerate(after) if ch != " "}
+        self.assertTrue(before_active)
+        self.assertTrue(after_active)
+        self.assertGreaterEqual(len(before_active & after_active), 6)
+
+    def test_kitt_scanner_reset_render_cache_resets_animation_state(self):
+        """Resetting render cache should also reset scanner animation state."""
+        now = datetime.fromtimestamp(2.0, tz=timezone.utc)
+        with patch("paraping.ui_render.time.monotonic", side_effect=[0.00, 0.12, 0.00]):
+            initial = build_kitt_scanner_bar(
+                41, now, use_color=False, row_index=4, total_rows=8, error_hosts=3, total_hosts=10
+            )
+            shifted = build_kitt_scanner_bar(
+                41, now, use_color=False, row_index=4, total_rows=8, error_hosts=3, total_hosts=10
+            )
+            reset_render_cache()
+            restarted = build_kitt_scanner_bar(
+                41, now, use_color=False, row_index=4, total_rows=8, error_hosts=3, total_hosts=10
+            )
+
+        self.assertNotEqual(initial, shifted)
+        self.assertEqual(initial, restarted)
+
+    def test_kitt_scanner_healthy_speed_is_reduced_relative_to_original_curve(self):
+        """Healthy scanner speed should be noticeably slower than the legacy 2.0Hz baseline."""
+        self.assertLess(_resolve_kitt_scanner_speed_hz(0.0), 1.5)
+        self.assertGreater(_resolve_kitt_scanner_speed_hz(0.8), _resolve_kitt_scanner_speed_hz(0.0))
+        self.assertGreater(_resolve_kitt_scanner_speed_hz(0.8), 8.0)
+
+    def test_kitt_scanner_palette_stage_thresholds(self):
+        """Scanner colors should follow the same severity palette as gradient mode."""
+        now = datetime.fromtimestamp(1.0, tz=timezone.utc)
+        with patch("paraping.ui_render.time.monotonic", return_value=0.3):
+            green = build_kitt_scanner_bar(30, now, use_color=True, row_index=4, total_rows=8, error_hosts=0, total_hosts=10)
+            yellow = build_kitt_scanner_bar(30, now, use_color=True, row_index=4, total_rows=8, error_hosts=1, total_hosts=10)
+            orange = build_kitt_scanner_bar(30, now, use_color=True, row_index=4, total_rows=8, error_hosts=3, total_hosts=10)
+            red = build_kitt_scanner_bar(30, now, use_color=True, row_index=4, total_rows=8, error_hosts=7, total_hosts=10)
+        self.assertIn("\x1b[92m", green)
+        self.assertIn("\x1b[93m", yellow)
+        self.assertIn("\x1b[38;5;214m", orange)
+        self.assertIn("\x1b[91m", red)
+
+    def _gradient_kwargs(self, row_index=2, body_height=5, error_hosts=0, total_hosts=10):
+        return {
+            "row_index": row_index,
+            "body_height": body_height,
+            "error_hosts": error_hosts,
+            "total_hosts": total_hosts,
+        }
+
+    def test_kitt_gradient_activity_scales_with_error_hosts(self):
+        """Gradient style should show more active ripple area at higher severity."""
+        now = datetime.fromtimestamp(0.75, tz=timezone.utc)
+        with patch("paraping.ui_render.time.monotonic", return_value=0.4):
+            low_rows = [
+                build_kitt_gradient_bar(80, now, use_color=False, **self._gradient_kwargs(row_index=row)) for row in range(5)
+            ]
+            high_rows = [
+                build_kitt_gradient_bar(80, now, use_color=False, **self._gradient_kwargs(row_index=row, error_hosts=8))
+                for row in range(5)
+            ]
+        low_active = sum(1 for band in low_rows for char in band if char != " ")
+        high_active = sum(1 for band in high_rows for char in band if char != " ")
+        self.assertGreater(high_active, low_active)
+
+    def test_kitt_gradient_palette_stage_thresholds(self):
+        """Gradient palette should follow green/yellow/orange/red thresholds."""
+        now = datetime.fromtimestamp(1.0, tz=timezone.utc)
+        with patch("paraping.ui_render.time.monotonic", return_value=0.3):
+            green = build_kitt_gradient_bar(30, now, use_color=True, **self._gradient_kwargs(error_hosts=0))
+            yellow = build_kitt_gradient_bar(30, now, use_color=True, **self._gradient_kwargs(error_hosts=1))
+            orange = build_kitt_gradient_bar(30, now, use_color=True, **self._gradient_kwargs(error_hosts=3))
+            red = build_kitt_gradient_bar(30, now, use_color=True, **self._gradient_kwargs(error_hosts=7))
+        self.assertIn("\x1b[32m", green)
+        self.assertIn("\x1b[33m", yellow)
+        self.assertIn("\x1b[38;5;208m", orange)
+        self.assertIn("\x1b[31m", red)
+
+    def test_kitt_gradient_uses_soft_and_strong_colors(self):
+        """Gradient should use strong peak color and softer trail color."""
+        now = datetime.fromtimestamp(1.0, tz=timezone.utc)
+        with patch("paraping.ui_render.time.monotonic", return_value=0.3):
+            colored = build_kitt_gradient_bar(40, now, use_color=True, **self._gradient_kwargs(error_hosts=7))
+        self.assertIn("\x1b[31m", colored)
+        self.assertIn("\x1b[2;31m", colored)
+
+    def test_kitt_gradient_is_center_origin_ripple(self):
+        """Gradient should radiate from the center rather than translate sideways as one bar."""
+        now = datetime.fromtimestamp(0.75, tz=timezone.utc)
+        with patch("paraping.ui_render.time.monotonic", return_value=0.3):
+            band = build_kitt_gradient_bar(41, now, use_color=False, **self._gradient_kwargs(error_hosts=6))
+        center = len(band) // 2
+        self.assertNotEqual(band[center], " ")
+        active = [idx for idx, ch in enumerate(band) if ch != " "]
+        self.assertTrue(any(idx < center for idx in active))
+        self.assertTrue(any(idx > center for idx in active))
+
+    def test_kitt_gradient_center_is_single_origin_dot(self):
+        """Gradient should keep the origin as a single center dot, not a thick bar."""
+        now = datetime.fromtimestamp(0.12, tz=timezone.utc)
+        with patch("paraping.ui_render.time.monotonic", return_value=0.12):
+            band = build_kitt_gradient_bar(41, now, use_color=False, **self._gradient_kwargs(error_hosts=0))
+        center = len(band) // 2
+        active = [idx for idx, ch in enumerate(band) if ch != " "]
+        center_cluster = [idx for idx in active if abs(idx - center) <= 1]
+        self.assertIn(center, active)
+        self.assertEqual(center_cluster, [center])
+
+    def test_kitt_gradient_rows_form_symmetric_ripple(self):
+        """Gradient rows should mirror each other around the center row."""
+        now = datetime.fromtimestamp(0.55, tz=timezone.utc)
+        with patch("paraping.ui_render.time.monotonic", return_value=0.55):
+            upper = build_kitt_gradient_bar(41, now, use_color=False, **self._gradient_kwargs(row_index=0, error_hosts=7))
+            lower = build_kitt_gradient_bar(41, now, use_color=False, **self._gradient_kwargs(row_index=4, error_hosts=7))
+        self.assertEqual(upper, lower)
+
+    def test_kitt_gradient_decays_away_from_center(self):
+        """Gradient ripple should weaken as it expands away from the center."""
+        now = datetime.fromtimestamp(0.75, tz=timezone.utc)
+        with patch("paraping.ui_render.time.monotonic", return_value=0.3):
+            band = build_kitt_gradient_bar(41, now, use_color=False, **self._gradient_kwargs(error_hosts=7))
+        center = len(band) // 2
+        density = {"█": 4, "▓": 3, "▒": 2, "░": 1, " ": 0}
+        self.assertGreaterEqual(density.get(band[center], 0), density.get(band[0], 0))
+        self.assertGreaterEqual(density.get(band[center], 0), density.get(band[-1], 0))
+
+    def test_kitt_gradient_small_width_keeps_center_dot(self):
+        """Gradient should still show a visible origin in narrow widths."""
+        now = datetime.fromtimestamp(0.05, tz=timezone.utc)
+        with patch("paraping.ui_render.time.monotonic", return_value=0.05):
+            band = build_kitt_gradient_bar(3, now, use_color=False, **self._gradient_kwargs(error_hosts=0))
+        self.assertEqual(len(band), 3)
+        self.assertNotEqual(band[1], " ")
+
+    def test_kitt_gradient_remains_symmetric(self):
+        """Gradient style should remain left-right symmetric at a fixed frame."""
+        now = datetime.fromtimestamp(0.75, tz=timezone.utc)
+        with patch("paraping.ui_render.time.monotonic", return_value=0.3):
+            band = build_kitt_gradient_bar(41, now, use_color=False, **self._gradient_kwargs(error_hosts=7))
+        self.assertEqual(band, band[::-1])
+
+    def test_kitt_gradient_does_not_wrap_outer_ring_back_to_center(self):
+        """Gradient should not reintroduce a strong inner ring when an outer ring expires."""
+        with patch("paraping.ui_render.time.monotonic", side_effect=[1.10, 1.15]):
+            before_wrap = build_kitt_gradient_bar(
+                41,
+                datetime.fromtimestamp(1.10, tz=timezone.utc),
+                use_color=False,
+                **self._gradient_kwargs(error_hosts=6),
+            )
+            after_wrap = build_kitt_gradient_bar(
+                41,
+                datetime.fromtimestamp(1.15, tz=timezone.utc),
+                use_color=False,
+                **self._gradient_kwargs(error_hosts=6),
+            )
+        center = len(before_wrap) // 2
+        inner_before = sum(
+            1 for idx, char in enumerate(before_wrap) if char != " " and abs(idx - center) <= 3 and idx != center
+        )
+        inner_after = sum(1 for idx, char in enumerate(after_wrap) if char != " " and abs(idx - center) <= 3 and idx != center)
+        self.assertLessEqual(inner_after, inner_before)
+
+    def test_kitt_gradient_changes_are_local_between_adjacent_frames(self):
+        """Gradient should evolve smoothly without long-distance teleports between nearby frames."""
+        with patch("paraping.ui_render.time.monotonic", side_effect=[1.10, 1.15]):
+            early = build_kitt_gradient_bar(
+                41,
+                datetime.fromtimestamp(1.10, tz=timezone.utc),
+                use_color=False,
+                **self._gradient_kwargs(error_hosts=6),
+            )
+            later = build_kitt_gradient_bar(
+                41,
+                datetime.fromtimestamp(1.15, tz=timezone.utc),
+                use_color=False,
+                **self._gradient_kwargs(error_hosts=6),
+            )
+        changed = [idx for idx, (early_char, later_char) in enumerate(zip(early, later)) if early_char != later_char]
+        self.assertTrue(changed)
+        center = len(early) - 1
+        mirrored = {center - idx for idx in changed}
+        self.assertEqual(set(changed), mirrored)
+        self.assertLessEqual(len(changed), 8)
+
+    def test_kitt_gradient_reaches_screen_edges(self):
+        """Gradient should let outer rings reach the visible edges instead of dying early."""
+        now = datetime.fromtimestamp(7.4, tz=timezone.utc)
+        with patch("paraping.ui_render.time.monotonic", return_value=7.4):
+            band = build_kitt_gradient_bar(41, now, use_color=False, **self._gradient_kwargs(error_hosts=7))
+        self.assertNotEqual(band[0], " ")
+        self.assertNotEqual(band[-1], " ")
+
+    def test_kitt_gradient_reaches_outer_radius_on_wide_view(self):
+        """Gradient should preserve visible outer ripples on wider terminals too."""
+        now = datetime.fromtimestamp(7.4, tz=timezone.utc)
+        with patch("paraping.ui_render.time.monotonic", return_value=7.4):
+            band = build_kitt_gradient_bar(81, now, use_color=False, error_hosts=7, total_hosts=10)
+        active = [idx for idx, char in enumerate(band) if char != " "]
+        center = len(band) // 2
+        self.assertTrue(active)
+        self.assertGreaterEqual(center - active[0], 35)
+        self.assertGreaterEqual(active[-1] - center, 35)
+
+    def test_kitt_gradient_ring_spacing_is_not_too_dense(self):
+        """Gradient rings should be spaced apart enough to read as expanding waves."""
+        rings = _resolve_kitt_gradient_rings(4.4, 20.0, 0.7)
+        radii = [ring_radius for ring_radius, _ring_width, _freshness in rings]
+        gaps = [right - left for left, right in zip(radii, radii[1:])]
+        self.assertTrue(gaps)
+        self.assertTrue(all(gap >= 5.0 for gap in gaps))
+
+    def test_kitt_gradient_generation_interval_is_one_second(self):
+        """Gradient should spawn one new ripple each second regardless of severity."""
+        early = _resolve_kitt_gradient_rings(4.99, 20.0, 0.0)
+        later = _resolve_kitt_gradient_rings(5.01, 20.0, 0.8)
+        self.assertTrue(early)
+        self.assertTrue(later)
+        self.assertLess(min(ring_radius for ring_radius, _ring_width, _freshness in later), 0.5)
+        self.assertGreater(min(ring_radius for ring_radius, _ring_width, _freshness in early), 5.0)
+
+    def test_kitt_gradient_center_tracks_body_height(self):
+        """Gradient should place its origin on the vertical center of the Pulse body."""
+        now = datetime.fromtimestamp(0.02, tz=timezone.utc)
+        with patch("paraping.ui_render.time.monotonic", return_value=0.02):
+            top_row = build_kitt_gradient_bar(21, now, use_color=False, **self._gradient_kwargs(row_index=0, body_height=6))
+            center_row = build_kitt_gradient_bar(21, now, use_color=False, **self._gradient_kwargs(row_index=2, body_height=6))
+        self.assertEqual(top_row[len(top_row) // 2], " ")
+        self.assertNotEqual(center_row[len(center_row) // 2], " ")
+
+    def test_kitt_gradient_reaches_pulse_window_corners(self):
+        """Gradient should reach the furthest visible corners of the Pulse body."""
+        now = datetime.fromtimestamp(7.4, tz=timezone.utc)
+        with patch("paraping.ui_render.time.monotonic", return_value=7.4):
+            top = build_kitt_gradient_bar(21, now, use_color=False, **self._gradient_kwargs(row_index=0))
+            bottom = build_kitt_gradient_bar(21, now, use_color=False, **self._gradient_kwargs(row_index=4))
+        self.assertNotEqual(top[0], " ")
+        self.assertNotEqual(top[-1], " ")
+        self.assertEqual(top, bottom)
+
+
+class TestIncrementalRendering(unittest.TestCase):
+    """Test diff rendering behaviour."""
+
+    def tearDown(self):
+        reset_render_cache()
+
+    def test_render_display_uses_cell_width_for_partial_updates(self):
+        """Partial redraws should position the cursor using terminal cell width."""
+        stdout = io.StringIO()
+        with patch("sys.stdout", new=stdout):
+            render_display(
+                [],
+                {},
+                {},
+                _SYMBOLS,
+                "none",
+                "alias",
+                "timeline",
+                "rates",
+                "config",
+                "all",
+                200.0,
+                False,
+                False,
+                False,
+                None,
+                timezone.utc,
+                False,
+                override_lines=["A界X", "status"],
+            )
+            stdout.seek(0)
+            stdout.truncate(0)
+            render_display(
+                [],
+                {},
+                {},
+                _SYMBOLS,
+                "none",
+                "alias",
+                "timeline",
+                "rates",
+                "config",
+                "all",
+                200.0,
+                False,
+                False,
+                False,
+                None,
+                timezone.utc,
+                False,
+                override_lines=["A界Y", "status"],
+            )
+        self.assertIn("\x1b[1;4H", stdout.getvalue())
+
+    def test_render_display_fully_redraws_pulse_rows(self):
+        """Pulse rows should use full-line redraws instead of partial diffs."""
+        stdout = io.StringIO()
+        initial = ["header", "Pulse [Scanner]", "----------", "  ░░░", "status"]
+        updated = ["header", "Pulse [Scanner]", "----------", "   ▓▓", "status"]
+        with patch("sys.stdout", new=stdout):
+            render_display(
+                [],
+                {},
+                {},
+                _SYMBOLS,
+                "none",
+                "alias",
+                "timeline",
+                "rates",
+                "config",
+                "all",
+                200.0,
+                False,
+                False,
+                False,
+                None,
+                timezone.utc,
+                False,
+                override_lines=initial,
+            )
+            stdout.seek(0)
+            stdout.truncate(0)
+            render_display(
+                [],
+                {},
+                {},
+                _SYMBOLS,
+                "none",
+                "alias",
+                "timeline",
+                "rates",
+                "config",
+                "all",
+                200.0,
+                False,
+                False,
+                False,
+                None,
+                timezone.utc,
+                False,
+                override_lines=updated,
+            )
+        output = stdout.getvalue()
+        self.assertIn("\x1b[4;1H\x1b[2K", output)
+        self.assertNotIn("\x1b[4;2H", output)
 
 
 class TestBuildDisplayEntries(unittest.TestCase):
@@ -1800,6 +2318,7 @@ class TestBuildDisplayLines(unittest.TestCase):
         defaults = {
             "symbols": _SYMBOLS,
             "panel_position": "none",
+            "pulse_position": "none",
             "mode_label": "ip",
             "display_mode": "timeline",
             "summary_mode": "rates",
@@ -1889,32 +2408,118 @@ class TestBuildDisplayLines(unittest.TestCase):
 
     @patch("paraping.ui_render.get_terminal_size", return_value=os.terminal_size((100, 30)))
     def test_build_display_lines_kitt_mode_enabled_shows_band(self, _mock_term_size):
-        """Knight Rider mode should include the bottom accent area on large terminals."""
+        """Pulse mode should include the bottom accent area on large terminals."""
         host_infos, buffers, stats = self._setup()
         result = self._call_build_display_lines(
             host_infos,
             buffers,
             stats,
             panel_position="none",
+            pulse_position="bottom",
             kitt_mode_enabled=True,
             kitt_style="scanner",
         )
         combined = "\n".join(result)
-        self.assertIn("Knight Rider [Scanner]", combined)
+        self.assertIn("Pulse [Scanner]", combined)
 
     @patch("paraping.ui_render.get_terminal_size", return_value=os.terminal_size((20, 6)))
     def test_build_display_lines_kitt_mode_small_terminal_graceful(self, _mock_term_size):
-        """Knight Rider mode should gracefully degrade on tiny terminals."""
+        """Pulse mode should gracefully degrade on tiny terminals."""
         host_infos, buffers, stats = self._setup()
         result = self._call_build_display_lines(
             host_infos,
             buffers,
             stats,
             panel_position="none",
+            pulse_position="bottom",
             kitt_mode_enabled=True,
             kitt_style="gradient",
         )
         self.assertIsInstance(result, list)
+
+    @patch("paraping.ui_render.get_terminal_size", return_value=os.terminal_size((100, 30)))
+    def test_build_display_lines_kitt_gradient_responds_to_fail_host_count(self, _mock_term_size):
+        """Gradient band should reflect current fail-host count through palette changes."""
+        host_infos, buffers, stats = self._setup(3)
+        now = datetime.fromtimestamp(1.0, tz=timezone.utc)
+
+        # Low severity: no host currently failing.
+        for hid in range(3):
+            buffers[hid]["timeline"] = deque(["."], maxlen=10)
+        low = self._call_build_display_lines(
+            host_infos,
+            buffers,
+            stats,
+            panel_position="none",
+            pulse_position="bottom",
+            kitt_mode_enabled=True,
+            kitt_style="gradient",
+            use_color=True,
+            now_utc=now,
+        )
+
+        # High severity: most hosts currently failing.
+        for hid in (0, 1):
+            buffers[hid]["timeline"] = deque(["x"], maxlen=10)
+        high = self._call_build_display_lines(
+            host_infos,
+            buffers,
+            stats,
+            panel_position="none",
+            pulse_position="bottom",
+            kitt_mode_enabled=True,
+            kitt_style="gradient",
+            use_color=True,
+            now_utc=now,
+        )
+
+        low_text = "\n".join(low)
+        high_text = "\n".join(high)
+        self.assertIn("\x1b[32m", low_text)
+        self.assertIn("\x1b[31m", high_text)
+
+    @patch("paraping.ui_render.get_terminal_size", return_value=os.terminal_size((100, 30)))
+    def test_build_display_lines_pulse_top_places_panel_first(self, _mock_term_size):
+        host_infos, buffers, stats = self._setup()
+        result = self._call_build_display_lines(
+            host_infos, buffers, stats, panel_position="none", pulse_position="top", kitt_mode_enabled=True
+        )
+        self.assertTrue(result[0].startswith("Pulse ["))
+
+    @patch("paraping.ui_render.get_terminal_size", return_value=os.terminal_size((100, 30)))
+    def test_build_display_lines_pulse_left_splits_main_row(self, _mock_term_size):
+        host_infos, buffers, stats = self._setup()
+        result = self._call_build_display_lines(
+            host_infos, buffers, stats, panel_position="none", pulse_position="left", kitt_mode_enabled=True
+        )
+        self.assertTrue(result[0].startswith("Pulse ["))
+        self.assertIn("ParaPing - LIVE results", "\n".join(result))
+
+    @patch("paraping.ui_render.get_terminal_size", return_value=os.terminal_size((100, 30)))
+    def test_build_display_lines_pulse_right_splits_main_row(self, _mock_term_size):
+        host_infos, buffers, stats = self._setup()
+        result = self._call_build_display_lines(
+            host_infos, buffers, stats, panel_position="none", pulse_position="right", kitt_mode_enabled=True
+        )
+        self.assertIn("Pulse [", result[0])
+        self.assertFalse(result[0].startswith("Pulse ["))
+
+    @patch("paraping.ui_render.get_terminal_size", return_value=os.terminal_size((100, 30)))
+    def test_build_display_lines_pulse_uses_extra_blank_rows(self, _mock_term_size):
+        host_infos, buffers, stats = self._setup()
+        result = self._call_build_display_lines(
+            host_infos, buffers, stats, panel_position="none", pulse_position="bottom", kitt_mode_enabled=True
+        )
+        pulse_start = next(index for index, line in enumerate(result) if "Pulse [" in line)
+        self.assertLess(pulse_start, 24)
+
+    @patch("paraping.ui_render.get_terminal_size", return_value=os.terminal_size((40, 8)))
+    def test_build_display_lines_pulse_hides_when_no_blank_rows_remain(self, _mock_term_size):
+        host_infos, buffers, stats = self._setup(6)
+        result = self._call_build_display_lines(
+            host_infos, buffers, stats, panel_position="none", pulse_position="bottom", kitt_mode_enabled=True
+        )
+        self.assertNotIn("Pulse [", "\n".join(result))
 
 
 class TestMiscFunctions(unittest.TestCase):

@@ -26,13 +26,15 @@ import termios
 import threading
 import time
 import tty
+import warnings
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor  # noqa: F401 - Backward-compatibility for tests patching this symbol.
 from datetime import datetime, timezone, tzinfo
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from paraping.config import load_config
+from paraping.cli_options import CLI_OPTION_SPECS, OptionSpec
+from paraping.config import DEFAULT_CONFIG_PATH, load_config, save_config_overrides
 from paraping.core import (
     _normalize_term_size,
     build_host_infos,
@@ -41,6 +43,7 @@ from paraping.core import (
     read_input_file_with_report,
 )
 from paraping.input_keys import read_key
+from paraping.keymap import KeyContext, resolve_action
 from paraping.network_asn import asn_worker, should_retry_asn
 from paraping.pinger import rdns_worker, scheduler_driven_worker_ping
 from paraping.ui_render import (
@@ -50,6 +53,7 @@ from paraping.ui_render import (
     compute_host_scroll_bounds,
     compute_main_layout,
     compute_panel_sizes,
+    compute_pulse_panel_sizes,
     cycle_panel_position,
     flash_screen,
     format_timestamp,
@@ -76,9 +80,14 @@ from paraping_v2.sequence_tracker import SequenceTracker
 from paraping_v2.shadow import apply_shadow_v2_event
 
 REMOVED_HOST_RETENTION_SECONDS = 10.0
+INTERVAL_STEP_SECONDS = 0.1
+MIN_INTERVAL_SECONDS = 0.1
+MAX_INTERVAL_SECONDS = 60.0
 
 
-def _compute_initial_timeline_width(host_labels: List[str], term_size: Any, panel_position: str) -> int:
+def _compute_initial_timeline_width(
+    host_labels: List[str], term_size: Any, panel_position: str, pulse_position: str = "none"
+) -> int:
     """
     Compute the initial timeline width for buffer sizing.
 
@@ -102,6 +111,7 @@ def _compute_initial_timeline_width(host_labels: List[str], term_size: Any, pane
     status_box_height = 3 if normalized_size.lines >= 4 and normalized_size.columns >= 2 else 1
     panel_height = max(1, normalized_size.lines - status_box_height)
     main_width, main_height, _, _, _ = compute_panel_sizes(normalized_size.columns, panel_height, panel_position)
+    main_width, main_height, _, _, _ = compute_pulse_panel_sizes(main_width, main_height, pulse_position)
     # Always use header_lines=2 for consistent initial sizing
     _, _, timeline_width, _ = compute_main_layout(host_labels, main_width, main_height, header_lines=2)
     try:
@@ -124,6 +134,7 @@ def _compute_runtime_timeline_width(state: Dict[str, Any], term_size: Any) -> in
     status_box_height = 3 if normalized_size.lines >= 4 and normalized_size.columns >= 2 else 1
     panel_height = max(1, normalized_size.lines - status_box_height)
     main_width, main_height, _, _, _ = compute_panel_sizes(normalized_size.columns, panel_height, state["panel_position"])
+    main_width, main_height, _, _, _ = compute_pulse_panel_sizes(main_width, main_height, state.get("pulse_position", "none"))
     mode_label = state["modes"][state["mode_index"]]
     include_asn = should_show_asn(state["host_infos"], mode_label, state["show_asn"], normalized_size.columns, asn_width=8)
     display_names = build_display_names(state["host_infos"], mode_label, include_asn, asn_width=8)
@@ -133,6 +144,26 @@ def _compute_runtime_timeline_width(state: Dict[str, Any], term_size: Any) -> in
         return max(1, int(timeline_width))
     except (TypeError, ValueError):
         return 1
+
+
+def _build_runtime_config_overrides(state: Dict[str, Any]) -> Dict[str, Any]:
+    """Collect the current state that should persist across launches."""
+    return {
+        "display_name": state["modes"][state["mode_index"]],
+        "view": state["display_modes"][state["display_mode_index"]],
+        "sort": state["sort_modes"][state["sort_mode_index"]],
+        "filter": state["filter_modes"][state["filter_mode_index"]],
+        "show_asn": bool(state["show_asn"]),
+        "summary_mode": state["summary_modes"][state["summary_mode_index"]],
+        "summary_scope": state["summary_scope_modes"][state["summary_scope_mode_index"]],
+        "group_by": state["group_by_modes"][state["group_by_mode_index"]],
+        "panel_position": state["panel_position"],
+        "color": bool(state["use_color"]),
+        "bell_on_fail": bool(state["bell_on_fail"]),
+        "kitt": bool(state["kitt_mode_enabled"]),
+        "kitt_style": state["kitt_style_modes"][state["kitt_style_index"]],
+        "summary_fullscreen": bool(state["summary_fullscreen"]),
+    }
 
 
 def _check_terminal_resize_and_request_redraw(state: Dict[str, Any], now_monotonic: float) -> None:
@@ -159,12 +190,48 @@ def _check_terminal_resize_and_request_redraw(state: Dict[str, Any], now_monoton
     if current_size.columns == previous_size.columns and current_size.lines == previous_size.lines:
         return
 
-    # Match hotkey `L` behavior for resize recovery.
+    # Match hotkey `u` behavior for resize recovery.
     reset_render_cache()
     state["cached_page_step"] = None
     state["last_term_size"] = None
     state["force_render"] = True
     state["updated"] = True
+
+
+def _compute_scheduler_stagger(interval_seconds: float, host_count: int) -> float:
+    """Compute per-host stagger for the current host count."""
+    return interval_seconds / host_count if host_count > 0 else 0.0
+
+
+def _round_interval_seconds(interval_seconds: float) -> float:
+    """Round interval updates to one decimal place for stable hotkey stepping."""
+    return round(interval_seconds + 1e-9, 1)
+
+
+def _update_runtime_interval(
+    state: Dict[str, Any],
+    scheduler: Scheduler,
+    ping_lock: threading.Lock,
+    next_interval_seconds: float,
+) -> str:
+    """Apply a runtime interval update when it passes bounds and rate-limit validation."""
+    rounded_interval = _round_interval_seconds(next_interval_seconds)
+    current_interval = float(state.get("interval_seconds", rounded_interval))
+    if rounded_interval < MIN_INTERVAL_SECONDS or rounded_interval > MAX_INTERVAL_SECONDS:
+        return f"Interval unchanged: {current_interval:.1f}s"
+
+    active_host_count = _active_host_count(state)
+    is_valid, _rate, error_message = validate_global_rate_limit(active_host_count, rounded_interval)
+    if not is_valid:
+        return f"Interval change rejected: {error_message}"
+
+    with ping_lock:
+        scheduler.set_interval(rounded_interval)
+        scheduler.set_stagger(_compute_scheduler_stagger(rounded_interval, scheduler.get_host_count()))
+        scheduler.reset_timing(time.time())
+
+    state["interval_seconds"] = rounded_interval
+    return f"Interval: {rounded_interval:.1f}s"
 
 
 def _configure_logging(
@@ -190,22 +257,28 @@ def _configure_logging(
     )
 
 
-# Hardcoded defaults for config-overridable fields.
-# Applied after config merging for any field still set to None.
-_HARDCODED_DEFAULTS: Dict[str, Any] = {
-    "timeout": 1,
-    "slow_threshold": 0.5,
-    "interval": 1.0,
-    "panel_position": "right",
-    "pause_mode": "display",
-    "snapshot_timezone": "utc",
-    "ping_helper": "./bin/ping_helper",
-    "log_level": "INFO",
-    "flash_on_fail": False,
-    "bell_on_fail": False,
-    "color": False,
-    "group_by": "none",
-}
+def _add_option_from_spec(parser: argparse.ArgumentParser, spec: OptionSpec) -> None:
+    """Register one option spec on the argparse parser."""
+    kwargs: Dict[str, Any] = {
+        "dest": spec.dest,
+        "default": None,
+        "help": spec.help_text,
+    }
+    if spec.boolean:
+        kwargs["action"] = argparse.BooleanOptionalAction
+    else:
+        if spec.value_type is not None:
+            kwargs["type"] = str.upper if spec.dest == "log_level" else spec.value_type
+        if spec.choices:
+            kwargs["choices"] = list(spec.choices)
+    parser.add_argument(*spec.flags, **kwargs)
+
+
+def _apply_option_defaults(args: argparse.Namespace) -> None:
+    """Apply defaults for unset values after config overlay."""
+    for spec in CLI_OPTION_SPECS:
+        if getattr(args, spec.dest, None) is None:
+            setattr(args, spec.dest, spec.default)
 
 
 def _count_entry_tags(host_info: Dict[str, Any]) -> int:
@@ -256,6 +329,8 @@ def _apply_config_to_args(args: argparse.Namespace, config: Dict[str, Any]) -> N
         config: Dictionary of values loaded from the config file.
     """
     for key, value in config.items():
+        if key == "verbose_ui_errors":
+            key = "ui_log_errors"
         if key == "hosts":
             if not getattr(args, "hosts", None) and not getattr(args, "input", None):
                 args.hosts = value
@@ -270,131 +345,22 @@ def handle_options() -> argparse.Namespace:
         epilog="Note: ParaPing enforces a global rate limit of 50 pings/sec for flood protection. "
         "The tool will exit with an error if (host_count / interval) > 50.",
     )
-    parser.add_argument(
-        "-t",
-        "--timeout",
-        type=int,
-        default=None,
-        help="Timeout in seconds for each ping (default: 1)",
-    )
-    parser.add_argument(
-        "-c",
-        "--count",
-        type=int,
-        default=0,
-        help="Number of ping attempts per host (default: 0 for infinite)",
-    )
-    parser.add_argument(
-        "-s",
-        "--slow-threshold",
-        type=float,
-        default=None,
-        help="Threshold in seconds for slow ping (default: 0.5)",
-    )
-    parser.add_argument(
-        "-i",
-        "--interval",
-        type=float,
-        default=None,
-        help="Interval in seconds between pings per host (default: 1.0, range: 0.1-60.0). "
-        "Note: Global rate limit is 50 pings/sec (host_count / interval <= 50)",
-    )
+    for spec in CLI_OPTION_SPECS:
+        _add_option_from_spec(parser, spec)
+
     parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
-        help="Enable verbose output, showing detailed ping results",
-    )
-    parser.add_argument(
-        "--log-level",
-        type=str.upper,
-        default=None,
-        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        help="Logging level for verbose and error output (default: INFO)",
-    )
-    parser.add_argument(
-        "--log-file",
-        type=str,
-        default=None,
-        help="Optional log file path for persistent logging",
-    )
-    parser.add_argument(
-        "-f",
-        "--input",
-        type=str,
-        help="Input file containing list of hosts (one per line, format: IP,alias)",
-        required=False,
-    )
-    parser.add_argument(
-        "--group-by",
-        type=str,
-        default=None,
-        help="Group key for summary and host grouping " "(none|asn|site|tag|tagN|site>tag1|tag1>site)",
-    )
-    parser.add_argument(
-        "-P",
-        "--panel-position",
-        type=str,
-        default=None,
-        choices=["right", "left", "top", "bottom", "none"],
-        help="Summary panel position (right|left|top|bottom|none)",
-    )
-    parser.add_argument(
-        "-m",
-        "--pause-mode",
-        type=str,
-        default=None,
-        choices=["display", "ping"],
-        help="Pause behavior: display (stop updates only) or ping (pause ping + updates)",
-    )
-    parser.add_argument(
-        "-z",
-        "--timezone",
-        type=str,
-        default=None,
-        help="Display timezone (IANA name, e.g. Asia/Tokyo). Defaults to UTC.",
-    )
-    parser.add_argument(
-        "-Z",
-        "--snapshot-timezone",
-        type=str,
-        default=None,
-        choices=["utc", "display"],
-        help="Timezone used in snapshot filename (utc|display). Defaults to utc.",
-    )
-    parser.add_argument(
-        "-F",
-        "--flash-on-fail",
-        action="store_true",
-        default=None,
-        help="Flash screen (white background) when ping fails",
-    )
-    parser.add_argument(
-        "-B",
-        "--bell-on-fail",
-        action="store_true",
-        default=None,
-        help="Ring terminal bell when ping fails",
-    )
-    parser.add_argument(
-        "-C",
-        "--color",
-        action="store_true",
-        default=None,
-        help="Enable colored output (blue=success, yellow=slow, red=fail)",
-    )
-    parser.add_argument(
-        "-H",
-        "--ping-helper",
-        type=str,
-        default=None,
-        help="Path to ping_helper binary (default: ./bin/ping_helper)",
+        default=False,
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--verbose-ui-errors",
         action="store_true",
+        dest="deprecated_verbose_ui_errors",
         default=False,
-        help="Show warning/error log lines in live TUI output (default: off)",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--no-config",
@@ -414,10 +380,23 @@ def handle_options() -> argparse.Namespace:
         except (ValueError, ImportError) as exc:
             parser.error(str(exc))
 
-    # Apply hardcoded defaults for any config-overridable field still at None
-    for field, default in _HARDCODED_DEFAULTS.items():
-        if getattr(args, field, None) is None:
-            setattr(args, field, default)
+    if args.verbose:
+        warnings.warn("--verbose is deprecated; use --log-level DEBUG instead.", DeprecationWarning, stacklevel=2)
+        if getattr(args, "log_level", None) is None:
+            args.log_level = "DEBUG"
+    if args.deprecated_verbose_ui_errors:
+        warnings.warn(
+            "--verbose-ui-errors is deprecated; use --ui-log-errors instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        args.ui_log_errors = True
+
+    _apply_option_defaults(args)
+    args.log_level = str(args.log_level).upper()
+    if args.log_level not in ("DEBUG", "INFO", "WARNING", "ERROR"):
+        parser.error("--log-level must be one of DEBUG|INFO|WARNING|ERROR")
+    args.verbose_ui_errors = args.ui_log_errors
 
     if args.timeout <= 0:
         parser.error("--timeout must be a positive integer.")
@@ -480,10 +459,13 @@ def _setup_hosts_and_state(args: argparse.Namespace) -> Optional[Dict[str, Any]]
             return None
     snapshot_tz: tzinfo = display_tz if args.snapshot_timezone == "display" else timezone.utc
     panel_position = args.panel_position
+    pulse_position = "bottom" if getattr(args, "kitt", False) else "none"
     symbols: Dict[str, str] = {"success": ".", "fail": "x", "slow": "!", "pending": "-"}
     host_infos, host_info_map = build_host_infos(all_hosts)
     host_labels = [info["alias"] for info in host_infos]
-    timeline_width = _compute_initial_timeline_width(host_labels, get_terminal_size(fallback=(80, 24)), panel_position)
+    timeline_width = _compute_initial_timeline_width(
+        host_labels, get_terminal_size(fallback=(80, 24)), panel_position, pulse_position
+    )
     ping_helper_path = os.path.abspath(os.path.expanduser(args.ping_helper))
     if not os.path.exists(ping_helper_path):
         print(
@@ -509,6 +491,9 @@ def _setup_hosts_and_state(args: argparse.Namespace) -> Optional[Dict[str, Any]]
         "panel_position": panel_position,
         "panel_toggle_default": panel_position if panel_position != "none" else "right",
         "last_panel_position": panel_position if panel_position != "none" else None,
+        "pulse_position": pulse_position,
+        "pulse_toggle_default": "bottom",
+        "last_pulse_position": pulse_position if pulse_position != "none" else "bottom",
         "symbols": symbols,
         "host_infos": host_infos,
         "host_info_map": host_info_map,
@@ -634,7 +619,7 @@ def _apply_manual_reload(
         with ping_lock:
             scheduler.remove_host(info["host"])
             host_count = scheduler.get_host_count()
-            scheduler.set_stagger(args.interval / host_count if host_count > 0 else 0.0)
+            scheduler.set_stagger(_compute_scheduler_stagger(state["interval_seconds"], host_count))
         removed_count += 1
 
     now = time.time()
@@ -654,7 +639,7 @@ def _apply_manual_reload(
                 with ping_lock:
                     scheduler.add_host(info["host"], host_id=info["id"])
                     host_count = scheduler.get_host_count()
-                    scheduler.set_stagger(args.interval / host_count if host_count > 0 else 0.0)
+                    scheduler.set_stagger(_compute_scheduler_stagger(state["interval_seconds"], host_count))
                 state["done_host_ids"].discard(info["id"])
                 _start_host_worker(info, args, state, scheduler, ping_lock, sequence_tracker)
                 info["rdns_pending"] = True
@@ -672,7 +657,7 @@ def _apply_manual_reload(
         with ping_lock:
             scheduler.add_host(new_info["host"], host_id=new_info["id"])
             host_count = scheduler.get_host_count()
-            scheduler.set_stagger(args.interval / host_count if host_count > 0 else 0.0)
+            scheduler.set_stagger(_compute_scheduler_stagger(state["interval_seconds"], host_count))
         state["done_host_ids"].discard(new_info["id"])
         _start_host_worker(new_info, args, state, scheduler, ping_lock, sequence_tracker)
         new_info["rdns_pending"] = True
@@ -731,15 +716,36 @@ def _handle_user_input(
 ) -> bool:
     """Process one keyboard input event and return True when the current loop iteration should be skipped."""
     skip_iteration = False
-    if key in ("q", "Q"):
+    context: KeyContext = "main"
+    if state.get("show_help"):
+        context = "help"
+    elif state.get("host_select_active"):
+        context = "host_select"
+    elif state.get("graph_host_id") is not None:
+        context = "graph"
+
+    action = resolve_action(key, context) or ""
+
+    if action == "quit":
         state["running"] = False
         state["stop_event"].set()
-    elif state["show_help"]:
-        state["show_help"] = False
+        return skip_iteration
+
+    if context == "help":
+        if action in ("help_toggle", "back"):
+            state["show_help"] = False
+            state["force_render"] = True
+            state["updated"] = True
+            skip_iteration = True
+        return skip_iteration
+
+    if action == "help_toggle":
+        state["show_help"] = True
         state["force_render"] = True
         state["updated"] = True
-        skip_iteration = True
-    elif state["host_select_active"]:
+        return skip_iteration
+
+    if context == "host_select":
         render_buffers = state["render_buffers"]
         render_stats = state["render_stats"]
         term_size = get_terminal_size(fallback=(80, 24))
@@ -771,103 +777,143 @@ def _handle_user_input(
             state["host_select_index"] = 0
         else:
             state["host_select_index"] = min(max(state["host_select_index"], 0), len(display_entries) - 1)
-        if key in ("p", "P") and display_entries:
+        if action == "select_prev" and display_entries:
             state["host_select_index"] = max(0, state["host_select_index"] - 1)
             state["force_render"] = True
             state["updated"] = True
-        elif key in ("n", "N") and display_entries:
+        elif action == "select_next" and display_entries:
             state["host_select_index"] = min(len(display_entries) - 1, state["host_select_index"] + 1)
             state["force_render"] = True
             state["updated"] = True
-        elif key in ("\r", "\n"):
+        elif action == "select_confirm":
             if display_entries:
                 state["graph_host_id"] = display_entries[state["host_select_index"]][0]
                 state["host_select_active"] = False
                 state["force_render"] = True
                 state["updated"] = True
-        elif key == "\x1b":
+        elif action == "back":
             state["host_select_active"] = False
             state["force_render"] = True
             state["updated"] = True
-        skip_iteration = True
-    elif state["graph_host_id"] is not None:
-        if key == "\x1b":
+        if action:
+            skip_iteration = True
+        return skip_iteration
+
+    if context == "graph":
+        if action == "back":
             state["graph_host_id"] = None
             state["force_render"] = True
             state["updated"] = True
             skip_iteration = True
-        elif key in ("g", "G"):
+        elif action == "host_select_open":
             state["host_select_active"] = True
             state["graph_host_id"] = None
             state["force_render"] = True
             state["updated"] = True
             skip_iteration = True
-    elif key in ("H", "h"):
-        state["show_help"] = True
-        state["force_render"] = True
-        state["updated"] = True
-    elif key == "R":
+        elif action == "graph_toggle":
+            state["display_mode_index"] = (state["display_mode_index"] + 1) % len(state["display_modes"])
+            state["updated"] = True
+        return skip_iteration
+
+    action_handlers: Dict[str, Callable[[], None]] = {}
+
+    def _handle_reload() -> None:
         if scheduler is None or ping_lock is None or sequence_tracker is None:
             state["status_message"] = "Reload unavailable in this context"
         else:
             state["status_message"] = _apply_manual_reload(args, state, scheduler, ping_lock, sequence_tracker)
         state["updated"] = True
         state["force_render"] = True
-    elif key == "L":
+
+    def _handle_force_redraw() -> None:
         reset_render_cache()
         state["status_message"] = "Full redraw requested"
         state["force_render"] = True
         state["updated"] = True
-    elif key == "n":
+
+    def _handle_interval_change(delta_seconds: float) -> None:
+        if scheduler is None or ping_lock is None:
+            state["status_message"] = "Interval change unavailable in this context"
+        else:
+            current_interval = float(state.get("interval_seconds", args.interval))
+            target_interval = current_interval + delta_seconds
+            if delta_seconds < 0:
+                target_interval = max(MIN_INTERVAL_SECONDS, target_interval)
+            else:
+                target_interval = min(MAX_INTERVAL_SECONDS, target_interval)
+            state["status_message"] = _update_runtime_interval(state, scheduler, ping_lock, target_interval)
+        state["force_render"] = True
+        state["updated"] = True
+
+    def _handle_display_mode_cycle() -> None:
         state["mode_index"] = (state["mode_index"] + 1) % len(state["modes"])
         state["cached_page_step"] = None
         state["updated"] = True
-    elif key == "v":
+
+    def _handle_view_cycle() -> None:
         state["display_mode_index"] = (state["display_mode_index"] + 1) % len(state["display_modes"])
         state["updated"] = True
-    elif key == "k":
+
+    def _handle_kitt_toggle() -> None:
         state["kitt_mode_enabled"] = not state["kitt_mode_enabled"]
-        state["status_message"] = "Knight Rider mode enabled" if state["kitt_mode_enabled"] else "Knight Rider mode disabled"
+        pulse_position = state.get("pulse_position", "none")
+        last_pulse_position = state.get("last_pulse_position", "bottom")
+        pulse_toggle_default = state.get("pulse_toggle_default", "bottom")
+        if state["kitt_mode_enabled"] and pulse_position == "none":
+            restored_position = last_pulse_position or pulse_toggle_default
+            state["pulse_position"] = restored_position
+            state["last_pulse_position"] = restored_position
+        state["status_message"] = "Pulse mode enabled" if state["kitt_mode_enabled"] else "Pulse mode disabled"
+        state["cached_page_step"] = None
         state["force_render"] = True
         state["updated"] = True
-    elif key == "K":
+
+    def _handle_kitt_style_cycle() -> None:
         if state["kitt_mode_enabled"]:
             state["kitt_style_index"] = (state["kitt_style_index"] + 1) % len(state["kitt_style_modes"])
             current_style = state["kitt_style_modes"][state["kitt_style_index"]]
-            state["status_message"] = f"Knight Rider style: {current_style}"
+            state["status_message"] = f"Pulse style: {current_style}"
         else:
-            state["status_message"] = "Knight Rider mode is off (press 'k' first)"
+            state["status_message"] = "Pulse mode is off (press 'y' first)"
         state["force_render"] = True
         state["updated"] = True
-    elif key == "o":
+
+    def _handle_sort_cycle() -> None:
         state["sort_mode_index"] = (state["sort_mode_index"] + 1) % len(state["sort_modes"])
         state["cached_page_step"] = None
         state["updated"] = True
-    elif key == "f":
+
+    def _handle_filter_cycle() -> None:
         state["filter_mode_index"] = (state["filter_mode_index"] + 1) % len(state["filter_modes"])
         state["cached_page_step"] = None
         state["updated"] = True
-    elif key == "a":
+
+    def _handle_asn_toggle() -> None:
         state["show_asn"] = not state["show_asn"]
         state["cached_page_step"] = None
         state["updated"] = True
-    elif key == "m":
+
+    def _handle_summary_mode_cycle() -> None:
         state["summary_mode_index"] = (state["summary_mode_index"] + 1) % len(state["summary_modes"])
         state["status_message"] = f"Summary: {state['summary_modes'][state['summary_mode_index']].upper()}"
         state["updated"] = True
-    elif key == "G":
+
+    def _handle_summary_scope_cycle() -> None:
         state["summary_scope_mode_index"] = (state["summary_scope_mode_index"] + 1) % len(state["summary_scope_modes"])
         scope = state["summary_scope_modes"][state["summary_scope_mode_index"]]
         state["status_message"] = f"Summary scope: {scope.upper()}"
         state["cached_page_step"] = None
         state["updated"] = True
-    elif key == "T":
+
+    def _handle_group_key_cycle() -> None:
         state["group_by_mode_index"] = (state["group_by_mode_index"] + 1) % len(state["group_by_modes"])
         group_by = state["group_by_modes"][state["group_by_mode_index"]]
         state["status_message"] = f"Group key: {group_by}"
         state["cached_page_step"] = None
         state["updated"] = True
-    elif key == "c":
+
+    def _handle_color_toggle() -> None:
         if not state["color_supported"]:
             state["status_message"] = "Color output unavailable (no TTY)"
         else:
@@ -875,19 +921,22 @@ def _handle_user_input(
             state["status_message"] = "Color output enabled" if state["use_color"] else "Color output disabled"
         state["force_render"] = True
         state["updated"] = True
-    elif key == "b":
+
+    def _handle_bell_toggle() -> None:
         state["bell_on_fail"] = not state["bell_on_fail"]
         state["status_message"] = "Bell on fail enabled" if state["bell_on_fail"] else "Bell on fail disabled"
         state["force_render"] = True
         state["updated"] = True
-    elif key == "F":
+
+    def _handle_summary_fullscreen_toggle() -> None:
         state["summary_fullscreen"] = not state["summary_fullscreen"]
         state["status_message"] = (
             "Summary fullscreen view enabled" if state["summary_fullscreen"] else "Summary fullscreen view disabled"
         )
         state["force_render"] = True
         state["updated"] = True
-    elif key == "w":
+
+    def _handle_panel_toggle() -> None:
         state["panel_position"], state["last_panel_position"] = toggle_panel_visibility(
             state["panel_position"],
             state["last_panel_position"],
@@ -897,7 +946,8 @@ def _handle_user_input(
         state["cached_page_step"] = None
         state["force_render"] = True
         state["updated"] = True
-    elif key == "W":
+
+    def _handle_panel_position_cycle() -> None:
         reference_position = (
             state["panel_position"]
             if state["panel_position"] != "none"
@@ -909,7 +959,32 @@ def _handle_user_input(
         state["cached_page_step"] = None
         state["force_render"] = True
         state["updated"] = True
-    elif key == "p":
+
+    def _handle_pulse_panel_toggle() -> None:
+        state["pulse_position"], state["last_pulse_position"] = toggle_panel_visibility(
+            state["pulse_position"],
+            state["last_pulse_position"],
+            default_position=state["pulse_toggle_default"],
+        )
+        state["status_message"] = "Pulse panel hidden" if state["pulse_position"] == "none" else "Pulse panel shown"
+        state["cached_page_step"] = None
+        state["force_render"] = True
+        state["updated"] = True
+
+    def _handle_pulse_panel_position_cycle() -> None:
+        reference_position = (
+            state["pulse_position"]
+            if state["pulse_position"] != "none"
+            else state["last_pulse_position"] or state["pulse_toggle_default"]
+        )
+        state["pulse_position"] = cycle_panel_position(reference_position, default_position=state["pulse_toggle_default"])
+        state["last_pulse_position"] = state["pulse_position"]
+        state["status_message"] = f"Pulse panel position: {state['pulse_position'].upper()}"
+        state["cached_page_step"] = None
+        state["force_render"] = True
+        state["updated"] = True
+
+    def _handle_display_pause_toggle() -> None:
         state["display_paused"] = not state["display_paused"]
         state["paused"] = state["display_paused"] or state["dormant"]
         if state["dormant"] or (state["pause_mode"] == "ping" and state["display_paused"]):
@@ -919,7 +994,8 @@ def _handle_user_input(
         state["status_message"] = "Display paused" if state["display_paused"] else "Display resumed"
         state["force_render"] = True
         state["updated"] = True
-    elif key == "P":
+
+    def _handle_dormant_toggle() -> None:
         state["dormant"] = not state["dormant"]
         state["paused"] = state["display_paused"] or state["dormant"]
         if state["dormant"] or (state["pause_mode"] == "ping" and state["display_paused"]):
@@ -929,7 +1005,8 @@ def _handle_user_input(
         state["status_message"] = "Dormant mode enabled" if state["dormant"] else "Dormant mode disabled"
         state["force_render"] = True
         state["updated"] = True
-    elif key == "s":
+
+    def _handle_snapshot_save() -> None:
         now_utc = datetime.now(timezone.utc)
         snapshot_name = now_utc.astimezone(state["snapshot_tz"]).strftime("paraping_snapshot_%Y%m%d_%H%M%S.txt")
         snapshot_lines = build_display_lines(
@@ -953,18 +1030,30 @@ def _handle_user_input(
             False,
             state["host_scroll_offset"],
             state["summary_fullscreen"],
-            interval_seconds=args.interval,
+            interval_seconds=state["interval_seconds"],
             summary_scope=state["summary_scope_modes"][state["summary_scope_mode_index"]],
             group_by=state["group_by_modes"][state["group_by_mode_index"]],
             group_sort_enabled=state["summary_scope_modes"][state["summary_scope_mode_index"]] == "group",
             kitt_mode_enabled=state["kitt_mode_enabled"],
             kitt_style=state["kitt_style_modes"][state["kitt_style_index"]],
+            pulse_position=state["pulse_position"],
         )
         with open(snapshot_name, "w", encoding="utf-8") as snapshot_file:
             snapshot_file.write("\n".join(snapshot_lines) + "\n")
         state["status_message"] = f"Saved: {snapshot_name}"
         state["updated"] = True
-    elif key == "arrow_left":
+
+    def _handle_settings_save() -> None:
+        try:
+            save_config_overrides(_build_runtime_config_overrides(state))
+        except (ImportError, OSError, ValueError) as exc:
+            state["status_message"] = f"Settings save failed: {exc}"
+        else:
+            state["status_message"] = f"Saved settings: {DEFAULT_CONFIG_PATH}"
+        state["force_render"] = True
+        state["updated"] = True
+
+    def _handle_history_prev() -> None:
         if state["v2_history_offset"] < len(state["v2_history_buffer"]) - 1:
             page_step, state["cached_page_step"], state["last_term_size"] = get_cached_page_step(
                 state["cached_page_step"],
@@ -979,6 +1068,7 @@ def _handle_user_input(
                 state["filter_modes"][state["filter_mode_index"]],
                 args.slow_threshold,
                 state["show_asn"],
+                pulse_position=state["pulse_position"],
             )
             state["v2_history_offset"] = min(state["v2_history_offset"] + page_step, len(state["v2_history_buffer"]) - 1)
             state["force_render"] = True
@@ -986,7 +1076,8 @@ def _handle_user_input(
             if 0 < state["v2_history_offset"] <= len(state["v2_history_buffer"]):
                 snapshot = state["v2_history_buffer"][-(state["v2_history_offset"] + 1)]
                 state["status_message"] = f"Viewing {int(time.time() - snapshot['timestamp'])}s ago"
-    elif key == "arrow_right":
+
+    def _handle_history_next() -> None:
         if state["v2_history_offset"] > 0:
             page_step, state["cached_page_step"], state["last_term_size"] = get_cached_page_step(
                 state["cached_page_step"],
@@ -1001,6 +1092,7 @@ def _handle_user_input(
                 state["filter_modes"][state["filter_mode_index"]],
                 args.slow_threshold,
                 state["show_asn"],
+                pulse_position=state["pulse_position"],
             )
             state["v2_history_offset"] = max(0, state["v2_history_offset"] - page_step)
             state["force_render"] = True
@@ -1011,7 +1103,8 @@ def _handle_user_input(
                 if 0 < state["v2_history_offset"] <= len(state["v2_history_buffer"]):
                     snapshot = state["v2_history_buffer"][-(state["v2_history_offset"] + 1)]
                     state["status_message"] = f"Viewing {int(time.time() - snapshot['timestamp'])}s ago"
-    elif key in ("arrow_up", "arrow_down"):
+
+    def _handle_host_scroll(delta: int) -> None:
         scroll_buffers = state["render_buffers"]
         scroll_stats = state["render_stats"]
         max_offset, visible_hosts, total_hosts = compute_host_scroll_bounds(
@@ -1029,24 +1122,62 @@ def _handle_user_input(
             summary_scope=state["summary_scope_modes"][state["summary_scope_mode_index"]],
             group_by=state["group_by_modes"][state["group_by_mode_index"]],
             group_sort_enabled=state["summary_scope_modes"][state["summary_scope_mode_index"]] == "group",
+            pulse_position=state["pulse_position"],
         )
-        if key == "arrow_up" and state["host_scroll_offset"] > 0 and total_hosts > 0:
+        if delta < 0 and state["host_scroll_offset"] > 0 and total_hosts > 0:
             state["host_scroll_offset"] = max(0, state["host_scroll_offset"] - 1)
             end_index = min(state["host_scroll_offset"] + visible_hosts, total_hosts)
             state["status_message"] = f"Hosts {state['host_scroll_offset'] + 1}-{end_index} of {total_hosts}"
             state["force_render"] = True
             state["updated"] = True
-        elif key == "arrow_down" and state["host_scroll_offset"] < max_offset and total_hosts > 0:
+        elif delta > 0 and state["host_scroll_offset"] < max_offset and total_hosts > 0:
             state["host_scroll_offset"] = min(max_offset, state["host_scroll_offset"] + 1)
             end_index = min(state["host_scroll_offset"] + visible_hosts, total_hosts)
             state["status_message"] = f"Hosts {state['host_scroll_offset'] + 1}-{end_index} of {total_hosts}"
             state["force_render"] = True
             state["updated"] = True
-    elif key in ("g", "G"):
+
+    def _handle_host_select_open() -> None:
         state["host_select_active"] = True
         state["host_select_index"] = 0
         state["force_render"] = True
         state["updated"] = True
+
+    action_handlers = {
+        "reload_hosts": _handle_reload,
+        "force_redraw": _handle_force_redraw,
+        "interval_decrease": lambda: _handle_interval_change(-INTERVAL_STEP_SECONDS),
+        "interval_increase": lambda: _handle_interval_change(INTERVAL_STEP_SECONDS),
+        "display_name_cycle": _handle_display_mode_cycle,
+        "display_view_cycle": _handle_view_cycle,
+        "kitt_toggle": _handle_kitt_toggle,
+        "kitt_style_cycle": _handle_kitt_style_cycle,
+        "sort_cycle": _handle_sort_cycle,
+        "filter_cycle": _handle_filter_cycle,
+        "asn_toggle": _handle_asn_toggle,
+        "summary_info_cycle": _handle_summary_mode_cycle,
+        "summary_scope_cycle": _handle_summary_scope_cycle,
+        "group_key_cycle": _handle_group_key_cycle,
+        "color_toggle": _handle_color_toggle,
+        "bell_toggle": _handle_bell_toggle,
+        "summary_fullscreen_toggle": _handle_summary_fullscreen_toggle,
+        "panel_toggle": _handle_panel_toggle,
+        "panel_position_cycle": _handle_panel_position_cycle,
+        "pulse_panel_toggle": _handle_pulse_panel_toggle,
+        "pulse_panel_position_cycle": _handle_pulse_panel_position_cycle,
+        "display_pause_toggle": _handle_display_pause_toggle,
+        "dormant_toggle": _handle_dormant_toggle,
+        "snapshot_save": _handle_snapshot_save,
+        "settings_save": _handle_settings_save,
+        "history_prev": _handle_history_prev,
+        "history_next": _handle_history_next,
+        "host_select_open": _handle_host_select_open,
+        "host_scroll_up": lambda: _handle_host_scroll(-1),
+        "host_scroll_down": lambda: _handle_host_scroll(1),
+    }
+    handler = action_handlers.get(action)
+    if handler is not None:
+        handler()
     return skip_iteration
 
 
@@ -1135,8 +1266,9 @@ def _update_render_state(state: Dict[str, Any]) -> None:
 def _render_frame(args: argparse.Namespace, state: Dict[str, Any]) -> None:
     """Render a frame when needed based on update and refresh timing state."""
     now = time.time()
+    refresh_interval = 0.05 if state["kitt_mode_enabled"] else state["refresh_interval"]
     should_render = state["force_render"] or (
-        not state["paused"] and (state["updated"] or (now - state["last_render"]) >= state["refresh_interval"])
+        not state["paused"] and (state["updated"] or (now - state["last_render"]) >= refresh_interval)
     )
     if not should_render:
         return
@@ -1160,6 +1292,7 @@ def _render_frame(args: argparse.Namespace, state: Dict[str, Any]) -> None:
         summary_scope=state["summary_scope_modes"][state["summary_scope_mode_index"]],
         group_by=state["group_by_modes"][state["group_by_mode_index"]],
         group_sort_enabled=state["summary_scope_modes"][state["summary_scope_mode_index"]] == "group",
+        pulse_position=state["pulse_position"],
     )
     state["host_scroll_offset"] = min(state["host_scroll_offset"], max_offset)
     override_lines = None
@@ -1246,13 +1379,14 @@ def _render_frame(args: argparse.Namespace, state: Dict[str, Any]) -> None:
         state["host_scroll_offset"],
         state["summary_fullscreen"],
         override_lines=override_lines,
-        interval_seconds=args.interval,
+        interval_seconds=state["interval_seconds"],
         dormant=state["dormant"],
         summary_scope=state["summary_scope_modes"][state["summary_scope_mode_index"]],
         group_by=state["group_by_modes"][state["group_by_mode_index"]],
         group_sort_enabled=state["summary_scope_modes"][state["summary_scope_mode_index"]] == "group",
         kitt_mode_enabled=state["kitt_mode_enabled"],
         kitt_style=state["kitt_style_modes"][state["kitt_style_index"]],
+        pulse_position=state["pulse_position"],
     )
     state["last_render"] = now
     state["updated"] = False
@@ -1265,7 +1399,7 @@ def run(args: argparse.Namespace) -> None:
         getattr(args, "log_level", "INFO"),
         getattr(args, "log_file", None),
         interactive_ui=sys.stdout.isatty(),
-        verbose_ui_errors=getattr(args, "verbose_ui_errors", False),
+        verbose_ui_errors=getattr(args, "ui_log_errors", False),
     )
     setup = _setup_hosts_and_state(args)
     if setup is None:
@@ -1279,27 +1413,44 @@ def run(args: argparse.Namespace) -> None:
     initial_render_buffers, initial_render_stats = project_legacy_state_from_v2(setup["v2_state"], setup["symbols"])
     initial_term_size = get_terminal_size(fallback=(80, 24))
     now_monotonic = time.monotonic()
+    modes = ["ip", "rdns", "alias"]
+    display_modes = ["timeline", "sparkline", "square"]
+    summary_modes = ["rates", "rtt", "ttl", "streak"]
+    summary_scope_modes = ["host", "group"]
+    sort_modes = ["config", "failures", "streak", "latency", "host"]
+    filter_modes = ["failures", "latency", "all"]
+    kitt_style_modes = ["scanner", "gradient"]
+    arg_values = vars(args) if hasattr(args, "__dict__") else {}
+    initial_display_name = arg_values.get("display_name", "alias")
+    initial_view = arg_values.get("view", "timeline")
+    initial_summary_mode = arg_values.get("summary_mode", "rates")
+    initial_summary_scope = arg_values.get("summary_scope", "host")
+    initial_sort = arg_values.get("sort", "config")
+    initial_filter = arg_values.get("filter", "all")
+    initial_kitt_style = arg_values.get("kitt_style", "scanner")
     state = {
         **setup,
-        "modes": ["ip", "rdns", "alias"],
-        "mode_index": 2,
+        "modes": modes,
+        "mode_index": modes.index(initial_display_name) if initial_display_name in modes else 2,
         "show_help": False,
-        "display_modes": ["timeline", "sparkline", "square"],
-        "display_mode_index": 0,
-        "summary_modes": ["rates", "rtt", "ttl", "streak"],
-        "summary_mode_index": 0,
-        "summary_scope_modes": ["host", "group"],
-        "summary_scope_mode_index": 0,
+        "display_modes": display_modes,
+        "display_mode_index": display_modes.index(initial_view) if initial_view in display_modes else 0,
+        "summary_modes": summary_modes,
+        "summary_mode_index": summary_modes.index(initial_summary_mode) if initial_summary_mode in summary_modes else 0,
+        "summary_scope_modes": summary_scope_modes,
+        "summary_scope_mode_index": (
+            summary_scope_modes.index(initial_summary_scope) if initial_summary_scope in summary_scope_modes else 0
+        ),
         "group_by_modes": _build_group_by_modes(setup["host_infos"]),
         "group_by_mode_index": 0,
-        "kitt_mode_enabled": False,
-        "kitt_style_modes": ["scanner", "gradient"],
-        "kitt_style_index": 0,
-        "summary_fullscreen": False,
-        "sort_modes": ["config", "failures", "streak", "latency", "host"],
-        "sort_mode_index": 0,
-        "filter_modes": ["failures", "latency", "all"],
-        "filter_mode_index": 2,
+        "kitt_mode_enabled": bool(arg_values.get("kitt", False)),
+        "kitt_style_modes": kitt_style_modes,
+        "kitt_style_index": kitt_style_modes.index(initial_kitt_style) if initial_kitt_style in kitt_style_modes else 0,
+        "summary_fullscreen": bool(arg_values.get("summary_fullscreen", False)),
+        "sort_modes": sort_modes,
+        "sort_mode_index": sort_modes.index(initial_sort) if initial_sort in sort_modes else 0,
+        "filter_modes": filter_modes,
+        "filter_mode_index": filter_modes.index(initial_filter) if initial_filter in filter_modes else 2,
         "running": True,
         "paused": False,
         "dormant": False,
@@ -1309,7 +1460,7 @@ def run(args: argparse.Namespace) -> None:
         "stop_event": threading.Event(),
         "status_message": None,
         "force_render": False,
-        "show_asn": True,
+        "show_asn": bool(arg_values.get("show_asn", True)),
         "color_supported": sys.stdout.isatty(),
         "use_color": args.color and sys.stdout.isatty(),
         "flash_on_fail": getattr(args, "flash_on_fail", False),
@@ -1333,6 +1484,7 @@ def run(args: argparse.Namespace) -> None:
         "worker_threads": {},
         "next_host_id": (max((info["id"] for info in setup["host_infos"]), default=-1) + 1),
         "updated": True,
+        "interval_seconds": args.interval,
         "last_render": 0.0,
         "refresh_interval": 0.10,
         "last_observed_term_size": initial_term_size,
@@ -1371,7 +1523,10 @@ def run(args: argparse.Namespace) -> None:
         original_term = termios.tcgetattr(stdin_fd)
 
     num_hosts = len(state["host_infos"])
-    scheduler = Scheduler(interval=args.interval, stagger=(args.interval / num_hosts if num_hosts > 0 else 0.0))
+    scheduler = Scheduler(
+        interval=state["interval_seconds"],
+        stagger=_compute_scheduler_stagger(state["interval_seconds"], num_hosts),
+    )
     ping_lock = threading.Lock()
     sequence_tracker = SequenceTracker(max_outstanding=3)
     for info in state["host_infos"]:

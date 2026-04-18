@@ -19,6 +19,25 @@ All notable changes to ParaPing will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Deprecated
+- `--verbose` is deprecated as of this unreleased cycle (after `1.0.0`, dated 2026-02-27).
+  - Replacement: `--log-level DEBUG`
+  - Compatibility plan:
+    - **vNext**: accepted with `DeprecationWarning`
+    - **vNext+1**: removed
+- `--verbose-ui-errors` is deprecated as of this unreleased cycle (after `1.0.0`, dated 2026-02-27).
+  - Replacement: `--ui-log-errors`
+  - Compatibility plan:
+    - **vNext**: accepted with `DeprecationWarning`
+    - **vNext+1**: removed
+
+### Migration Notes
+- Update scripts/aliases that still use legacy flags:
+  - `--verbose` -> `--log-level DEBUG`
+  - `--verbose-ui-errors` -> `--ui-log-errors`
+
 ## [1.0.0] - 2026-02-27
 
 ### Added
@@ -140,4 +159,5 @@ if seq is None:
 - All new code reviewed for security vulnerabilities
 - No secrets or credentials stored in code
 
+[Unreleased]: https://github.com/icecake0141/paraping/compare/v1.0.0...HEAD
 [1.0.0]: https://github.com/icecake0141/paraping/releases/tag/v1.0.0

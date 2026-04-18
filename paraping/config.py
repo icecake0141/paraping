@@ -24,26 +24,17 @@ import logging
 import os
 from typing import Any, Dict, List, Optional
 
+from paraping.cli_options import build_config_field_types
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_CONFIG_PATH = os.path.expanduser("~/.paraping.conf")
 
-# Mapping of config field names to their expected Python types
-_CONFIG_FIELD_TYPES: Dict[str, type] = {
-    "interval": float,
-    "timeout": int,
-    "slow_threshold": float,
-    "timezone": str,
-    "color": bool,
-    "flash_on_fail": bool,
-    "bell_on_fail": bool,
-    "panel_position": str,
-    "pause_mode": str,
-    "ping_helper": str,
-    "log_level": str,
-    "log_file": str,
-    "snapshot_timezone": str,
-}
+# Mapping of config field names to their expected Python types.
+# Derived from CLI option specs to keep parser/config surface aligned.
+_CONFIG_FIELD_TYPES: Dict[str, type] = build_config_field_types()
+# Backward-compatible legacy key (renamed to ui_log_errors in CLI).
+_CONFIG_FIELD_TYPES["verbose_ui_errors"] = bool
 
 _BOOL_TRUE_VALUES = frozenset(("true", "yes", "1", "on"))
 _BOOL_FALSE_VALUES = frozenset(("false", "no", "0", "off"))
@@ -126,6 +117,32 @@ def load_ini_config(path: str) -> Dict[str, Any]:
     return result
 
 
+def _stringify_field(key: str, value: Any) -> str:
+    """Serialize a config field value for INI output."""
+    if key in _CONFIG_FIELD_TYPES and _CONFIG_FIELD_TYPES[key] is bool:
+        return "true" if bool(value) else "false"
+    return str(value)
+
+
+def _save_ini_config(path: str, updates: Dict[str, Any]) -> None:
+    """Persist config updates to an INI-format file while keeping existing sections."""
+    parser = configparser.ConfigParser(allow_no_value=True, delimiters=("=", ":"))
+    if os.path.exists(path):
+        try:
+            parser.read(path, encoding="utf-8")
+        except configparser.Error as exc:
+            raise ValueError(f"Invalid config file '{path}': {exc}") from exc
+
+    if not parser.has_section("default"):
+        parser.add_section("default")
+
+    for key, value in updates.items():
+        parser.set("default", key, _stringify_field(key, value))
+
+    with open(path, "w", encoding="utf-8") as fh:
+        parser.write(fh)
+
+
 def load_yaml_config(path: str) -> Dict[str, Any]:
     """
     Load and parse a YAML-format config file.
@@ -185,6 +202,44 @@ def load_yaml_config(path: str) -> Dict[str, Any]:
     return result
 
 
+def _save_yaml_config(path: str, updates: Dict[str, Any]) -> None:
+    """Persist config updates to a YAML-format file while keeping existing top-level keys."""
+    try:
+        import yaml  # pylint: disable=import-outside-toplevel
+    except ImportError as exc:
+        raise ImportError("PyYAML is required for YAML config files. Install it with: pip install pyyaml") from exc
+
+    data: Dict[str, Any] = {}
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                loaded = yaml.safe_load(fh)
+        except yaml.YAMLError as exc:
+            raise ValueError(f"Invalid YAML in config file '{path}': {exc}") from exc
+        except OSError as exc:
+            raise ValueError(f"Cannot read config file '{path}': {exc}") from exc
+        if loaded is None:
+            data = {}
+        elif isinstance(loaded, dict):
+            data = loaded
+        else:
+            raise ValueError(
+                f"Config file '{path}' must contain a YAML mapping at the top level, got {type(loaded).__name__}."
+            )
+
+    default_section = data.get("default")
+    if default_section is None:
+        default_section = {}
+        data["default"] = default_section
+    if not isinstance(default_section, dict):
+        raise ValueError(f"The 'default' section in '{path}' must be a YAML mapping.")
+
+    default_section.update(updates)
+
+    with open(path, "w", encoding="utf-8") as fh:
+        yaml.safe_dump(data, fh, sort_keys=False, allow_unicode=False)
+
+
 def _is_yaml_file(path: str) -> bool:
     """
     Heuristically determine whether a config file uses YAML or INI format.
@@ -232,3 +287,30 @@ def load_config(path: Optional[str] = None) -> Dict[str, Any]:
 
     logger.debug("Loading INI config from '%s'.", path)
     return load_ini_config(path)
+
+
+def save_config_overrides(updates: Dict[str, Any], path: Optional[str] = None) -> None:
+    """
+    Save selected config values while preserving existing config content.
+
+    Args:
+        updates: Mapping of config keys to the values that should be persisted.
+        path: Path to the config file. Defaults to ``~/.paraping.conf``.
+
+    Raises:
+        ValueError: If the existing file content cannot be parsed.
+        ImportError: If YAML output is needed but PyYAML is unavailable.
+        OSError: If the target file cannot be written.
+    """
+    if path is None:
+        path = DEFAULT_CONFIG_PATH
+
+    normalized_updates = {key: _coerce_field(key, value) for key, value in updates.items()}
+
+    if _is_yaml_file(path):
+        logger.debug("Saving YAML config overrides to '%s'.", path)
+        _save_yaml_config(path, normalized_updates)
+        return
+
+    logger.debug("Saving INI config overrides to '%s'.", path)
+    _save_ini_config(path, normalized_updates)

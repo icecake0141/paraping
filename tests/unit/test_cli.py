@@ -31,6 +31,7 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from paraping.cli import (
+    _apply_manual_reload,
     _check_terminal_resize_and_request_redraw,
     _configure_logging,
     _handle_user_input,
@@ -153,17 +154,70 @@ class TestCLIArgumentParsing(unittest.TestCase):
             args = handle_options()
             self.assertTrue(args.color)
 
+    def test_handle_options_no_color(self):
+        """BooleanOptionalAction should allow disabling color explicitly."""
+        with patch("sys.argv", ["paraping", "--color", "--no-color", "example.com"]):
+            args = handle_options()
+            self.assertFalse(args.color)
+
     def test_handle_options_verbose_ui_errors_default_false(self):
         """--verbose-ui-errors should default to False."""
         with patch("sys.argv", ["paraping", "example.com"]):
             args = handle_options()
             self.assertFalse(args.verbose_ui_errors)
 
+    def test_handle_options_ui_log_errors_flag(self):
+        """--ui-log-errors should enable UI error logs."""
+        with patch("sys.argv", ["paraping", "--ui-log-errors", "example.com"]):
+            args = handle_options()
+            self.assertTrue(args.ui_log_errors)
+            self.assertTrue(args.verbose_ui_errors)
+
     def test_handle_options_verbose_ui_errors_flag(self):
         """--verbose-ui-errors should enable UI error logs."""
         with patch("sys.argv", ["paraping", "--verbose-ui-errors", "example.com"]):
-            args = handle_options()
+            with self.assertWarns(DeprecationWarning):
+                args = handle_options()
             self.assertTrue(args.verbose_ui_errors)
+            self.assertTrue(args.ui_log_errors)
+
+    def test_handle_options_new_initial_state_options(self):
+        """New startup default options should parse and be available."""
+        with patch(
+            "sys.argv",
+            [
+                "paraping",
+                "--display-name",
+                "ip",
+                "--view",
+                "sparkline",
+                "--summary-mode",
+                "ttl",
+                "--summary-scope",
+                "group",
+                "--sort",
+                "latency",
+                "--filter",
+                "failures",
+                "--no-show-asn",
+                "--kitt",
+                "--kitt-style",
+                "gradient",
+                "--summary-fullscreen",
+                "example.com",
+            ],
+        ):
+            args = handle_options()
+            self.assertEqual(args.display_name, "ip")
+            self.assertEqual(args.view, "sparkline")
+            self.assertEqual(args.summary_mode, "ttl")
+            self.assertEqual(args.summary_scope, "group")
+            self.assertEqual(args.sort, "latency")
+            self.assertEqual(args.filter, "failures")
+            self.assertFalse(args.show_asn)
+            self.assertTrue(args.kitt)
+            self.assertEqual(args.kitt_style, "gradient")
+            self.assertTrue(args.summary_fullscreen)
 
     def test_handle_options_ping_helper_path(self):
         """Test ping helper path option"""
@@ -198,6 +252,7 @@ class TestCLIArgumentParsing(unittest.TestCase):
                 "-s",
                 "0.8",
                 "-v",
+                "--ui-log-errors",
                 "-P",
                 "left",
                 "-m",
@@ -215,12 +270,22 @@ class TestCLIArgumentParsing(unittest.TestCase):
             self.assertEqual(args.interval, 1.5)
             self.assertEqual(args.slow_threshold, 0.8)
             self.assertTrue(args.verbose)
+            self.assertEqual(args.log_level, "DEBUG")
+            self.assertTrue(args.ui_log_errors)
             self.assertEqual(args.panel_position, "left")
             self.assertEqual(args.pause_mode, "ping")
             self.assertTrue(args.flash_on_fail)
             self.assertTrue(args.bell_on_fail)
             self.assertTrue(args.color)
             self.assertEqual(len(args.hosts), 2)
+
+    def test_handle_options_verbose_deprecated_warns(self):
+        """--verbose should warn and map to DEBUG log level."""
+        with patch("sys.argv", ["paraping", "--verbose", "example.com"]):
+            with self.assertWarns(DeprecationWarning):
+                args = handle_options()
+            self.assertTrue(args.verbose)
+            self.assertEqual(args.log_level, "DEBUG")
 
     def test_handle_options_interval_validation_min(self):
         """Test interval validation - minimum value"""
@@ -457,10 +522,10 @@ class TestCLIInputHandling(unittest.TestCase):
         self.assertTrue(state["stop_event"].is_set())
 
     def test_handle_user_input_hides_help_and_skips_iteration(self):
-        """Any key while help is visible should close help and skip the loop body."""
+        """`?` while help is visible should close help and skip the loop body."""
         state = {"show_help": True, "force_render": False, "updated": False}
 
-        skip_iteration = _handle_user_input("x", MagicMock(slow_threshold=0.5), state)
+        skip_iteration = _handle_user_input("?", MagicMock(slow_threshold=0.5), state)
 
         self.assertTrue(skip_iteration)
         self.assertFalse(state["show_help"])
@@ -491,8 +556,58 @@ class TestCLIInputHandling(unittest.TestCase):
         self.assertTrue(state["pause_event"].is_set())
         self.assertEqual(state["status_message"], "Display paused")
 
+    def test_handle_user_input_toggle_pulse_panel(self):
+        """`n` toggles Pulse panel visibility."""
+        state = {
+            "show_help": False,
+            "host_select_active": False,
+            "graph_host_id": None,
+            "pulse_position": "bottom",
+            "last_pulse_position": "bottom",
+            "pulse_toggle_default": "bottom",
+            "status_message": None,
+            "cached_page_step": 1,
+            "force_render": False,
+            "updated": False,
+        }
+
+        skip_iteration = _handle_user_input("n", MagicMock(slow_threshold=0.5), state)
+
+        self.assertFalse(skip_iteration)
+        self.assertEqual(state["pulse_position"], "none")
+        self.assertEqual(state["last_pulse_position"], "bottom")
+        self.assertEqual(state["status_message"], "Pulse panel hidden")
+        self.assertIsNone(state["cached_page_step"])
+        self.assertTrue(state["force_render"])
+        self.assertTrue(state["updated"])
+
+    def test_handle_user_input_cycle_pulse_panel_position(self):
+        """`N` cycles Pulse panel positions."""
+        state = {
+            "show_help": False,
+            "host_select_active": False,
+            "graph_host_id": None,
+            "pulse_position": "left",
+            "last_pulse_position": "left",
+            "pulse_toggle_default": "bottom",
+            "status_message": None,
+            "cached_page_step": 1,
+            "force_render": False,
+            "updated": False,
+        }
+
+        skip_iteration = _handle_user_input("N", MagicMock(slow_threshold=0.5), state)
+
+        self.assertFalse(skip_iteration)
+        self.assertEqual(state["pulse_position"], "right")
+        self.assertEqual(state["last_pulse_position"], "right")
+        self.assertEqual(state["status_message"], "Pulse panel position: RIGHT")
+        self.assertIsNone(state["cached_page_step"])
+        self.assertTrue(state["force_render"])
+        self.assertTrue(state["updated"])
+
     def test_handle_user_input_group_scope_toggle(self):
-        """`G` toggles summary scope between host and group."""
+        """`g` toggles summary scope between host and group."""
         state = {
             "show_help": False,
             "host_select_active": False,
@@ -504,7 +619,7 @@ class TestCLIInputHandling(unittest.TestCase):
             "updated": False,
         }
 
-        skip_iteration = _handle_user_input("G", MagicMock(slow_threshold=0.5), state)
+        skip_iteration = _handle_user_input("g", MagicMock(slow_threshold=0.5), state)
 
         self.assertFalse(skip_iteration)
         self.assertEqual(state["summary_scope_mode_index"], 1)
@@ -513,7 +628,7 @@ class TestCLIInputHandling(unittest.TestCase):
         self.assertTrue(state["updated"])
 
     def test_handle_user_input_group_key_toggle(self):
-        """`T` cycles the group-by key."""
+        """`t` cycles the group-by key."""
         state = {
             "show_help": False,
             "host_select_active": False,
@@ -525,7 +640,7 @@ class TestCLIInputHandling(unittest.TestCase):
             "updated": False,
         }
 
-        skip_iteration = _handle_user_input("T", MagicMock(slow_threshold=0.5), state)
+        skip_iteration = _handle_user_input("t", MagicMock(slow_threshold=0.5), state)
 
         self.assertFalse(skip_iteration)
         self.assertEqual(state["group_by_mode_index"], 1)
@@ -534,7 +649,7 @@ class TestCLIInputHandling(unittest.TestCase):
         self.assertTrue(state["updated"])
 
     def test_handle_user_input_reload_without_input_file_shows_status(self):
-        """`R` without -f/--input should show an unavailable message."""
+        """`r` without -f/--input should show an unavailable message."""
         state = {
             "show_help": False,
             "host_select_active": False,
@@ -545,7 +660,7 @@ class TestCLIInputHandling(unittest.TestCase):
         }
         args = MagicMock(slow_threshold=0.5, input=None)
 
-        skip_iteration = _handle_user_input("R", args, state)
+        skip_iteration = _handle_user_input("r", args, state)
 
         self.assertFalse(skip_iteration)
         self.assertEqual(state["status_message"], "Reload unavailable in this context")
@@ -554,7 +669,7 @@ class TestCLIInputHandling(unittest.TestCase):
 
     @patch("paraping.cli._apply_manual_reload", return_value="Reloaded: +1 -0 (total 1)")
     def test_handle_user_input_reload_delegates_to_reload_handler(self, mock_reload):
-        """`R` with scheduler context should call manual reload helper."""
+        """`r` with scheduler context should call manual reload helper."""
         state = {
             "show_help": False,
             "host_select_active": False,
@@ -568,7 +683,7 @@ class TestCLIInputHandling(unittest.TestCase):
         ping_lock = threading.Lock()
         sequence_tracker = MagicMock()
 
-        skip_iteration = _handle_user_input("R", args, state, scheduler, ping_lock, sequence_tracker)
+        skip_iteration = _handle_user_input("r", args, state, scheduler, ping_lock, sequence_tracker)
 
         self.assertFalse(skip_iteration)
         mock_reload.assert_called_once_with(args, state, scheduler, ping_lock, sequence_tracker)
@@ -578,7 +693,7 @@ class TestCLIInputHandling(unittest.TestCase):
 
     @patch("paraping.cli.reset_render_cache")
     def test_handle_user_input_full_redraw_hotkey(self, mock_reset_render_cache):
-        """`L` should request a full redraw and force a render pass."""
+        """`u` should request a full redraw and force a render pass."""
         state = {
             "show_help": False,
             "host_select_active": False,
@@ -588,11 +703,115 @@ class TestCLIInputHandling(unittest.TestCase):
             "updated": False,
         }
 
-        skip_iteration = _handle_user_input("L", MagicMock(slow_threshold=0.5), state)
+        skip_iteration = _handle_user_input("u", MagicMock(slow_threshold=0.5), state)
 
         self.assertFalse(skip_iteration)
         mock_reset_render_cache.assert_called_once_with()
         self.assertEqual(state["status_message"], "Full redraw requested")
+        self.assertTrue(state["force_render"])
+        self.assertTrue(state["updated"])
+
+    @patch("paraping.cli.save_config_overrides")
+    def test_handle_user_input_settings_save_persists_runtime_config_subset(self, mock_save_config_overrides):
+        """`S` should persist only startup-relevant runtime settings."""
+        state = {
+            "show_help": False,
+            "host_select_active": False,
+            "graph_host_id": None,
+            "modes": ["ip", "rdns", "alias"],
+            "mode_index": 0,
+            "display_modes": ["timeline", "sparkline", "square"],
+            "display_mode_index": 1,
+            "sort_modes": ["config", "failures", "streak", "latency", "host"],
+            "sort_mode_index": 3,
+            "filter_modes": ["failures", "latency", "all"],
+            "filter_mode_index": 0,
+            "show_asn": False,
+            "summary_modes": ["rates", "rtt", "ttl", "streak"],
+            "summary_mode_index": 2,
+            "summary_scope_modes": ["host", "group"],
+            "summary_scope_mode_index": 1,
+            "group_by_modes": ["none", "asn", "site"],
+            "group_by_mode_index": 1,
+            "panel_position": "top",
+            "use_color": True,
+            "bell_on_fail": True,
+            "kitt_mode_enabled": True,
+            "kitt_style_modes": ["scanner", "gradient"],
+            "kitt_style_index": 1,
+            "summary_fullscreen": True,
+            "dormant": True,
+            "display_paused": True,
+            "paused": True,
+            "status_message": None,
+            "force_render": False,
+            "updated": False,
+        }
+
+        skip_iteration = _handle_user_input("S", MagicMock(slow_threshold=0.5), state)
+
+        self.assertFalse(skip_iteration)
+        mock_save_config_overrides.assert_called_once_with(
+            {
+                "display_name": "ip",
+                "view": "sparkline",
+                "sort": "latency",
+                "filter": "failures",
+                "show_asn": False,
+                "summary_mode": "ttl",
+                "summary_scope": "group",
+                "group_by": "asn",
+                "panel_position": "top",
+                "color": True,
+                "bell_on_fail": True,
+                "kitt": True,
+                "kitt_style": "gradient",
+                "summary_fullscreen": True,
+            }
+        )
+        self.assertEqual(state["status_message"], f"Saved settings: {os.path.expanduser('~/.paraping.conf')}")
+        self.assertTrue(state["force_render"])
+        self.assertTrue(state["updated"])
+
+    @patch("paraping.cli.save_config_overrides", side_effect=OSError("disk full"))
+    def test_handle_user_input_settings_save_reports_error(self, mock_save_config_overrides):
+        """`S` should report persistence errors without crashing the loop."""
+        state = {
+            "show_help": False,
+            "host_select_active": False,
+            "graph_host_id": None,
+            "modes": ["ip"],
+            "mode_index": 0,
+            "display_modes": ["timeline"],
+            "display_mode_index": 0,
+            "sort_modes": ["config"],
+            "sort_mode_index": 0,
+            "filter_modes": ["all"],
+            "filter_mode_index": 0,
+            "show_asn": True,
+            "summary_modes": ["rates"],
+            "summary_mode_index": 0,
+            "summary_scope_modes": ["host"],
+            "summary_scope_mode_index": 0,
+            "group_by_modes": ["none"],
+            "group_by_mode_index": 0,
+            "panel_position": "right",
+            "use_color": False,
+            "bell_on_fail": False,
+            "kitt_mode_enabled": False,
+            "kitt_style_modes": ["scanner"],
+            "kitt_style_index": 0,
+            "summary_fullscreen": False,
+            "status_message": None,
+            "force_render": False,
+            "updated": False,
+        }
+
+        skip_iteration = _handle_user_input("S", MagicMock(slow_threshold=0.5), state)
+
+        self.assertFalse(skip_iteration)
+        mock_save_config_overrides.assert_called_once()
+        self.assertEqual(state["status_message"], "Settings save failed: disk full")
         self.assertTrue(state["force_render"])
         self.assertTrue(state["updated"])
 
@@ -644,8 +863,144 @@ class TestCLITerminalResizeCheck(unittest.TestCase):
         self.assertEqual(state["next_resize_check_time"], 6.0)
         self.assertTrue(state["force_render"])
         self.assertTrue(state["updated"])
+
+
+class TestCLIIntervalHotkeys(unittest.TestCase):
+    """Test runtime interval updates driven by hotkeys."""
+
+    def _make_state(self, interval_seconds: float = 1.0, host_count: int = 2) -> dict:
+        return {
+            "show_help": False,
+            "host_select_active": False,
+            "graph_host_id": None,
+            "status_message": None,
+            "force_render": False,
+            "updated": False,
+            "interval_seconds": interval_seconds,
+            "host_infos": [{"id": idx, "active": True} for idx in range(host_count)],
+        }
+
+    def test_handle_user_input_plus_decreases_interval(self):
+        """`+` should decrease runtime interval and update scheduler timing."""
+        state = self._make_state(interval_seconds=1.0, host_count=2)
+        args = MagicMock(interval=1.0, slow_threshold=0.5)
+        scheduler = MagicMock()
+        scheduler.get_host_count.return_value = 2
+        ping_lock = threading.Lock()
+
+        skip_iteration = _handle_user_input("+", args, state, scheduler, ping_lock, MagicMock())
+
+        self.assertFalse(skip_iteration)
+        self.assertEqual(state["interval_seconds"], 0.9)
+        self.assertEqual(state["status_message"], "Interval: 0.9s")
+        scheduler.set_interval.assert_called_once_with(0.9)
+        scheduler.set_stagger.assert_called_once_with(0.45)
+        scheduler.reset_timing.assert_called_once()
+        self.assertTrue(state["force_render"])
+        self.assertTrue(state["updated"])
+
+    def test_handle_user_input_minus_increases_interval(self):
+        """`-` should increase runtime interval and update scheduler timing."""
+        state = self._make_state(interval_seconds=1.0, host_count=4)
+        args = MagicMock(interval=1.0, slow_threshold=0.5)
+        scheduler = MagicMock()
+        scheduler.get_host_count.return_value = 4
+        ping_lock = threading.Lock()
+
+        _handle_user_input("-", args, state, scheduler, ping_lock, MagicMock())
+
+        self.assertEqual(state["interval_seconds"], 1.1)
+        self.assertEqual(state["status_message"], "Interval: 1.1s")
+        scheduler.set_interval.assert_called_once_with(1.1)
+        scheduler.set_stagger.assert_called_once_with(0.275)
+
+    def test_handle_user_input_plus_rejects_rate_limit_violation(self):
+        """Dangerous interval reductions should be rejected with a status message."""
+        state = self._make_state(interval_seconds=2.0, host_count=100)
+        args = MagicMock(interval=2.0, slow_threshold=0.5)
+        scheduler = MagicMock()
+        scheduler.get_host_count.return_value = 100
+        ping_lock = threading.Lock()
+
+        _handle_user_input("+", args, state, scheduler, ping_lock, MagicMock())
+
+        self.assertEqual(state["interval_seconds"], 2.0)
+        self.assertIn("Interval change rejected:", state["status_message"])
+        scheduler.set_interval.assert_not_called()
+        scheduler.set_stagger.assert_not_called()
+        scheduler.reset_timing.assert_not_called()
+
+    def test_handle_user_input_plus_clamps_at_min_interval(self):
+        """`+` at the minimum interval should keep the minimum value."""
+        state = self._make_state(interval_seconds=0.1, host_count=1)
+        args = MagicMock(interval=0.1, slow_threshold=0.5)
+        scheduler = MagicMock()
+        scheduler.get_host_count.return_value = 1
+        ping_lock = threading.Lock()
+
+        _handle_user_input("+", args, state, scheduler, ping_lock, MagicMock())
+
+        self.assertEqual(state["interval_seconds"], 0.1)
+        self.assertEqual(state["status_message"], "Interval: 0.1s")
+        scheduler.set_interval.assert_called_once_with(0.1)
+
+    @patch("paraping.cli._start_host_worker")
+    @patch("paraping.cli.should_retry_asn", return_value=False)
+    @patch("paraping.cli.read_input_file")
+    def test_apply_manual_reload_uses_runtime_interval_for_stagger(
+        self,
+        mock_read_input_file,
+        _mock_should_retry_asn,
+        mock_start_host_worker,
+    ):
+        """Reload should recompute scheduler stagger from runtime interval state."""
+        mock_read_input_file.return_value = [
+            {"host": "192.0.2.1", "ip": "192.0.2.1", "alias": "host1"},
+            {"host": "192.0.2.2", "ip": "192.0.2.2", "alias": "host2"},
+        ]
+        args = MagicMock(input="hosts.txt")
+        state = {
+            "host_infos": [
+                {
+                    "id": 0,
+                    "host": "192.0.2.1",
+                    "alias": "host1",
+                    "ip": "192.0.2.1",
+                    "site": "",
+                    "tags": [],
+                    "active": True,
+                    "removed": False,
+                    "retired_until": None,
+                    "rdns_pending": False,
+                    "asn_pending": False,
+                    "asn": None,
+                }
+            ],
+            "host_info_map": {"192.0.2.1": [{"id": 0, "host": "192.0.2.1", "ip": "192.0.2.1"}]},
+            "next_host_id": 1,
+            "v2_state": MagicMock(),
+            "done_host_ids": set(),
+            "rdns_request_queue": MagicMock(),
+            "asn_request_queue": MagicMock(),
+            "asn_cache": {},
+            "asn_failure_ttl": 300.0,
+            "worker_threads": {},
+            "group_by_modes": ["none"],
+            "group_by_mode_index": 0,
+            "cached_page_step": None,
+            "updated": False,
+            "force_render": False,
+            "interval_seconds": 2.4,
+        }
+        scheduler = MagicMock()
+        scheduler.get_host_count.return_value = 2
+
+        message = _apply_manual_reload(args, state, scheduler, threading.Lock(), MagicMock())
+
+        self.assertEqual(message, "Reloaded: +1 -0 (total 2)")
+        scheduler.set_stagger.assert_called_with(1.2)
+        mock_start_host_worker.assert_called_once()
         self.assertIsNone(state["cached_page_step"])
-        self.assertIsNone(state["last_term_size"])
 
     @patch("paraping.cli.reset_render_cache")
     @patch("paraping.cli.get_terminal_size")
