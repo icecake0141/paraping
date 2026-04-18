@@ -47,7 +47,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.4.2",
-    "pytest-cov>=4.0.0",
+    "pytest-cov>=7.1.0",
     "flake8>=7.3.0",
     "pylint>=3.3.9",
     "pre-commit>=3.6.0",
