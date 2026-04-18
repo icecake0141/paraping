@@ -2,7 +2,6 @@
 
 import main
 
-
 EXPECTED_MAIN_EXPORTS = {
     "HISTORY_DURATION_MINUTES",
     "MAX_HOST_THREADS",

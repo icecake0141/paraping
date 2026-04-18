@@ -55,4 +55,6 @@ repos:
     rev: v1.8.0
     hooks:
       - id: mypy
-        additional_dependencies: []
+        files: ^paraping/
+        additional_dependencies:
+          - types-PyYAML

@@ -154,7 +154,7 @@ class TestFetchASNViaWhois(unittest.TestCase):
         mock_sock.recv.return_value = b"A" * 4096
         mock_create_connection.return_value.__enter__.return_value = mock_sock
 
-        result = fetch_asn_via_whois("8.8.8.8", max_bytes=8192)
+        fetch_asn_via_whois("8.8.8.8", max_bytes=8192)
 
         # Should stop reading after reaching max_bytes
         # With 4096 byte chunks, should read twice (8192 bytes total)

@@ -148,7 +148,7 @@ class TestHostSelectionKeyBindings(unittest.TestCase):
         with (
             patch("main.get_terminal_size") as mock_term_size,
             patch("main.read_key") as mock_read_key,
-            patch("main.render_display") as mock_render,
+            patch("main.render_display"),
             patch("main.ThreadPoolExecutor"),
         ):
 
@@ -157,7 +157,7 @@ class TestHostSelectionKeyBindings(unittest.TestCase):
             # Simulate key sequence: 'g' to enter selection, 'n' to move down, 'p' to move back up
             mock_read_key.side_effect = ["g", "n", "p", "q"]
 
-            args = type(
+            type(
                 "obj",
                 (object,),
                 {

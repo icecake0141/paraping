@@ -33,12 +33,7 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from paraping.cli import _apply_config_to_args, handle_options
-from paraping.config import (
-    _is_yaml_file,
-    load_config,
-    load_ini_config,
-    load_yaml_config,
-)
+from paraping.config import _is_yaml_file, load_config, load_ini_config, load_yaml_config
 
 
 class TestParseBool(unittest.TestCase):

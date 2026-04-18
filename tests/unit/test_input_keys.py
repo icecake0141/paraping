@@ -439,6 +439,8 @@ class TestReadKeyEdgeCases(unittest.TestCase):
 class TestTerminalRawMode(unittest.TestCase):
     """Tests for the terminal_raw_mode context manager using a PTY."""
 
+    _IGNORED_LFLAG_BITS = getattr(termios, "PENDIN", 0)
+
     def _open_pty(self) -> tuple[int, int]:
         """Helper: open a PTY pair and return (master_fd, slave_fd)."""
         master_fd, slave_fd = pty.openpty()
@@ -450,6 +452,12 @@ class TestTerminalRawMode(unittest.TestCase):
                 os.close(fd)
             except OSError:
                 pass
+
+    def _assert_termios_restored(self, original: list[Any], restored: list[Any]) -> None:
+        """Compare termios settings while ignoring kernel-managed local flags on PTYs."""
+        self.assertEqual(original[:3], restored[:3])
+        self.assertEqual(original[4:], restored[4:])
+        self.assertEqual(original[3] & ~self._IGNORED_LFLAG_BITS, restored[3] & ~self._IGNORED_LFLAG_BITS)
 
     def test_non_tty_fd_does_not_raise(self) -> None:
         """terminal_raw_mode with a non-TTY fd (pipe) skips setup without error."""
@@ -478,7 +486,7 @@ class TestTerminalRawMode(unittest.TestCase):
             with terminal_raw_mode(slave_fd):
                 pass
             restored = termios.tcgetattr(slave_fd)
-            self.assertEqual(original, restored)
+            self._assert_termios_restored(original, restored)
         finally:
             self._close_fds(master_fd, slave_fd)
 
@@ -493,7 +501,7 @@ class TestTerminalRawMode(unittest.TestCase):
             except RuntimeError:
                 pass
             restored = termios.tcgetattr(slave_fd)
-            self.assertEqual(original, restored)
+            self._assert_termios_restored(original, restored)
         finally:
             self._close_fds(master_fd, slave_fd)
 
@@ -508,7 +516,7 @@ class TestTerminalRawMode(unittest.TestCase):
             except KeyboardInterrupt:
                 pass
             restored = termios.tcgetattr(slave_fd)
-            self.assertEqual(original, restored)
+            self._assert_termios_restored(original, restored)
         finally:
             self._close_fds(master_fd, slave_fd)
 
@@ -523,7 +531,7 @@ class TestTerminalRawMode(unittest.TestCase):
                     with terminal_raw_mode():
                         pass
                     restored = termios.tcgetattr(slave_fd)
-                    self.assertEqual(original, restored)
+                    self._assert_termios_restored(original, restored)
         finally:
             self._close_fds(master_fd, slave_fd)
 
