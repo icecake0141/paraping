@@ -50,8 +50,6 @@ from concurrent.futures import ThreadPoolExecutor
 
 # pylint: enable=unused-import
 
-# Import and re-export from the refactored modules
-
 # pylint: enable=unused-import
 
 _TEST_PATCH_REFS = (os, queue, select, socket, sys, termios, threading, tty, ThreadPoolExecutor)

@@ -80,7 +80,7 @@ def terminal_raw_mode(fd: Optional[int] = None) -> Generator[None, None, None]:
         tty.setraw(fd)
         yield
     finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        termios.tcsetattr(fd, termios.TCSANOW, old_settings)
 
 
 def parse_escape_sequence(seq: str) -> Optional[str]:
