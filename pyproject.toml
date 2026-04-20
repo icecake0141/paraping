@@ -41,7 +41,7 @@ classifiers = [
 
 # Runtime dependencies
 dependencies = [
-    "readchar>=4.2.1",
+    "readchar>=4.2.2",
 ]
 
 [project.optional-dependencies]
