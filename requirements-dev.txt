@@ -11,7 +11,7 @@
 # Review required for correctness, security, and licensing.
 
 -r requirements.txt
-pytest>=7.0.0
+pytest>=8.4.2
 pytest-cov>=4.0.0
 flake8>=6.0.0
 pylint>=2.15.0
