@@ -58,6 +58,9 @@ Welcome to the ParaPing documentation hub. This directory contains comprehensive
 - [API Documentation](api/index.md) - Module layout and API reference (coming soon)
 - [Ping Helper Documentation](ping_helper.md) - Deep dive into the ICMP helper
 
+### For Coding Agents
+- [Coding Agent Guide](agent/index.md) - Purpose-structured routes for finding the right code and tests before making changes
+
 ## Repository Overview
 
 ParaPing is an interactive terminal-based ICMP monitor that pings multiple hosts in parallel with live visualization. Key features include:
@@ -133,6 +136,9 @@ ParaPingドキュメントハブへようこそ。このディレクトリには
 ### 開発者向け
 - [APIドキュメント](api/index.md) - モジュールレイアウトとAPIリファレンス（近日公開）
 - [Pingヘルパードキュメント](ping_helper.md) - ICMPヘルパーの詳細
+
+### コーディングエージェント向け
+- [Coding Agent Guide](agent/index.md) - 変更前に参照すべきコードとテストを目的別に整理した英語ドキュメント
 
 ## リポジトリ概要
 
