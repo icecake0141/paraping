@@ -28,7 +28,7 @@ from collections import deque
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from paraping.core import MAX_GLOBAL_PINGS_PER_SECOND, validate_global_rate_limit  # noqa: E402
-from paraping.scheduler import Scheduler  # noqa: E402
+from paraping.runtime.scheduler import Scheduler  # noqa: E402
 
 
 class TestScheduler50Hosts(unittest.TestCase):

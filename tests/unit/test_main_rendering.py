@@ -22,21 +22,15 @@ from collections import deque
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
-# Add parent directory to path to import main
+# Add parent directory to path to import package modules
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from main import (  # noqa: E402
-    box_lines,
-    build_ascii_graph,
-    render_help_view,
-    render_host_selection_view,
-    render_square_view,
-    render_status_box,
-)
 from paraping.stats import resolve_site_tag1_labels  # noqa: E402
 from paraping.ui_render import (  # noqa: E402
     _resolve_kitt_gradient_rings,
     _resolve_kitt_scanner_speed_hz,
+    box_lines,
+    build_ascii_graph,
     build_colored_sparkline,
     build_colored_timeline,
     build_display_entries,
@@ -62,9 +56,13 @@ from paraping.ui_render import (  # noqa: E402
     pad_visible,
     render_display,
     render_fullscreen_rtt_graph,
+    render_help_view,
+    render_host_selection_view,
     render_kitt_bottom_band,
     render_main_view,
     render_sparkline_view,
+    render_square_view,
+    render_status_box,
     render_summary_view,
     render_timeline_view,
     resample_values,
@@ -1601,7 +1599,7 @@ class TestActivityIndicator(unittest.TestCase):
         self.assertEqual(initial, restarted)
 
     def test_kitt_scanner_healthy_speed_is_reduced_relative_to_original_curve(self):
-        """Healthy scanner speed should be noticeably slower than the legacy 2.0Hz baseline."""
+        """Healthy scanner speed should be noticeably slower than the previous 2.0Hz baseline."""
         self.assertLess(_resolve_kitt_scanner_speed_hz(0.0), 1.5)
         self.assertGreater(_resolve_kitt_scanner_speed_hz(0.8), _resolve_kitt_scanner_speed_hz(0.0))
         self.assertGreater(_resolve_kitt_scanner_speed_hz(0.8), 8.0)

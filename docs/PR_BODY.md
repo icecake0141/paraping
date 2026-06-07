@@ -35,10 +35,10 @@ Review required for correctness, security, and licensing.
 ### Documentation Updated
 <!-- List any documentation that was updated (README, docs/, etc.) -->
 
-### Backward Compatibility / Migration Notes
+### Backward-compatible behavior / Migration Notes
 <!-- Note any breaking changes or migration steps required -->
-- If this PR touches runtime state/history flow, reference `docs/v2_migration_status.md`
-  and state whether compatibility shims were added, removed, or left unchanged.
+- If this PR touches runtime state/history flow, reference `docs/runtime_architecture.md`
+  and state whether removed shims were added, removed, or left unchanged.
 
 ## LLM Contribution Disclosure
 
@@ -166,7 +166,7 @@ Expected: Use this as a full-audit signal; required commit gate is `git commit` 
 - [ ] Documentation updated in docs/ (if applicable)
 - [ ] API docs updated (if applicable)
 - [ ] Examples/quick-start updated (if applicable)
-- [ ] If runtime state/history changed: `docs/v2_migration_status.md` updated
+- [ ] If runtime state/history changed: `docs/runtime_architecture.md` updated
 
 ### Git Hygiene
 - [ ] Commit messages follow repository conventions
@@ -246,7 +246,7 @@ Expected: Use this as a full-audit signal; required commit gate is `git commit` 
 
 ### 後方互換性/移行に関する注意事項
 <!-- 破壊的変更や必要な移行手順があれば記載してください -->
-- このPRが実行時の状態/履歴フローに触れる場合は `docs/v2_migration_status.md`
+- このPRが実行時の状態/履歴フローに触れる場合は `docs/runtime_architecture.md`
   を参照し、互換シムを追加・削除・据え置きのどれにしたか明記してください。
 
 ## LLM貢献の開示
@@ -379,7 +379,7 @@ pre-commit run --all-files
 - [ ] docs/のドキュメントを更新（該当する場合）
 - [ ] APIドキュメントを更新（該当する場合）
 - [ ] 例/クイックスタートを更新（該当する場合）
-- [ ] 状態/履歴フローを変更した場合：`docs/v2_migration_status.md` を更新
+- [ ] 状態/履歴フローを変更した場合：`docs/runtime_architecture.md` を更新
 
 ### Git衛生管理
 

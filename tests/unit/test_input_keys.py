@@ -16,7 +16,7 @@ Unit tests for input_keys module - cross-platform keyboard input handling.
 Tests cover arrow key escape sequence parsing across different operating systems
 and terminal emulators to ensure consistent behavior on Windows, Mac, and Linux.
 
-Updated to test readchar-based implementation while maintaining backwards compatibility.
+Updated to test readchar-based implementation while maintaining backward-compatible behavior.
 Extended with edge-case coverage for:
   - Terminal type detection (TERM env var)
   - Incomplete / unknown escape sequences

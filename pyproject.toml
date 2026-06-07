@@ -146,7 +146,7 @@ ignore = [
 "paraping/pinger.py" = ["C901"]  # ping worker complexity is pre-existing
 "paraping/stats.py" = ["C901"]  # summary data complexity is pre-existing
 "paraping/ui_render.py" = ["C901"]  # grouped header map complexity is pre-existing
-"paraping_v2/hosts.py" = ["C901"]  # host normalization complexity is pre-existing
+"paraping/runtime/hosts.py" = ["C901"]  # host normalization complexity is pre-existing
 
 [tool.mypy]
 python_version = "3.9"

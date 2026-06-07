@@ -1,5 +1,5 @@
 """
-Domain objects for the v2 rewrite.
+Domain objects for the runtime rewrite.
 
 These structures are intentionally UI-agnostic and network-agnostic so they
 can be reused by both CLI and future interfaces.

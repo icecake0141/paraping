@@ -23,19 +23,19 @@ from datetime import datetime, timezone
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
-# Add parent directory to path to import main
+# Add parent directory to path to import package modules
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from main import (  # noqa: E402
+from paraping.core import build_host_infos  # noqa: E402
+from paraping.stats import compute_summary_data  # noqa: E402
+from paraping.ui_render import (  # noqa: E402
     build_activity_indicator,
     build_colored_sparkline,
     build_colored_timeline,
     build_display_names,
-    build_host_infos,
     build_sparkline,
     build_status_line,
     build_status_metrics,
-    compute_summary_data,
     format_display_name,
     format_timestamp,
     format_timezone_label,

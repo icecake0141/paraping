@@ -1,4 +1,4 @@
-"""Shared constants for ParaPing v2 and compatibility layers."""
+"""Shared constants for ParaPing runtime and runtime modules."""
 
 HISTORY_DURATION_MINUTES = 30
 SNAPSHOT_INTERVAL_SECONDS = 1.0

@@ -22,11 +22,10 @@ import sys
 import unittest
 from collections import deque
 
-# Add parent directory to path to import main
+# Add parent directory to path to import paraping.cli
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from main import build_display_entries  # noqa: E402
-from paraping.ui_render import build_colored_square_timeline  # noqa: E402
+from paraping.ui_render import build_colored_square_timeline, build_display_entries
 
 
 class TestConfigSortMode(unittest.TestCase):

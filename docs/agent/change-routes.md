@@ -43,10 +43,10 @@ Notes:
 
 Primary files:
 
-- `paraping_v2/scheduler.py`: scheduling model and stagger behavior.
-- `paraping_v2/rate_limit.py`: global ping-rate validation.
+- `paraping/runtime/scheduler.py`: scheduling model and stagger behavior.
+- `paraping/runtime/rate_limit.py`: global ping-rate validation.
 - `paraping/cli.py`: runtime interval hotkeys, scheduler integration, worker coordination.
-- `paraping_v2/constants.py`: shared runtime limits and timing constants.
+- `paraping/runtime/constants.py`: shared runtime limits and timing constants.
 
 Relevant tests:
 
@@ -64,41 +64,41 @@ Notes:
 
 Primary files:
 
-- `paraping_v2/domain.py`: event and host/stat data structures.
-- `paraping_v2/engine.py`: event application, pending sequence replacement, timeline resizing.
-- `paraping_v2/history.py`: snapshot creation and history buffer updates.
-- `paraping_v2/render_state.py`: live vs historical render-state selection.
-- `paraping_v2/legacy_adapter.py`: projection into the existing UI shape.
+- `paraping/runtime/domain.py`: event and host/stat data structures.
+- `paraping/runtime/engine.py`: event application, pending sequence replacement, timeline resizing.
+- `paraping/runtime/history.py`: snapshot creation and history buffer updates.
+- `paraping/runtime/render_state.py`: live vs historical render-state selection.
+- `paraping/runtime/render_projection.py`: projection into the existing UI shape.
 
 Relevant tests:
 
-- `pytest tests/unit/test_v2_engine.py -v`
-- `pytest tests/unit/test_v2_history.py -v`
-- `pytest tests/unit/test_v2_render_state.py -v`
+- `pytest tests/unit/test_runtime_engine.py -v`
+- `pytest tests/unit/test_runtime_history.py -v`
+- `pytest tests/unit/test_runtime_render_state.py -v`
 - `pytest tests/unit/test_timeline_sync.py -v`
 - `pytest tests/unit/test_sequence_tracking_integration.py -v`
 
 Notes:
 
-- Do not reintroduce removed legacy history helpers on `main` or `paraping.core`.
-- If the v2 shape changes, check the legacy adapter and UI tests because rendering still consumes projected data.
+- Do not reintroduce removed history helpers on `main` or `paraping.core`.
+- If the runtime shape changes, check the render projection and UI tests because rendering still consumes projected data.
 
 ## Change Rendering or Layout
 
 Primary files:
 
 - `paraping/ui_render.py`: display entries, layout computation, panels, status box, graph rendering, ANSI output.
-- `paraping_v2/render_state.py`: render-source selection.
-- `paraping_v2/legacy_adapter.py`: data shape consumed by UI functions.
-- `paraping_v2/term_size.py`: terminal-size normalization and timeline-width extraction.
+- `paraping/runtime/render_state.py`: render-source selection.
+- `paraping/runtime/render_projection.py`: data shape consumed by UI functions.
+- `paraping/runtime/term_size.py`: terminal-size normalization and timeline-width extraction.
 
 Relevant tests:
 
 - `pytest tests/unit/test_main_rendering.py -v`
 - `pytest tests/unit/test_main_display.py -v`
 - `pytest tests/unit/test_main_layout.py -v`
-- `pytest tests/unit/test_v2_render_state.py -v`
-- `pytest tests/unit/test_v2_term_size.py -v`
+- `pytest tests/unit/test_runtime_render_state.py -v`
+- `pytest tests/unit/test_runtime_term_size.py -v`
 
 Notes:
 
@@ -131,20 +131,20 @@ Notes:
 
 Primary files:
 
-- `paraping_v2/hosts.py`: current host-line parsing, host-info construction, duplicate handling, diagnostics.
-- `paraping/core.py`: compatibility wrappers for legacy helper names.
+- `paraping/runtime/hosts.py`: current host-line parsing, host-info construction, duplicate handling, diagnostics.
+- `paraping/core.py`: runtime wrappers for runtime helper names.
 - `paraping/cli.py`: input-file load/reload behavior and user-facing diagnostics.
 - `hosts.txt.sample`: example host file if syntax changes.
 
 Relevant tests:
 
-- `pytest tests/unit/test_v2_hosts.py -v`
+- `pytest tests/unit/test_runtime_hosts.py -v`
 - `pytest tests/unit/test_core.py -v`
 - `pytest tests/integration/test_multi_host_integration.py -v`
 
 Notes:
 
-- Prefer changing v2 host parsing first, then keep `paraping.core` wrappers delegating to it.
+- Prefer changing runtime host parsing first, then keep `paraping.core` wrappers delegating to it.
 - If accepted input syntax changes, update usage docs and examples together.
 
 ## Change Ping Execution or Native Helper Behavior
@@ -168,26 +168,21 @@ Notes:
 - Keep the C helper contract and Python parser in sync.
 - Security-sensitive native-helper changes should preserve validation, minimal privilege assumptions, and documented exit/error behavior.
 
-## Update Public Compatibility Exports
+## Update Public Runtime Exports
 
 Primary files:
 
-- `main.py`: `_LAZY_EXPORTS`, eager wrappers, `__all__`, and compatibility aliases.
-- `paraping/core.py`: selected legacy helper names that delegate to v2 modules.
+- `paraping/runtime/__init__.py`: runtime package exports.
+- `paraping/core.py`: CLI-facing wrappers that delegate to runtime modules.
 - `paraping/__init__.py`: package-level exports, if the package surface changes.
-- `docs/v2_migration_status.md`: compatibility policy if the public contract changes.
+- `docs/runtime_architecture.md`: update when runtime ownership changes.
 
 Relevant tests:
 
-- `pytest tests/unit/test_main_public_api_surface.py -v`
-- `pytest tests/unit/test_main_test_usage_surface.py -v`
-- `pytest tests/unit/test_main_lazy_wrappers.py -v`
 - `pytest tests/unit/test_public_api_surface.py -v`
 - `pytest tests/unit/test_no_main_imports_in_package.py -v`
-- `pytest tests/unit/test_removed_legacy_symbol_imports.py -v`
 
 Notes:
 
-- New implementation code should not depend on `main.py`.
-- When adding a lazy export, keep `_LAZY_EXPORTS` and `__all__` consistent.
-- Removed legacy history APIs are intentionally guarded; do not restore them unless the compatibility policy changes.
+- New implementation code should import direct package modules.
+- Keep `paraping.runtime.__all__` aligned with the runtime package surface.

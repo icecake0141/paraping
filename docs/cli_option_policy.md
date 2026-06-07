@@ -24,7 +24,7 @@ SPDX-License-Identifier: Apache-2.0
 - Legacy one-way flags are supported only as deprecation aliases and should not
   be documented as primary interfaces.
 
-## Compatibility
+## API behavior
 
 - Deprecated flags must:
   - continue to parse for one release cycle,

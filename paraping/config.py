@@ -33,7 +33,7 @@ DEFAULT_CONFIG_PATH = os.path.expanduser("~/.paraping.conf")
 # Mapping of config field names to their expected Python types.
 # Derived from CLI option specs to keep parser/config surface aligned.
 _CONFIG_FIELD_TYPES: Dict[str, type] = build_config_field_types()
-# Backward-compatible legacy key (renamed to ui_log_errors in CLI).
+# Backward-compatible old config key (renamed to ui_log_errors in CLI).
 _CONFIG_FIELD_TYPES["verbose_ui_errors"] = bool
 
 _BOOL_TRUE_VALUES = frozenset(("true", "yes", "1", "on"))

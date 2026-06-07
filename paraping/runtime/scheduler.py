@@ -1,7 +1,7 @@
 """
-Scheduler module for ParaPing v2.
+Scheduler module for ParaPing runtime.
 
-This implementation is API-compatible with ``paraping.scheduler.Scheduler``.
+This implementation is API-compatible with ``paraping.runtime.scheduler.Scheduler``.
 """
 
 import time

@@ -20,7 +20,7 @@ Review required for correctness, security, and licensing.
 
 - `tests/unit/`: unit tests
 - `tests/integration/`: integration tests
-- `tests/contract/`: contract/compatibility tests
+- `tests/contract/`: contract/runtime tests
 
 ## Quick Runs
 

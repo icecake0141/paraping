@@ -33,7 +33,7 @@ Key concepts:
 ## Basic Usage
 
 ```python
-from paraping.scheduler import Scheduler
+from paraping.runtime.scheduler import Scheduler
 
 # Create a scheduler: ping every 1 second, stagger hosts by 0.05 s
 scheduler = Scheduler(interval=1.0, stagger=0.05)
@@ -212,7 +212,7 @@ Without stagger (`stagger=0.0`) all 50 hosts would fire at `T`, `T+1`, `T+2`, �
 ### Monitoring 10 hosts at 1 s interval
 
 ```python
-from paraping.scheduler import Scheduler
+from paraping.runtime.scheduler import Scheduler
 import time
 
 hosts = [f"10.0.0.{i}" for i in range(1, 11)]
@@ -252,7 +252,7 @@ scheduler = Scheduler(interval=5.0, stagger=0.25)   # 5 s / 20 hosts = 0.25 s st
 
 ```python
 import asyncio
-from paraping.scheduler import Scheduler
+from paraping.runtime.scheduler import Scheduler
 
 async def ping_loop(scheduler, hosts, rounds=10):
     for host in hosts:
@@ -402,7 +402,7 @@ Call `reset()` between test runs if you need sequence numbers to restart from 1.
 ## 基本的な使用方法
 
 ```python
-from paraping.scheduler import Scheduler
+from paraping.runtime.scheduler import Scheduler
 
 # 1秒ごとにping、ホスト間を0.05秒ずらす
 scheduler = Scheduler(interval=1.0, stagger=0.05)

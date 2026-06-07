@@ -12,7 +12,7 @@
 # Review required for correctness, security, and licensing.
 
 """
-Unit tests for paraping.scheduler module.
+Unit tests for paraping.runtime.scheduler module.
 
 This module tests the Scheduler class for time-driven ping scheduling,
 including host management, timing computation, and mock event generation.
@@ -26,7 +26,7 @@ import unittest
 # Add parent directory to path to import paraping
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from paraping.scheduler import Scheduler  # noqa: E402  # pylint: disable=wrong-import-position
+from paraping.runtime.scheduler import Scheduler  # noqa: E402  # pylint: disable=wrong-import-position
 
 
 class TestSchedulerInstantiation(unittest.TestCase):

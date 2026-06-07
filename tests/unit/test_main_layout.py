@@ -21,10 +21,10 @@ from collections import deque
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
-# Add parent directory to path to import main
+# Add parent directory to path to import package modules
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from main import build_display_lines, compute_main_layout, compute_panel_sizes, get_terminal_size  # noqa: E402
+from paraping.ui_render import build_display_lines, compute_main_layout, compute_panel_sizes, get_terminal_size  # noqa: E402
 
 
 class TestLayoutComputation(unittest.TestCase):

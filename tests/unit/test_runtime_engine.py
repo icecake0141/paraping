@@ -1,8 +1,8 @@
-"""Unit tests for paraping_v2 engine behavior."""
+"""Unit tests for paraping.runtime engine behavior."""
 
-from paraping_v2.domain import PingEvent
-from paraping_v2.engine import MonitorState
-from paraping_v2.rate_limit import validate_global_rate_limit
+from paraping.runtime.domain import PingEvent
+from paraping.runtime.engine import MonitorState
+from paraping.runtime.rate_limit import validate_global_rate_limit
 
 
 def test_pending_event_is_replaced_by_success() -> None:

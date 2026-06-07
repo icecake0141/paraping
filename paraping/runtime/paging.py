@@ -1,8 +1,9 @@
-"""History navigation page-step helpers for v2."""
+"""History navigation page-step helpers for runtime."""
 
 from typing import Any, Dict, List, Optional, Protocol, Tuple
 
 import paraping.ui_render
+from paraping.runtime.term_size import extract_timeline_width_from_layout, normalize_term_size
 from paraping.ui_render import (
     build_display_entries,
     build_display_names,
@@ -10,7 +11,6 @@ from paraping.ui_render import (
     compute_panel_sizes,
     should_show_asn,
 )
-from paraping_v2.term_size import extract_timeline_width_from_layout_v2, normalize_term_size_v2
 
 
 class TerminalSizeLike(Protocol):
@@ -23,7 +23,7 @@ class TerminalSizeLike(Protocol):
     def lines(self) -> int: ...
 
 
-def compute_history_page_step_v2(
+def compute_history_page_step(
     host_infos: List[Dict[str, Any]],
     buffers: Dict[int, Any],
     stats: Dict[int, Any],
@@ -66,10 +66,10 @@ def compute_history_page_step_v2(
         host_labels = [info["alias"] for info in host_infos]
 
     layout_result = compute_main_layout(host_labels, main_width, main_height, header_lines)
-    return extract_timeline_width_from_layout_v2(layout_result, main_width)
+    return extract_timeline_width_from_layout(layout_result, main_width)
 
 
-def get_cached_page_step_v2(
+def get_cached_page_step(
     cached_page_step: Optional[int],
     last_term_size: Optional[TerminalSizeLike],
     host_infos: List[Dict[str, Any]],
@@ -89,7 +89,7 @@ def get_cached_page_step_v2(
     def should_recalculate_page_step(last_size: Optional[TerminalSizeLike], current_size: TerminalSizeLike) -> bool:
         if last_size is None:
             return True
-        normalized_last = normalize_term_size_v2(last_size)
+        normalized_last = normalize_term_size(last_size)
         if normalized_last is None:
             return True
         if current_size.columns != normalized_last.columns:
@@ -100,7 +100,7 @@ def get_cached_page_step_v2(
 
     current_term_size = paraping.ui_render.get_terminal_size(fallback=(80, 24))
     if cached_page_step is None or should_recalculate_page_step(last_term_size, current_term_size):
-        page_step = compute_history_page_step_v2(
+        page_step = compute_history_page_step(
             host_infos=host_infos,
             buffers=buffers,
             stats=stats,

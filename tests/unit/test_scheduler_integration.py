@@ -31,7 +31,7 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from paraping.pinger import scheduler_driven_worker_ping  # noqa: E402
-from paraping.scheduler import Scheduler  # noqa: E402
+from paraping.runtime.scheduler import Scheduler  # noqa: E402
 
 
 class HostInfo(TypedDict):

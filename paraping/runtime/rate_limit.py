@@ -1,4 +1,4 @@
-"""Global flood-protection validation for v2."""
+"""Global flood-protection validation for runtime."""
 
 from typing import Tuple
 

@@ -978,7 +978,7 @@ class TestCLIIntervalHotkeys(unittest.TestCase):
             ],
             "host_info_map": {"192.0.2.1": [{"id": 0, "host": "192.0.2.1", "ip": "192.0.2.1"}]},
             "next_host_id": 1,
-            "v2_state": MagicMock(),
+            "monitor_state": MagicMock(),
             "done_host_ids": set(),
             "rdns_request_queue": MagicMock(),
             "asn_request_queue": MagicMock(),

@@ -37,7 +37,7 @@ input on some terminals.
 - Uses `readchar` key constants and `parse_escape_sequence()` for consistent arrow-key mapping
 - Preserves the public API and escape-sequence compatibility
 
-### API Compatibility
+### API behavior
 
 The public API remains **fully compatible**. No changes are required for existing code:
 
@@ -124,7 +124,7 @@ pip install -r requirements.txt  # For production
 2. **No Input Simulation**: Can't easily simulate keypresses without mocking (tests use mocks)
 3. **Terminal Requirements**: Still requires a TTY (checked via `sys.stdin.isatty()`)
 
-### Compatibility Notes
+### API notes
 
 - **Windows**: readchar uses `msvcrt` module on Windows
 - **Unix/Linux/macOS**: readchar uses `termios` and `tty` modules

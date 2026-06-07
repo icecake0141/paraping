@@ -21,21 +21,20 @@ import sys
 import unittest
 from unittest.mock import MagicMock, patch
 
-# Add parent directory to path to import main
+# Add parent directory to path to import package modules
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from main import (  # noqa: E402
+from paraping.cli import _handle_user_input, handle_options
+from paraping.cli import run as main
+from paraping.input_keys import parse_escape_sequence
+from paraping.ui_render import (
     cycle_panel_position,
     flash_screen,
-    handle_options,
-    main,
-    parse_escape_sequence,
     render_fullscreen_rtt_graph,
     ring_bell,
     should_flash_on_fail,
     toggle_panel_visibility,
 )
-from paraping.cli import _handle_user_input  # noqa: E402
 
 
 class TestEscapeSequenceParsing(unittest.TestCase):
@@ -218,9 +217,9 @@ class TestQuitHotkey(unittest.TestCase):
         mock_thread.return_value = MagicMock()
 
         # Mock termios functions
-        with patch("main.termios.tcgetattr", return_value=MagicMock()):
-            with patch("main.termios.tcsetattr"):
-                with patch("main.tty.setcbreak"):
+        with patch("paraping.cli.termios.tcgetattr", return_value=MagicMock()):
+            with patch("paraping.cli.termios.tcsetattr"):
+                with patch("paraping.cli.tty.setcbreak"):
                     # Should exit without raising exception when 'q' is pressed
                     main(args)
 
@@ -288,9 +287,9 @@ class TestQuitHotkey(unittest.TestCase):
         mock_thread.return_value = MagicMock()
 
         # Mock termios functions
-        with patch("main.termios.tcgetattr", return_value=MagicMock()):
-            with patch("main.termios.tcsetattr"):
-                with patch("main.tty.setcbreak"):
+        with patch("paraping.cli.termios.tcgetattr", return_value=MagicMock()):
+            with patch("paraping.cli.termios.tcsetattr"):
+                with patch("paraping.cli.tty.setcbreak"):
                     # Should exit without raising exception when 'q' is pressed
                     main(args)
 
@@ -358,9 +357,9 @@ class TestQuitHotkey(unittest.TestCase):
         mock_thread.return_value = MagicMock()
 
         # Mock termios functions
-        with patch("main.termios.tcgetattr", return_value=MagicMock()):
-            with patch("main.termios.tcsetattr"):
-                with patch("main.tty.setcbreak"):
+        with patch("paraping.cli.termios.tcgetattr", return_value=MagicMock()):
+            with patch("paraping.cli.termios.tcsetattr"):
+                with patch("paraping.cli.tty.setcbreak"):
                     # Should exit when 'q' is pressed, even with help screen open
                     main(args)
 
@@ -423,9 +422,9 @@ class TestQuitHotkey(unittest.TestCase):
         mock_executor_instance.submit.return_value = MagicMock()
         mock_thread.return_value = MagicMock()
 
-        with patch("main.termios.tcgetattr", return_value=MagicMock()):
-            with patch("main.termios.tcsetattr"):
-                with patch("main.tty.setcbreak"):
+        with patch("paraping.cli.termios.tcgetattr", return_value=MagicMock()):
+            with patch("paraping.cli.termios.tcsetattr"):
+                with patch("paraping.cli.tty.setcbreak"):
                     with patch("paraping.cli.os.path.exists", return_value=True):
                         with patch("paraping.cli.os.access", return_value=True):
                             main(args)
@@ -482,9 +481,9 @@ class TestQuitHotkey(unittest.TestCase):
         mock_executor_instance.submit.return_value = MagicMock()
         mock_thread.return_value = MagicMock()
 
-        with patch("main.termios.tcgetattr", return_value=MagicMock()):
-            with patch("main.termios.tcsetattr"):
-                with patch("main.tty.setcbreak"):
+        with patch("paraping.cli.termios.tcgetattr", return_value=MagicMock()):
+            with patch("paraping.cli.termios.tcsetattr"):
+                with patch("paraping.cli.tty.setcbreak"):
                     with patch("paraping.cli.os.path.exists", return_value=True):
                         with patch("paraping.cli.os.access", return_value=True):
                             main(args)
@@ -498,26 +497,26 @@ class TestFlashAndBell(unittest.TestCase):
 
     def test_handle_options_flash_on_fail(self):
         """Test --flash-on-fail option parsing"""
-        with patch("sys.argv", ["main.py", "--flash-on-fail", "example.com"]):
+        with patch("sys.argv", ["paraping", "--flash-on-fail", "example.com"]):
             args = handle_options()
             self.assertTrue(args.flash_on_fail)
 
     def test_handle_options_bell_on_fail(self):
         """Test --bell-on-fail option parsing"""
-        with patch("sys.argv", ["main.py", "--bell-on-fail", "example.com"]):
+        with patch("sys.argv", ["paraping", "--bell-on-fail", "example.com"]):
             args = handle_options()
             self.assertTrue(args.bell_on_fail)
 
     def test_handle_options_both_flags(self):
         """Test both flash and bell options together"""
-        with patch("sys.argv", ["main.py", "--flash-on-fail", "--bell-on-fail", "example.com"]):
+        with patch("sys.argv", ["paraping", "--flash-on-fail", "--bell-on-fail", "example.com"]):
             args = handle_options()
             self.assertTrue(args.flash_on_fail)
             self.assertTrue(args.bell_on_fail)
 
     def test_handle_options_default_false(self):
         """Test that flash and bell options default to False"""
-        with patch("sys.argv", ["main.py", "example.com"]):
+        with patch("sys.argv", ["paraping", "example.com"]):
             args = handle_options()
             self.assertFalse(args.flash_on_fail)
             self.assertFalse(args.bell_on_fail)

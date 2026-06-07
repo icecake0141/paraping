@@ -186,11 +186,11 @@ class TestReadInputFile(unittest.TestCase):
 
 
 class TestReadInputFileWithReport(unittest.TestCase):
-    """Test cases for read_input_file_with_report compatibility wrapper."""
+    """Test cases for read_input_file_with_report wrapper."""
 
-    @patch("paraping.core.read_input_file_with_report_v2")
-    def test_read_input_file_with_report_delegates_to_v2(self, mock_read_with_report):
-        """Wrapper should delegate directly to v2 implementation."""
+    @patch("paraping.core.runtime_read_input_file_with_report")
+    def test_read_input_file_with_report_delegates_to_runtime(self, mock_read_with_report):
+        """Wrapper should delegate directly to runtime implementation."""
         mock_report = object()
         mock_read_with_report.return_value = ([{"host": "192.0.2.1", "alias": "h1", "ip": "192.0.2.1"}], mock_report)
 

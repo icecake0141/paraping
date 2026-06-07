@@ -1,5 +1,5 @@
 """
-Event application engine for the v2 rewrite.
+Event application engine for the runtime rewrite.
 
 This module encapsulates state mutation rules so behavior can be tested
 without terminal rendering concerns.
@@ -10,7 +10,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Deque, Dict, Optional
 
-from paraping_v2.domain import HostStats, PingEvent
+from paraping.runtime.domain import HostStats, PingEvent
 
 
 @dataclass
@@ -27,7 +27,7 @@ class HostTimeline:
 
 class MonitorState:
     """
-    Mutable monitor state for v2.
+    Mutable monitor state for runtime.
 
     The key compatibility rule implemented here is:
     - `sent` creates a pending slot (`-`)

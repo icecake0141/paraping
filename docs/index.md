@@ -52,8 +52,7 @@ Welcome to the ParaPing documentation hub. This directory contains comprehensive
 
 ### For Contributors
 - [Contributing Guidelines](CONTRIBUTING.md) - Development guidelines and PR requirements
-- [Modularization Guide](MODULARIZATION.md) - Module ownership and test organization
-- [v2 Migration Status](v2_migration_status.md) - Completed migration status, compatibility policy, and guardrail tests
+- [Runtime Architecture](runtime_architecture.md) - Module ownership and test organization
 
 ### For Developers
 - [API Documentation](api/index.md) - Module layout and API reference (coming soon)
@@ -77,7 +76,7 @@ ParaPing is an interactive terminal-based ICMP monitor that pings multiple hosts
 1. **Installation**: See the [main README](../README.md#installation) for user and system installation options
 2. **Development Setup**: See [CONTRIBUTING.md](CONTRIBUTING.md#development-setup) for contributor setup
 3. **Advanced/Automated Setup**: See [environment_setup.md](environment_setup.md) for feature branch automation with scripts
-4. **Understanding the Code**: Review [MODULARIZATION.md](MODULARIZATION.md)
+4. **Understanding the Code**: Review [runtime_architecture.md](runtime_architecture.md)
 
 ## Documentation Conventions
 
@@ -132,8 +131,7 @@ ParaPingドキュメントハブへようこそ。このディレクトリには
 
 ### コントリビューター向け
 - [コントリビューティングガイドライン](CONTRIBUTING.md) - 開発ガイドラインとPR要件
-- [モジュール化ガイド](MODULARIZATION.md) - モジュール所有権とテスト構成
-- [v2移行ステータス](v2_migration_status.md) - 移行完了状況、互換ポリシー、ガードレールテスト
+- [ランタイム構成](runtime_architecture.md) - モジュール所有権とテスト構成
 
 ### 開発者向け
 - [APIドキュメント](api/index.md) - モジュールレイアウトとAPIリファレンス（近日公開）
@@ -157,7 +155,7 @@ ParaPingは、複数のホストを並列でpingし、ライブ視覚化を行�
 1. **インストール**：ユーザーおよびシステムインストールオプションについては、[メインREADME](../README.md#installation)を参照してください
 2. **開発セットアップ**：コントリビューターセットアップについては、[CONTRIBUTING.md](CONTRIBUTING.md#development-setup)を参照してください
 3. **上級/自動セットアップ**：スクリプトによるフィーチャーブランチ自動化については、[environment_setup.md](environment_setup.md)を参照してください
-4. **コードの理解**：[MODULARIZATION.md](MODULARIZATION.md)を確認してください
+4. **コードの理解**：[runtime_architecture.md](runtime_architecture.md)を確認してください
 
 ## ドキュメント規約
 

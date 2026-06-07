@@ -249,7 +249,7 @@ While the helper is intentionally minimal, potential future enhancements include
 - **Persistent worker**: Helper accepts commands via stdin for rapid-fire pings without spawn overhead
 - **Output streaming**: JSON-lines format for programmatic consumption
 
-**Note**: Any extensions must maintain backward compatibility with the current CLI contract.
+**Note**: Any extensions must maintain backward-compatible behavior with the current CLI contract.
 
 ## Troubleshooting
 

@@ -1,6 +1,6 @@
 # Test File Split Summary
 
-The original `tests/test_main.py` (2390 lines) has been split into smaller, feature-based test files in the `tests/unit/` directory for better organization and maintainability.
+The original `tests/test_top-level script shim` (2390 lines) has been split into smaller, feature-based test files in the `tests/unit/` directory for better organization and maintainability.
 
 ## File Organization
 

@@ -1,7 +1,7 @@
 """
-Per-host ICMP sequence tracking for ParaPing v2.
+Per-host ICMP sequence tracking for ParaPing runtime.
 
-This implementation is API-compatible with ``paraping.sequence_tracker.SequenceTracker``.
+This implementation is API-compatible with ``paraping.runtime.sequence_tracker.SequenceTracker``.
 """
 
 import threading

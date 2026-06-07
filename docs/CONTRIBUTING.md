@@ -136,8 +136,8 @@ Run the test suite before submitting changes:
 # Run all tests with coverage
 pytest tests/ -v --cov=. --cov-report=term-missing
 
-# Run focused main compatibility tests
-pytest tests/unit/test_main_lazy_wrappers.py tests/unit/test_main_public_api_surface.py -v
+# Run focused main runtime tests
+pytest tests/unit/ tests/unit/ -v
 ```
 
 Tests must pass with good coverage. Add tests for new functionality.
@@ -230,19 +230,19 @@ and key design decisions in ParaPing.
 ```
 cli.py  (entry point)
  ├─→ config.py            (CLI argument parsing, configuration)
- ├─→ paraping_v2/
+ ├─→ paraping/runtime/
  │    ├─→ domain.py       (typed host/sample/state models)
- │    ├─→ render_state.py (derive render state from v2 monitor state)
+ │    ├─→ render_state.py (derive render state from runtime monitor state)
  │    ├─→ history.py      (bounded history snapshots + paging)
  │    ├─→ hosts.py        (host parsing/building)
  │    ├─→ paging.py       (history page-step calculations)
  │    ├─→ term_size.py    (terminal-size normalization/layout width extraction)
  │    ├─→ scheduler.py    (drift-free ping timing per host)
  │    └─→ sequence_tracker.py  (per-host ICMP seq numbers & outstanding limit)
- ├─→ core.py              (legacy compatibility facade delegating to paraping_v2)
+ ├─→ core.py              (runtime facade delegating to paraping.runtime)
  ├─→ pinger.py            (scheduler-driven worker threads)
  │    ├─→ ping_wrapper.py (subprocess call to ping_helper binary)
- │    └─→ paraping_v2.scheduler / sequence_tracker
+ │    └─→ paraping.runtime.scheduler / sequence_tracker
  ├─→ ui_render.py         (all terminal rendering, ANSI output)
  │    └─→ stats.py        (RTT statistics, summary calculations)
  ├─→ input_keys.py        (keyboard input handling)
@@ -259,7 +259,7 @@ process does not need root privileges.
 ```
 user input (hosts.txt)
   → cli.run()
-  → core.read_input_file() / core.build_host_infos()  [compat wrappers to paraping_v2.hosts]
+  → core.read_input_file() / core.build_host_infos()  [compat wrappers to paraping.runtime.hosts]
   → Scheduler.add_host()
   → pinger.scheduler_driven_worker_ping() [per-host thread]
       → Scheduler.get_next_ping_times()   [sleep until scheduled time]
@@ -270,10 +270,10 @@ user input (hosts.txt)
       → result_queue.put({'status': 'success'/'fail'/'slow', ...})
       → SequenceTracker.mark_replied()
   → main event loop consumes result_queue
-  → updates v2 monitor state + summary stats
-  → paraping_v2.history.update_history_buffer_v2()
-  → paraping_v2.render_state.resolve_v2_render_state()
-  → paraping_v2.legacy_adapter.project_legacy_state_from_v2()  [render compatibility payload]
+  → updates runtime monitor state + summary stats
+  → paraping.runtime.history.update_history_buffer()
+  → paraping.runtime.render_state.resolve_render_state()
+  → paraping.runtime.render_projection.project_render_state()  [render projection payload]
   → ui_render renders updated state to terminal
 ```
 
@@ -286,8 +286,8 @@ cli.parse_args()
   → validate host file exists
   → core.read_input_file()  →  core.build_host_infos()
   → core.validate_global_rate_limit()   [flood protection check]
-  → Scheduler (paraping_v2.scheduler) created; all hosts added with stagger offset
-  → per-host SequenceTracker (paraping_v2.sequence_tracker) created (max 3 outstanding pings)
+  → Scheduler (paraping.runtime.scheduler) created; all hosts added with stagger offset
+  → per-host SequenceTracker (paraping.runtime.sequence_tracker) created (max 3 outstanding pings)
   → threading.Thread started per host  →  scheduler_driven_worker_ping()
   → network_rdns / network_asn background threads started
   → main event loop: poll result_queue + keyboard input + history timer
@@ -311,8 +311,8 @@ execute_ping_async() in daemon thread:
   → SequenceTracker.mark_replied()   →  remove from outstanding set
 main loop picks up result
   → update MonitorState samples + stats
-  → update_history_buffer_v2() snapshots bounded history
-  → resolve_v2_render_state() + project_legacy_state_from_v2()
+  → update_history_buffer() snapshots bounded history
+  → resolve_render_state() + project_render_state()
   → ui_render.render() redraws terminal
 ```
 
@@ -323,9 +323,9 @@ OS delivers SIGWINCH  →  resize flag set in main event loop
 main loop detects resize flag:
   → ui_render.get_terminal_size()  →  new (columns, lines)
   → compare to last_term_size
-  → paraping_v2.paging.get_cached_page_step() invalidates cached page step
-  → paraping_v2.paging.compute_history_page_step()
-      → paraping_v2.term_size.extract_timeline_width_from_layout()
+  → paraping.runtime.paging.get_cached_page_step() invalidates cached page step
+  → paraping.runtime.paging.compute_history_page_step()
+      → paraping.runtime.term_size.extract_timeline_width_from_layout()
       → new page_step stored in cache with new term_size key
   → ui_render.render() called with updated dimensions
   → all panels reflow: timeline columns, RTT graph, status box
@@ -353,7 +353,7 @@ cannot starve or corrupt the sequence counters of other hosts.
 
 #### How does the history buffer prevent memory leaks?
 
-`paraping_v2.history.update_history_buffer_v2()` stores snapshots in a
+`paraping.runtime.history.update_history_buffer()` stores snapshots in a
 `collections.deque` with a fixed `maxlen` equal to
 `HISTORY_DURATION_MINUTES * 60` (1,800 entries for 30 minutes at
 1 snapshot/second). Python's `deque` automatically evicts the oldest entry
@@ -362,9 +362,9 @@ Snapshots are copied to avoid live-state mutation in history view.
 
 #### What is `core.py` responsible for now?
 
-`core.py` is kept as a compatibility facade for older imports/tests.  Host
+`core.py` is kept as a runtime facade for older imports/tests.  Host
 parsing, history update, page-step computation, and terminal-size normalization
-now delegate to `paraping_v2.*` modules.
+now delegate to `paraping.runtime.*` modules.
 
 ---
 
@@ -493,7 +493,7 @@ pylint . --fail-under=9.0
 pytest tests/ -v --cov=. --cov-report=term-missing
 
 # main 互換性テストを絞って実行
-pytest tests/unit/test_main_lazy_wrappers.py tests/unit/test_main_public_api_surface.py -v
+pytest tests/unit/ tests/unit/ -v
 ```
 
 テストは良好なカバレッジでパスする必要があります。新機能にはテストを追加してください。
@@ -618,19 +618,19 @@ ParaPing への貢献ありがとうございます！
 ```
 cli.py  (エントリーポイント)
  ├─→ config.py            (CLI 引数解析、設定)
- ├─→ paraping_v2/
+ ├─→ paraping/runtime/
  │    ├─→ domain.py       (型付きホスト/サンプル/状態モデル)
- │    ├─→ render_state.py (v2 モニター状態から描画状態を生成)
+ │    ├─→ render_state.py (runtime モニター状態から描画状態を生成)
  │    ├─→ history.py      (上限付き履歴スナップショット + ページング)
  │    ├─→ hosts.py        (ホスト解析/構築)
  │    ├─→ paging.py       (履歴ページステップ計算)
  │    ├─→ term_size.py    (ターミナルサイズ正規化/レイアウト幅抽出)
  │    ├─→ scheduler.py    (ホストごとのドリフトなし ping タイミング)
  │    └─→ sequence_tracker.py  (ホストごとの ICMP seq と未応答制限)
- ├─→ core.py              (paraping_v2 へ委譲する互換ファサード)
+ ├─→ core.py              (paraping.runtime へ委譲する互換ファサード)
  ├─→ pinger.py            (スケジューラ駆動のワーカースレッド)
  │    ├─→ ping_wrapper.py (ping_helper バイナリへのサブプロセス呼び出し)
- │    └─→ paraping_v2.scheduler / sequence_tracker
+ │    └─→ paraping.runtime.scheduler / sequence_tracker
  ├─→ ui_render.py         (すべてのターミナルレンダリング、ANSI 出力)
  │    └─→ stats.py        (RTT 統計、サマリー計算)
  ├─→ input_keys.py        (キーボード入力処理)
@@ -647,7 +647,7 @@ Python プロセスが root 権限を必要とせずに ICMP echo リクエス�
 ```
 ユーザー入力 (hosts.txt)
   → cli.run()
-  → core.read_input_file() / core.build_host_infos()  [互換ラッパー: paraping_v2.hosts]
+  → core.read_input_file() / core.build_host_infos()  [互換ラッパー: paraping.runtime.hosts]
   → Scheduler.add_host()
   → pinger.scheduler_driven_worker_ping() [ホストごとのスレッド]
       → Scheduler.get_next_ping_times()   [スケジュール時刻まで sleep]
@@ -658,10 +658,10 @@ Python プロセスが root 権限を必要とせずに ICMP echo リクエス�
       → result_queue.put({'status': 'success'/'fail'/'slow', ...})
       → SequenceTracker.mark_replied()
   → メインイベントループが result_queue を消費
-  → v2 monitor state と stats を更新
-  → paraping_v2.history.update_history_buffer_v2()
-  → paraping_v2.render_state.resolve_v2_render_state()
-  → paraping_v2.legacy_adapter.project_legacy_state_from_v2()  [描画互換ペイロード]
+  → runtime monitor state と stats を更新
+  → paraping.runtime.history.update_history_buffer()
+  → paraping.runtime.render_state.resolve_render_state()
+  → paraping.runtime.render_projection.project_render_state()  [描画互換ペイロード]
   → ui_render がターミナルに更新された状態をレンダリング
 ```
 
@@ -674,8 +674,8 @@ cli.parse_args()
   → ホストファイルの存在確認
   → core.read_input_file()  →  core.build_host_infos()
   → core.validate_global_rate_limit()   [フラッド保護チェック]
-  → Scheduler（paraping_v2.scheduler）作成；全ホストを stagger オフセット付きで追加
-  → ホストごとに SequenceTracker（paraping_v2.sequence_tracker）作成（最大 3 未応答 ping）
+  → Scheduler（paraping.runtime.scheduler）作成；全ホストを stagger オフセット付きで追加
+  → ホストごとに SequenceTracker（paraping.runtime.sequence_tracker）作成（最大 3 未応答 ping）
   → ホストごとに threading.Thread 開始  →  scheduler_driven_worker_ping()
   → network_rdns / network_asn バックグラウンドスレッド開始
   → メインイベントループ：result_queue + キーボード入力 + 履歴タイマーをポーリング
@@ -699,8 +699,8 @@ Scheduler.mark_ping_sent()  →  このホストの next_ping_time を進める
   → SequenceTracker.mark_replied()   →  未応答セットから削除
 メインループが結果を取得
   → MonitorState のサンプル + stats を更新
-  → update_history_buffer_v2() で上限付き履歴を更新
-  → resolve_v2_render_state() + project_legacy_state_from_v2()
+  → update_history_buffer() で上限付き履歴を更新
+  → resolve_render_state() + project_render_state()
   → ui_render.render() がターミナルを再描画
 ```
 
@@ -711,9 +711,9 @@ OS が SIGWINCH を配信  →  メインイベントループでリサイズフ
 メインループがリサイズフラグを検出：
   → ui_render.get_terminal_size()  →  新しい (columns, lines)
   → last_term_size と比較
-  → paraping_v2.paging.get_cached_page_step() がキャッシュを無効化
-  → paraping_v2.paging.compute_history_page_step()
-      → paraping_v2.term_size.extract_timeline_width_from_layout()
+  → paraping.runtime.paging.get_cached_page_step() がキャッシュを無効化
+  → paraping.runtime.paging.compute_history_page_step()
+      → paraping.runtime.term_size.extract_timeline_width_from_layout()
       → 新しい page_step を新しい term_size キーでキャッシュに保存
   → 更新された寸法で ui_render.render() を呼び出し
   → すべてのパネルがリフロー：タイムライン列、RTT グラフ、ステータスボックス
@@ -739,7 +739,7 @@ ping の応答が遅くなったり失われたりしても、スケジューラ
 
 #### 履歴バッファはどのようにしてメモリリークを防ぐのか？
 
-`paraping_v2.history.update_history_buffer_v2()` は、`maxlen` が
+`paraping.runtime.history.update_history_buffer()` は、`maxlen` が
 `HISTORY_DURATION_MINUTES * 60`（1 秒あたり 1 スナップショットで 30 分分の
 1,800 エントリ）に固定された `collections.deque` にスナップショットを保存します。
 Python の `deque` は満杯時に最古エントリを自動削除するため、稼働時間に関わらず
@@ -749,4 +749,4 @@ Python の `deque` は満杯時に最古エントリを自動削除するため�
 #### 現在の `core.py` の責務は？
 
 `core.py` は既存 import/テスト互換のために維持されるファサードです。ホスト解析、
-履歴更新、ページステップ計算、ターミナルサイズ正規化は `paraping_v2.*` に委譲されます。
+履歴更新、ページステップ計算、ターミナルサイズ正規化は `paraping.runtime.*` に委譲されます。

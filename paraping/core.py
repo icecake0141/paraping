@@ -10,29 +10,24 @@
 # This file was created or modified with the assistance of an AI (Large Language Model).
 # Review for correctness and security.
 
-"""
-Core compatibility layer for ParaPing.
-
-This module still exposes legacy helper APIs used by existing tests and
-entrypoints, while delegating most state/history behavior to `paraping_v2`.
-"""
+"""CLI-facing wrappers around ParaPing runtime helpers."""
 
 import logging
-import socket  # noqa: F401 - compatibility for tests patching paraping.core.socket
+import socket  # noqa: F401 - tests patch this module-level symbol.
 from typing import Any, Dict, List, Optional, Protocol, Tuple, Union
 
-from paraping_v2.constants import HISTORY_DURATION_MINUTES, MAX_HOST_THREADS, SNAPSHOT_INTERVAL_SECONDS
-from paraping_v2.hosts import (
-    HostInputReport,
-    build_host_infos_v2,
-    parse_host_file_line_v2,
-    read_input_file_v2,
-    read_input_file_with_report_v2,
-)
-from paraping_v2.paging import compute_history_page_step_v2, get_cached_page_step_v2
-from paraping_v2.rate_limit import MAX_GLOBAL_PINGS_PER_SECOND
-from paraping_v2.rate_limit import validate_global_rate_limit as validate_global_rate_limit_v2
-from paraping_v2.term_size import extract_timeline_width_from_layout_v2, normalize_term_size_v2
+from paraping.runtime.constants import HISTORY_DURATION_MINUTES, MAX_HOST_THREADS, SNAPSHOT_INTERVAL_SECONDS
+from paraping.runtime.hosts import HostInputReport
+from paraping.runtime.hosts import build_host_infos as runtime_build_host_infos
+from paraping.runtime.hosts import parse_host_file_line as runtime_parse_host_file_line
+from paraping.runtime.hosts import read_input_file as runtime_read_input_file
+from paraping.runtime.hosts import read_input_file_with_report as runtime_read_input_file_with_report
+from paraping.runtime.paging import compute_history_page_step as runtime_compute_history_page_step
+from paraping.runtime.paging import get_cached_page_step as runtime_get_cached_page_step
+from paraping.runtime.rate_limit import MAX_GLOBAL_PINGS_PER_SECOND
+from paraping.runtime.rate_limit import validate_global_rate_limit as runtime_validate_global_rate_limit
+from paraping.runtime.term_size import extract_timeline_width_from_layout as runtime_extract_timeline_width_from_layout
+from paraping.runtime.term_size import normalize_term_size as runtime_normalize_term_size
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +54,7 @@ def _normalize_term_size(term_size: Any) -> Optional[Any]:
     Returns:
         Object with .columns and .lines attributes, or None if invalid
     """
-    return normalize_term_size_v2(term_size)
+    return runtime_normalize_term_size(term_size)
 
 
 def _extract_timeline_width_from_layout(layout: Any, main_width: int) -> int:
@@ -75,7 +70,7 @@ def _extract_timeline_width_from_layout(layout: Any, main_width: int) -> int:
     Returns:
         int: Timeline width (always >= 1)
     """
-    return extract_timeline_width_from_layout_v2(layout, main_width)
+    return runtime_extract_timeline_width_from_layout(layout, main_width)
 
 
 def parse_host_file_line(line: str, line_number: int, input_file: str) -> Optional[Dict[str, Any]]:
@@ -90,7 +85,7 @@ def parse_host_file_line(line: str, line_number: int, input_file: str) -> Option
     Returns:
         Dict with keys 'host', 'alias', 'ip' or None if invalid/comment
     """
-    return parse_host_file_line_v2(line=line, line_number=line_number, input_file=input_file, logger=logger)
+    return runtime_parse_host_file_line(line=line, line_number=line_number, input_file=input_file, logger=logger)
 
 
 def read_input_file(input_file: str) -> List[Dict[str, Any]]:
@@ -103,7 +98,7 @@ def read_input_file(input_file: str) -> List[Dict[str, Any]]:
     Returns:
         List of host info dictionaries
     """
-    return read_input_file_v2(input_file=input_file, logger=logger)
+    return runtime_read_input_file(input_file=input_file, logger=logger)
 
 
 def read_input_file_with_report(input_file: str) -> Tuple[List[Dict[str, Any]], HostInputReport]:
@@ -116,7 +111,7 @@ def read_input_file_with_report(input_file: str) -> Tuple[List[Dict[str, Any]], 
     Returns:
         Tuple of (parsed host entries, parse report)
     """
-    return read_input_file_with_report_v2(input_file=input_file, logger=logger)
+    return runtime_read_input_file_with_report(input_file=input_file, logger=logger)
 
 
 def compute_history_page_step(
@@ -134,8 +129,8 @@ def compute_history_page_step(
     header_lines: int = 2,
     pulse_position: str = "none",
 ) -> int:
-    """Compatibility shim for page-step computation."""
-    return compute_history_page_step_v2(
+    """Wrapper for page-step computation."""
+    return runtime_compute_history_page_step(
         host_infos=host_infos,
         buffers=buffers,
         stats=stats,
@@ -177,7 +172,7 @@ def get_cached_page_step(
         tuple: (page_step, new_cached_page_step, new_last_term_size)
     """
 
-    return get_cached_page_step_v2(
+    return runtime_get_cached_page_step(
         cached_page_step=cached_page_step,
         last_term_size=last_term_size,
         host_infos=host_infos,
@@ -196,7 +191,7 @@ def get_cached_page_step(
 
 def build_host_infos(hosts: List[Union[str, Dict[str, Any]]]) -> Tuple[List[Dict[str, Any]], Dict[str, List[Dict[str, Any]]]]:
     """Build host information structures from a list of hosts."""
-    return build_host_infos_v2(hosts=hosts, logger=logger)
+    return runtime_build_host_infos(hosts=hosts, logger=logger)
 
 
 def validate_global_rate_limit(host_count: int, interval: float) -> Tuple[bool, float, str]:
@@ -213,7 +208,7 @@ def validate_global_rate_limit(host_count: int, interval: float) -> Tuple[bool, 
         - computed_rate: The computed pings per second rate
         - error_message: Error message if invalid, empty string if valid
     """
-    return validate_global_rate_limit_v2(host_count=host_count, interval=interval)
+    return runtime_validate_global_rate_limit(host_count=host_count, interval=interval)
 
 
 __all__ = [

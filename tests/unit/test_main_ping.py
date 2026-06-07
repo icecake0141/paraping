@@ -21,10 +21,12 @@ import sys
 import unittest
 from unittest.mock import MagicMock, patch
 
-# Add parent directory to path to import main
+# Add parent directory to path to import package modules
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from main import MAX_HOST_THREADS, main, ping_host  # noqa: E402
+from paraping.cli import run as main  # noqa: E402
+from paraping.pinger import ping_host  # noqa: E402
+from paraping.runtime.constants import MAX_HOST_THREADS  # noqa: E402
 
 
 class TestPingHost(unittest.TestCase):

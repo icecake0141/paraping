@@ -1,4 +1,4 @@
-"""Adapters between v2 state and legacy CLI buffer/stat structures."""
+"""Adapters between runtime state and render buffer/stat structures."""
 
 from collections import deque
 from typing import Any, Dict, Tuple
@@ -8,20 +8,20 @@ def _symbol_to_status(symbols: Dict[str, str]) -> Dict[str, str]:
     return {value: key for key, value in symbols.items()}
 
 
-def sync_legacy_host_from_v2(
-    v2_state: Any,
+def sync_render_host(
+    monitor_state: Any,
     host_id: int,
     host_buffer: Dict[str, Any],
     host_stats: Dict[str, Any],
     symbols: Dict[str, str],
 ) -> None:
     """
-    Project one host's v2 state back into legacy buffer/stats dictionaries.
+    Project one host's runtime state back into render buffer/stats dictionaries.
 
     This keeps current rendering and summary logic unchanged while event
-    application gradually migrates to the v2 engine.
+    application gradually migrates to the runtime engine.
     """
-    timeline = v2_state.timelines[host_id]
+    timeline = monitor_state.timelines[host_id]
     status_from_symbol = _symbol_to_status(symbols)
 
     host_buffer["timeline"].clear()
@@ -48,7 +48,7 @@ def sync_legacy_host_from_v2(
         if status in host_buffer["categories"]:
             host_buffer["categories"][status].append(sequence)
 
-    stats = v2_state.stats[host_id]
+    stats = monitor_state.stats[host_id]
     host_stats["success"] = stats.success
     host_stats["slow"] = stats.slow
     host_stats["fail"] = stats.fail
@@ -58,11 +58,11 @@ def sync_legacy_host_from_v2(
     host_stats["rtt_count"] = stats.rtt_count
 
 
-def project_legacy_state_from_v2(v2_state: Any, symbols: Dict[str, str]) -> Tuple[Dict[int, Any], Dict[int, Any]]:
-    """Build legacy-shaped render buffers/stats from a v2 state snapshot."""
+def project_render_state(monitor_state: Any, symbols: Dict[str, str]) -> Tuple[Dict[int, Any], Dict[int, Any]]:
+    """Build render-shaped render buffers/stats from a runtime state snapshot."""
     buffers: Dict[int, Any] = {}
     stats: Dict[int, Any] = {}
-    for host_id, timeline in v2_state.timelines.items():
+    for host_id, timeline in monitor_state.timelines.items():
         width = timeline.symbols.maxlen or 1
         host_buffer = {
             "timeline": deque(maxlen=width),
@@ -80,7 +80,7 @@ def project_legacy_state_from_v2(v2_state: Any, symbols: Dict[str, str]) -> Tupl
             "rtt_sum_sq": 0.0,
             "rtt_count": 0,
         }
-        sync_legacy_host_from_v2(v2_state, host_id, host_buffer, host_stats, symbols)
+        sync_render_host(monitor_state, host_id, host_buffer, host_stats, symbols)
         buffers[host_id] = host_buffer
         stats[host_id] = host_stats
     return buffers, stats

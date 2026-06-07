@@ -12,7 +12,7 @@
 # Review required for correctness, security, and licensing.
 
 """
-Unit tests for paraping.sequence_tracker module.
+Unit tests for paraping.runtime.sequence_tracker module.
 
 This module tests per-host sequence tracking and outstanding ping management.
 """
@@ -26,7 +26,7 @@ import unittest
 # Add parent directory to path to import paraping
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from paraping.sequence_tracker import SequenceTracker  # noqa: E402  # pylint: disable=wrong-import-position
+from paraping.runtime.sequence_tracker import SequenceTracker  # noqa: E402  # pylint: disable=wrong-import-position
 
 
 class TestSequenceTracker(unittest.TestCase):

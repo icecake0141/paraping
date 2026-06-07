@@ -1,4 +1,4 @@
-"""Host parsing and host-info construction helpers for v2."""
+"""Host parsing and host-info construction helpers for runtime."""
 
 import ipaddress
 import socket
@@ -47,7 +47,7 @@ def _is_header_row(parts: List[str]) -> bool:
     return False
 
 
-def parse_host_file_line_v2(
+def parse_host_file_line(
     line: str,
     line_number: int,
     input_file: str,
@@ -101,13 +101,13 @@ def parse_host_file_line_v2(
     return entry
 
 
-def read_input_file_v2(input_file: str, logger: Any) -> List[Dict[str, Any]]:
+def read_input_file(input_file: str, logger: Any) -> List[Dict[str, Any]]:
     """Read and parse hosts from an input file."""
     host_list = []
     try:
         with open(input_file, "r", encoding="utf-8") as f:
             for line_number, line in enumerate(f, start=1):
-                entry = parse_host_file_line_v2(line, line_number, input_file, logger)
+                entry = parse_host_file_line(line, line_number, input_file, logger)
                 if entry is not None:
                     host_list.append(entry)
     except FileNotFoundError:
@@ -169,7 +169,7 @@ def _parse_host_file_line_with_issue(
     return entry, None
 
 
-def read_input_file_with_report_v2(input_file: str, logger: Any) -> tuple[List[Dict[str, Any]], HostInputReport]:
+def read_input_file_with_report(input_file: str, logger: Any) -> tuple[List[Dict[str, Any]], HostInputReport]:
     """Read hosts from file and include structured parse diagnostics."""
     host_list: List[Dict[str, Any]] = []
     issues: List[HostInputIssue] = []
@@ -215,7 +215,7 @@ def read_input_file_with_report_v2(input_file: str, logger: Any) -> tuple[List[D
     return host_list, HostInputReport(issues=issues)
 
 
-def build_host_infos_v2(
+def build_host_infos(
     hosts: List[Union[str, Dict[str, Any]]],
     logger: Any,
 ) -> tuple[List[Dict[str, Any]], Dict[str, List[Dict[str, Any]]]]:

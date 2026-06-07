@@ -32,8 +32,8 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from paraping.pinger import scheduler_driven_ping_host  # noqa: E402  # pylint: disable=wrong-import-position
-from paraping.scheduler import Scheduler  # noqa: E402  # pylint: disable=wrong-import-position
-from paraping.sequence_tracker import SequenceTracker  # noqa: E402  # pylint: disable=wrong-import-position
+from paraping.runtime.scheduler import Scheduler  # noqa: E402  # pylint: disable=wrong-import-position
+from paraping.runtime.sequence_tracker import SequenceTracker  # noqa: E402  # pylint: disable=wrong-import-position
 
 
 class TestSequenceTrackingIntegration(unittest.TestCase):

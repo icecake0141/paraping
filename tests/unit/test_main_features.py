@@ -19,10 +19,11 @@ import sys
 import unittest
 from unittest.mock import patch
 
-# Add parent directory to path to import main
+# Add parent directory to path to import package modules
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from main import latest_ttl_value, render_fullscreen_rtt_graph, render_host_selection_view, render_summary_view  # noqa: E402
+from paraping.stats import latest_ttl_value  # noqa: E402
+from paraping.ui_render import render_fullscreen_rtt_graph, render_host_selection_view, render_summary_view  # noqa: E402
 
 
 class TestTTLFunctionality(unittest.TestCase):
@@ -146,10 +147,10 @@ class TestHostSelectionKeyBindings(unittest.TestCase):
         """Test that 'k' key moves selection up (previous)"""
         # Setup mock objects
         with (
-            patch("main.get_terminal_size") as mock_term_size,
-            patch("main.read_key") as mock_read_key,
-            patch("main.render_display"),
-            patch("main.ThreadPoolExecutor"),
+            patch("paraping.ui_render.get_terminal_size") as mock_term_size,
+            patch("paraping.cli.read_key") as mock_read_key,
+            patch("paraping.cli.render_display"),
+            patch("paraping.cli.ThreadPoolExecutor"),
         ):
 
             mock_term_size.return_value = type("obj", (object,), {"columns": 80, "lines": 24})
@@ -162,19 +163,19 @@ class TestHostSelectionKeyBindings(unittest.TestCase):
 
     def test_j_key_moves_selection_down(self):
         """Test that 'j' key moves selection down (next)"""
-        # This is validated through the code changes in main.py.
+        # This is validated through the code changes in top-level script shim.
         # The key handler for 'j' increments host_select_index.
         pass
 
     def test_enter_key_selects_host(self):
         """Test that ENTER key selects the current host"""
-        # This is validated through the code changes in main.py
+        # This is validated through the code changes in top-level script shim
         # The key handler for '\r' and '\n' sets graph_host_id
         pass
 
     def test_esc_key_cancels_host_selection(self):
         """Test that ESC key exits host selection without selecting"""
-        # This is validated through the code changes in main.py
+        # This is validated through the code changes in top-level script shim
         # The key handler for '\x1b' (ESC) sets host_select_active = False
         pass
 

@@ -19,10 +19,11 @@ import sys
 import unittest
 from unittest.mock import mock_open, patch
 
-# Add parent directory to path to import main
+# Add parent directory to path to import package modules
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from main import handle_options, read_input_file  # noqa: E402
+from paraping.cli import handle_options  # noqa: E402
+from paraping.core import read_input_file  # noqa: E402
 
 
 class TestHandleOptions(unittest.TestCase):
@@ -30,7 +31,7 @@ class TestHandleOptions(unittest.TestCase):
 
     def test_default_options(self):
         """Test default option values"""
-        with patch("sys.argv", ["main.py", "example.com"]):
+        with patch("sys.argv", ["paraping", "example.com"]):
             args = handle_options()
             self.assertEqual(args.timeout, 1)
             self.assertEqual(args.count, 0)
@@ -42,38 +43,38 @@ class TestHandleOptions(unittest.TestCase):
 
     def test_custom_timeout(self):
         """Test custom timeout option"""
-        with patch("sys.argv", ["main.py", "-t", "5", "example.com"]):
+        with patch("sys.argv", ["paraping", "-t", "5", "example.com"]):
             args = handle_options()
             self.assertEqual(args.timeout, 5)
 
     def test_custom_count(self):
         """Test custom count option"""
-        with patch("sys.argv", ["main.py", "-c", "10", "example.com"]):
+        with patch("sys.argv", ["paraping", "-c", "10", "example.com"]):
             args = handle_options()
             self.assertEqual(args.count, 10)
 
     def test_verbose_flag(self):
         """Test verbose flag"""
-        with patch("sys.argv", ["main.py", "-v", "example.com"]):
+        with patch("sys.argv", ["paraping", "-v", "example.com"]):
             args = handle_options()
             self.assertTrue(args.verbose)
 
     def test_multiple_hosts(self):
         """Test multiple hosts"""
-        with patch("sys.argv", ["main.py", "host1.com", "host2.com", "host3.com"]):
+        with patch("sys.argv", ["paraping", "host1.com", "host2.com", "host3.com"]):
             args = handle_options()
             self.assertEqual(len(args.hosts), 3)
             self.assertIn("host1.com", args.hosts)
 
     def test_custom_interval(self):
         """Test custom interval option"""
-        with patch("sys.argv", ["main.py", "-i", "0.5", "example.com"]):
+        with patch("sys.argv", ["paraping", "-i", "0.5", "example.com"]):
             args = handle_options()
             self.assertEqual(args.interval, 0.5)
 
     def test_infinite_count(self):
         """Test infinite count (count=0)"""
-        with patch("sys.argv", ["main.py", "-c", "0", "example.com"]):
+        with patch("sys.argv", ["paraping", "-c", "0", "example.com"]):
             args = handle_options()
             self.assertEqual(args.count, 0)
 
@@ -82,7 +83,7 @@ class TestHandleOptions(unittest.TestCase):
         with patch(
             "sys.argv",
             [
-                "main.py",
+                "top-level script shim",
                 "-s",
                 "0.7",
                 "-P",
@@ -120,28 +121,28 @@ class TestHandleOptions(unittest.TestCase):
 
     def test_log_level_flag(self):
         """Test log level flag"""
-        with patch("sys.argv", ["main.py", "--log-level", "debug", "example.com"]):
+        with patch("sys.argv", ["paraping", "--log-level", "debug", "example.com"]):
             args = handle_options()
             self.assertEqual(args.log_level, "DEBUG")
 
     def test_log_file_flag(self):
         """Test log file flag"""
-        with patch("sys.argv", ["main.py", "--log-file", "/tmp/para.log", "example.com"]):
+        with patch("sys.argv", ["paraping", "--log-file", "/tmp/para.log", "example.com"]):
             args = handle_options()
             self.assertEqual(args.log_file, "/tmp/para.log")
 
     def test_interval_out_of_range(self):
         """Test interval range enforcement."""
-        with patch("sys.argv", ["main.py", "-i", "0.01", "example.com"]):
+        with patch("sys.argv", ["paraping", "-i", "0.01", "example.com"]):
             with self.assertRaises(SystemExit):
                 handle_options()
-        with patch("sys.argv", ["main.py", "-i", "61", "example.com"]):
+        with patch("sys.argv", ["paraping", "-i", "61", "example.com"]):
             with self.assertRaises(SystemExit):
                 handle_options()
 
     def test_timeout_must_be_positive(self):
         """Test timeout validation."""
-        with patch("sys.argv", ["main.py", "-t", "0", "example.com"]):
+        with patch("sys.argv", ["paraping", "-t", "0", "example.com"]):
             with self.assertRaises(SystemExit):
                 handle_options()
 

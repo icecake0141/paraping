@@ -1,19 +1,19 @@
-"""Render state resolution for v2 live and history modes."""
+"""Render state resolution for runtime live and history modes."""
 
 from collections import deque
 from typing import Any, Dict, Optional, Tuple
 
-from paraping_v2.engine import MonitorState
+from paraping.runtime.engine import MonitorState
 
 
-def resolve_v2_render_state(
+def resolve_render_state(
     history_offset: int,
     history_buffer: "deque[Dict[str, Any]]",
     live_state: MonitorState,
     paused: bool,
 ) -> Tuple[MonitorState, bool, Optional[float]]:
     """
-    Resolve which v2 state should be rendered.
+    Resolve which runtime state should be rendered.
 
     Returns:
         (state_to_render, render_paused, snapshot_timestamp)

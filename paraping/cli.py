@@ -28,7 +28,7 @@ import time
 import tty
 import warnings
 from collections import deque
-from concurrent.futures import ThreadPoolExecutor  # noqa: F401 - Backward-compatibility for tests patching this symbol.
+from concurrent.futures import ThreadPoolExecutor  # noqa: F401 - tests patch for tests patching this symbol.
 from datetime import datetime, timezone, tzinfo
 from typing import Any, Callable, Dict, List, Optional, Union
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -46,6 +46,15 @@ from paraping.input_keys import read_key
 from paraping.keymap import KeyContext, resolve_action
 from paraping.network_asn import asn_worker, should_retry_asn
 from paraping.pinger import rdns_worker, scheduler_driven_worker_ping
+from paraping.runtime.constants import HISTORY_DURATION_MINUTES, MAX_HOST_THREADS, SNAPSHOT_INTERVAL_SECONDS
+from paraping.runtime.engine import MonitorState
+from paraping.runtime.event_mirror import mirror_ping_event
+from paraping.runtime.history import update_history_buffer
+from paraping.runtime.rate_limit import validate_global_rate_limit
+from paraping.runtime.render_projection import project_render_state
+from paraping.runtime.render_state import resolve_render_state
+from paraping.runtime.scheduler import Scheduler
+from paraping.runtime.sequence_tracker import SequenceTracker
 from paraping.ui_render import (
     build_display_entries,
     build_display_lines,
@@ -69,15 +78,6 @@ from paraping.ui_render import (
     should_show_asn,
     toggle_panel_visibility,
 )
-from paraping_v2.constants import HISTORY_DURATION_MINUTES, MAX_HOST_THREADS, SNAPSHOT_INTERVAL_SECONDS
-from paraping_v2.engine import MonitorState
-from paraping_v2.history import update_history_buffer_v2
-from paraping_v2.legacy_adapter import project_legacy_state_from_v2
-from paraping_v2.rate_limit import validate_global_rate_limit
-from paraping_v2.render_state import resolve_v2_render_state
-from paraping_v2.scheduler import Scheduler
-from paraping_v2.sequence_tracker import SequenceTracker
-from paraping_v2.shadow import apply_shadow_v2_event
 
 REMOVED_HOST_RETENTION_SECONDS = 10.0
 INTERVAL_STEP_SECONDS = 0.1
@@ -124,7 +124,7 @@ def _compute_runtime_timeline_width(state: Dict[str, Any], term_size: Any) -> in
     """
     Compute the current timeline width from live terminal/layout state.
 
-    This is used to keep v2 timeline buffers aligned with runtime terminal
+    This is used to keep runtime timeline buffers aligned with runtime terminal
     resizing so history capacity does not remain stuck at startup width.
     """
     normalized_size = _normalize_term_size(term_size)
@@ -497,9 +497,9 @@ def _setup_hosts_and_state(args: argparse.Namespace) -> Optional[Dict[str, Any]]
         "symbols": symbols,
         "host_infos": host_infos,
         "host_info_map": host_info_map,
-        # Shadow state for incremental v2 migration. This does not affect
+        # Shadow state for incremental runtime migration. This does not affect
         # rendering yet; it only mirrors ping events for parity validation.
-        "v2_state": MonitorState(host_ids=[info["id"] for info in host_infos], timeline_width=timeline_width),
+        "monitor_state": MonitorState(host_ids=[info["id"] for info in host_infos], timeline_width=timeline_width),
         "result_queue": queue.Queue(),
     }
 
@@ -653,7 +653,7 @@ def _apply_manual_reload(
         new_info = _build_host_info_from_entry(entry, state["next_host_id"])
         state["next_host_id"] += 1
         state["host_infos"].append(new_info)
-        state["v2_state"].add_host(new_info["id"])
+        state["monitor_state"].add_host(new_info["id"])
         with ping_lock:
             scheduler.add_host(new_info["host"], host_id=new_info["id"])
             host_count = scheduler.get_host_count()
@@ -695,7 +695,7 @@ def _purge_expired_removed_hosts(state: Dict[str, Any]) -> None:
 
     state["host_infos"] = remaining_infos
     for host_id in purged_ids:
-        state["v2_state"].remove_host(host_id)
+        state["monitor_state"].remove_host(host_id)
         state["worker_threads"].pop(host_id, None)
         state["done_host_ids"].discard(host_id)
         if state.get("graph_host_id") == host_id:
@@ -1054,7 +1054,7 @@ def _handle_user_input(
         state["updated"] = True
 
     def _handle_history_prev() -> None:
-        if state["v2_history_offset"] < len(state["v2_history_buffer"]) - 1:
+        if state["history_offset"] < len(state["history_buffer"]) - 1:
             page_step, state["cached_page_step"], state["last_term_size"] = get_cached_page_step(
                 state["cached_page_step"],
                 state["last_term_size"],
@@ -1070,15 +1070,15 @@ def _handle_user_input(
                 state["show_asn"],
                 pulse_position=state["pulse_position"],
             )
-            state["v2_history_offset"] = min(state["v2_history_offset"] + page_step, len(state["v2_history_buffer"]) - 1)
+            state["history_offset"] = min(state["history_offset"] + page_step, len(state["history_buffer"]) - 1)
             state["force_render"] = True
             state["updated"] = True
-            if 0 < state["v2_history_offset"] <= len(state["v2_history_buffer"]):
-                snapshot = state["v2_history_buffer"][-(state["v2_history_offset"] + 1)]
+            if 0 < state["history_offset"] <= len(state["history_buffer"]):
+                snapshot = state["history_buffer"][-(state["history_offset"] + 1)]
                 state["status_message"] = f"Viewing {int(time.time() - snapshot['timestamp'])}s ago"
 
     def _handle_history_next() -> None:
-        if state["v2_history_offset"] > 0:
+        if state["history_offset"] > 0:
             page_step, state["cached_page_step"], state["last_term_size"] = get_cached_page_step(
                 state["cached_page_step"],
                 state["last_term_size"],
@@ -1094,14 +1094,14 @@ def _handle_user_input(
                 state["show_asn"],
                 pulse_position=state["pulse_position"],
             )
-            state["v2_history_offset"] = max(0, state["v2_history_offset"] - page_step)
+            state["history_offset"] = max(0, state["history_offset"] - page_step)
             state["force_render"] = True
             state["updated"] = True
-            if state["v2_history_offset"] == 0:
+            if state["history_offset"] == 0:
                 state["status_message"] = "Returned to LIVE view"
             else:
-                if 0 < state["v2_history_offset"] <= len(state["v2_history_buffer"]):
-                    snapshot = state["v2_history_buffer"][-(state["v2_history_offset"] + 1)]
+                if 0 < state["history_offset"] <= len(state["history_buffer"]):
+                    snapshot = state["history_buffer"][-(state["history_offset"] + 1)]
                     state["status_message"] = f"Viewing {int(time.time() - snapshot['timestamp'])}s ago"
 
     def _handle_host_scroll(delta: int) -> None:
@@ -1186,7 +1186,7 @@ def _update_render_state(state: Dict[str, Any]) -> None:
     _check_terminal_resize_and_request_redraw(state, time.monotonic())
 
     runtime_timeline_width = _compute_runtime_timeline_width(state, get_terminal_size(fallback=(80, 24)))
-    if state["v2_state"].resize_timeline_width(runtime_timeline_width):
+    if state["monitor_state"].resize_timeline_width(runtime_timeline_width):
         state["updated"] = True
         state["force_render"] = True
 
@@ -1237,7 +1237,7 @@ def _update_render_state(state: Dict[str, Any]) -> None:
             continue
 
         status = result["status"]
-        apply_shadow_v2_event(state["v2_state"], result, status, host_id)
+        mirror_ping_event(state["monitor_state"], result, status, host_id)
         if should_flash_on_fail(status, state["flash_on_fail"], state["show_help"]):
             flash_screen()
         if status == "fail" and state["bell_on_fail"] and not state["show_help"]:
@@ -1246,20 +1246,20 @@ def _update_render_state(state: Dict[str, Any]) -> None:
             state["updated"] = True
 
     now = time.time()
-    state["v2_last_snapshot_time"], state["v2_history_offset"] = update_history_buffer_v2(
-        state["v2_history_buffer"],
-        state["v2_state"],
+    state["last_snapshot_time"], state["history_offset"] = update_history_buffer(
+        state["history_buffer"],
+        state["monitor_state"],
         now,
-        state["v2_last_snapshot_time"],
-        state["v2_history_offset"],
+        state["last_snapshot_time"],
+        state["history_offset"],
     )
-    render_v2_state, state["render_paused"], state["render_snapshot_timestamp"] = resolve_v2_render_state(
-        state["v2_history_offset"],
-        state["v2_history_buffer"],
-        state["v2_state"],
+    render_monitor_state, state["render_paused"], state["render_snapshot_timestamp"] = resolve_render_state(
+        state["history_offset"],
+        state["history_buffer"],
+        state["monitor_state"],
         state["paused"],
     )
-    state["render_buffers"], state["render_stats"] = project_legacy_state_from_v2(render_v2_state, state["symbols"])
+    state["render_buffers"], state["render_stats"] = project_render_state(render_monitor_state, state["symbols"])
     _purge_expired_removed_hosts(state)
 
 
@@ -1410,7 +1410,7 @@ def run(args: argparse.Namespace) -> None:
         f"ParaPing - Pinging {len(setup['all_hosts'])} host(s) with timeout={args.timeout}s, "
         f"count={count_label}, interval={args.interval}s, slow-threshold={args.slow_threshold}s"
     )
-    initial_render_buffers, initial_render_stats = project_legacy_state_from_v2(setup["v2_state"], setup["symbols"])
+    initial_render_buffers, initial_render_stats = project_render_state(setup["monitor_state"], setup["symbols"])
     initial_term_size = get_terminal_size(fallback=(80, 24))
     now_monotonic = time.monotonic()
     modes = ["ip", "rdns", "alias"]
@@ -1470,9 +1470,9 @@ def run(args: argparse.Namespace) -> None:
         "host_select_active": False,
         "host_select_index": 0,
         "graph_host_id": None,
-        "v2_history_buffer": deque(maxlen=int(HISTORY_DURATION_MINUTES * 60 / SNAPSHOT_INTERVAL_SECONDS)),
-        "v2_history_offset": 0,
-        "v2_last_snapshot_time": 0.0,
+        "history_buffer": deque(maxlen=int(HISTORY_DURATION_MINUTES * 60 / SNAPSHOT_INTERVAL_SECONDS)),
+        "history_offset": 0,
+        "last_snapshot_time": 0.0,
         "cached_page_step": None,
         "last_term_size": None,
         "host_scroll_offset": 0,
@@ -1581,7 +1581,7 @@ def run(args: argparse.Namespace) -> None:
         if not info.get("active", True):
             continue
         host_id = info["id"]
-        host_stats = state["v2_state"].stats[host_id]
+        host_stats = state["monitor_state"].stats[host_id]
         success = host_stats.success
         slow = host_stats.slow
         fail = host_stats.fail

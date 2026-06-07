@@ -1,16 +1,16 @@
-"""Shadow-mode helpers for incremental migration to v2."""
+"""Shadow-mode helpers for incremental migration to runtime."""
 
 import time
 from typing import Any, Dict
 
-from paraping_v2.domain import PingEvent, PingStatus
+from paraping.runtime.domain import PingEvent, PingStatus
 
 
-def apply_shadow_v2_event(v2_state: Any, result: Dict[str, Any], status: PingStatus, host_id: int) -> None:
+def mirror_ping_event(monitor_state: Any, result: Dict[str, Any], status: PingStatus, host_id: int) -> None:
     """
-    Mirror one ping event into v2 state.
+    Mirror one ping event into runtime state.
 
-    This function intentionally accepts ``Any`` for ``v2_state`` so the caller
+    This function intentionally accepts ``Any`` for ``monitor_state`` so the caller
     can pass monitor state without introducing circular dependencies.
     """
     if status not in ("sent", "success", "slow", "fail"):
@@ -26,4 +26,4 @@ def apply_shadow_v2_event(v2_state: Any, result: Dict[str, Any], status: PingSta
         rtt_seconds=result.get("rtt"),
         ttl=result.get("ttl"),
     )
-    v2_state.apply_event(event)
+    monitor_state.apply_event(event)

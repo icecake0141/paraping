@@ -1,13 +1,13 @@
-"""Unit tests for host helpers in paraping_v2.hosts."""
+"""Unit tests for host helpers in paraping.runtime.hosts."""
 
 from unittest.mock import patch
 
-from paraping_v2.hosts import (
+from paraping.runtime.hosts import (
     HostInputReport,
-    build_host_infos_v2,
-    parse_host_file_line_v2,
-    read_input_file_v2,
-    read_input_file_with_report_v2,
+    build_host_infos,
+    parse_host_file_line,
+    read_input_file,
+    read_input_file_with_report,
 )
 
 
@@ -23,35 +23,35 @@ class _LoggerStub:
         self.errors.append(msg % args if args else msg)
 
 
-def test_parse_host_file_line_v2_parses_valid_entry() -> None:
+def test_parse_host_file_line_parses_valid_entry() -> None:
     logger = _LoggerStub()
-    result = parse_host_file_line_v2("192.0.2.1,alias", 1, "hosts.txt", logger)
+    result = parse_host_file_line("192.0.2.1,alias", 1, "hosts.txt", logger)
     assert result == {"host": "192.0.2.1", "alias": "alias", "ip": "192.0.2.1"}
     assert logger.warnings == []
 
 
-def test_read_input_file_v2_returns_empty_for_missing_file() -> None:
+def test_read_input_file_returns_empty_for_missing_file() -> None:
     logger = _LoggerStub()
-    result = read_input_file_v2("/tmp/does-not-exist-v2-hosts.txt", logger)
+    result = read_input_file("/tmp/does-not-exist-runtime-hosts.txt", logger)
     assert result == []
     assert logger.errors
 
 
-def test_parse_host_file_line_v2_parses_extended_entry() -> None:
+def test_parse_host_file_line_parses_extended_entry() -> None:
     logger = _LoggerStub()
-    result = parse_host_file_line_v2("192.0.2.2,alias-a,Tokyo,core;prod", 1, "hosts.txt", logger)
+    result = parse_host_file_line("192.0.2.2,alias-a,Tokyo,core;prod", 1, "hosts.txt", logger)
     assert result is not None
     assert result["site"] == "Tokyo"
     assert result["tags"] == ["core", "prod"]
 
 
-def test_parse_host_file_line_v2_skips_header_row() -> None:
+def test_parse_host_file_line_skips_header_row() -> None:
     logger = _LoggerStub()
-    result = parse_host_file_line_v2("host,alias,site,tags", 1, "hosts.txt", logger)
+    result = parse_host_file_line("host,alias,site,tags", 1, "hosts.txt", logger)
     assert result is None
 
 
-def test_read_input_file_with_report_v2_collects_format_errors() -> None:
+def test_read_input_file_with_report_collects_format_errors() -> None:
     logger = _LoggerStub()
     with patch(
         "builtins.open",
@@ -66,7 +66,7 @@ def test_read_input_file_with_report_v2_collects_format_errors() -> None:
                 "192.0.2.12,ok-b\n",
             ]
         )
-        entries, report = read_input_file_with_report_v2("hosts.txt", logger)
+        entries, report = read_input_file_with_report("hosts.txt", logger)
 
     assert len(entries) == 2
     assert isinstance(report, HostInputReport)
@@ -79,12 +79,12 @@ def test_read_input_file_with_report_v2_collects_format_errors() -> None:
 
 
 @patch("socket.getaddrinfo")
-def test_build_host_infos_v2_prefers_ipv4(mock_getaddrinfo) -> None:
+def test_build_host_infos_prefers_ipv4(mock_getaddrinfo) -> None:
     logger = _LoggerStub()
     mock_getaddrinfo.return_value = [
         (2, 3, 0, "", ("198.51.100.10", 0)),  # AF_INET
         (10, 3, 0, "", ("2001:db8::10", 0, 0, 0)),  # AF_INET6
     ]
-    host_infos, host_map = build_host_infos_v2(["example.com"], logger)
+    host_infos, host_map = build_host_infos(["example.com"], logger)
     assert host_infos[0]["ip"] == "198.51.100.10"
     assert "example.com" in host_map

@@ -1,14 +1,14 @@
-"""Unit tests for paging helpers in paraping_v2.paging."""
+"""Unit tests for paging helpers in paraping.runtime.paging."""
 
 import os
 from collections import deque
 from unittest.mock import patch
 
-from paraping_v2.paging import get_cached_page_step_v2
+from paraping.runtime.paging import get_cached_page_step
 
 
 @patch("paraping.ui_render.get_terminal_size")
-def test_get_cached_page_step_v2_uses_cache_when_term_size_unchanged(mock_term_size) -> None:
+def test_get_cached_page_step_uses_cache_when_term_size_unchanged(mock_term_size) -> None:
     mock_term_size.return_value = os.terminal_size((80, 24))
     host_infos = [
         {
@@ -47,7 +47,7 @@ def test_get_cached_page_step_v2_uses_cache_when_term_size_unchanged(mock_term_s
         }
     }
     symbols = {"success": ".", "slow": "~", "fail": "x"}
-    page_step, cached, _ = get_cached_page_step_v2(
+    page_step, cached, _ = get_cached_page_step(
         50,
         (80, 24),
         host_infos,

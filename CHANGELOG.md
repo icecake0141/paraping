@@ -17,7 +17,7 @@ Review required for correctness, security, and licensing.
 All notable changes to ParaPing will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+and this project adheres to [Semantic Versioning](https://semver.org/spec/runtime.0.0.html).
 
 ## [Unreleased]
 
@@ -34,7 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - **vNext+1**: removed
 
 ### Migration Notes
-- Update scripts/aliases that still use legacy flags:
+- Update scripts/aliases that still use old flags:
   - `--verbose` -> `--log-level DEBUG`
   - `--verbose-ui-errors` -> `--ui-log-errors`
 

@@ -36,7 +36,7 @@ from paraping.pinger import (  # noqa: E402  # pylint: disable=wrong-import-posi
     scheduler_driven_ping_host,
     worker_ping,
 )
-from paraping.scheduler import Scheduler  # noqa: E402  # pylint: disable=wrong-import-position
+from paraping.runtime.scheduler import Scheduler  # noqa: E402  # pylint: disable=wrong-import-position
 
 
 class TestPingHost(unittest.TestCase):
