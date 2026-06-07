@@ -21,15 +21,14 @@ view rendering, graph utilities, formatting functions, and terminal utilities.
 
 import math
 import os
-import re
 import sys
 import textwrap
 import time
-import unicodedata
 from collections import deque
 from datetime import datetime, timezone, tzinfo
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
+from paraping import ui_text as _ui_text
 from paraping.keymap import build_help_items
 from paraping.stats import (
     build_summary_all_suffix,
@@ -45,16 +44,21 @@ from paraping.stats import (
     resolve_primary_group_label,
     resolve_site_tag1_labels,
 )
+from paraping.ui_text import (
+    ANSI_RESET,
+    STATUS_COLORS,
+    colorize_text,
+    pad_visible,
+    rjust_visible,
+    strip_ansi,
+    visible_cell_width,
+    visible_len,
+)
 
-# ANSI and display constants (imported from main)
-ANSI_RESET = "\x1b[0m"
-ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
-STATUS_COLORS = {
-    "success": "\x1b[37m",  # White
-    "slow": "\x1b[33m",  # Yellow
-    "fail": "\x1b[31m",  # Red
-    "pending": "\x1b[90m",  # Dark gray (bright black)
-}
+ANSI_ESCAPE_RE = _ui_text.ANSI_ESCAPE_RE
+truncate_visible = _ui_text.truncate_visible
+
+# Display constants
 ACTIVITY_INDICATOR_WIDTH = 10
 ACTIVITY_INDICATOR_HEIGHT = 4
 ACTIVITY_INDICATOR_SPEED_HZ = 8
@@ -70,91 +74,6 @@ KITT_SCANNER_STATE: Dict[str, float] = {
     "scanner_phase": 0.0,
     "last_error_ratio": 0.0,
 }
-
-
-# ============================================================================
-# ANSI/Text Utility Functions
-# ============================================================================
-
-
-def strip_ansi(text: str) -> str:
-    """Remove ANSI escape sequences from text."""
-    return ANSI_ESCAPE_RE.sub("", text)
-
-
-def visible_len(text: str) -> int:
-    """Get the visible length of text (excluding ANSI codes)."""
-    return len(strip_ansi(text))
-
-
-def visible_cell_width(text: str) -> int:
-    """Get the terminal cell width of text, excluding ANSI codes."""
-    width = 0
-    index = 0
-    while index < len(text):
-        if text[index] == "\x1b":
-            match = ANSI_ESCAPE_RE.match(text, index)
-            if match:
-                index = match.end()
-                continue
-        char = text[index]
-        index += 1
-        if unicodedata.combining(char):
-            continue
-        width += 2 if unicodedata.east_asian_width(char) in ("F", "W") else 1
-    return width
-
-
-def truncate_visible(text: str, width: int) -> Tuple[str, int]:
-    """
-    Truncate text to a visible width, preserving ANSI codes.
-
-    Returns:
-        Tuple of (truncated_text, visible_count)
-    """
-    result = []
-    visible_count = 0
-    index = 0
-    while index < len(text) and visible_count < width:
-        if text[index] == "\x1b":
-            match = ANSI_ESCAPE_RE.match(text, index)
-            if match:
-                result.append(match.group(0))
-                index = match.end()
-                continue
-        result.append(text[index])
-        index += 1
-        visible_count += 1
-    truncated = "".join(result)
-    if "\x1b[" in truncated and not truncated.endswith(ANSI_RESET):
-        truncated += ANSI_RESET
-    return truncated, visible_count
-
-
-def pad_visible(text: str, width: int) -> str:
-    """Pad text to a visible width, preserving ANSI codes."""
-    truncated, visible_count = truncate_visible(text, width)
-    if visible_count < width:
-        truncated += " " * (width - visible_count)
-    return truncated
-
-
-def rjust_visible(text: str, width: int) -> str:
-    """Right-justify text to a visible width, preserving ANSI codes."""
-    padding = width - visible_len(text)
-    if padding <= 0:
-        return text
-    return f"{' ' * padding}{text}"
-
-
-def colorize_text(text: str, status: Optional[str], use_color: bool) -> str:
-    """Apply color to text based on status."""
-    if not use_color or not status:
-        return text
-    color = STATUS_COLORS.get(status)
-    if not color:
-        return text
-    return f"{color}{text}{ANSI_RESET}"
 
 
 def status_from_symbol(symbol: str, symbols: Dict[str, str]) -> Optional[str]:
