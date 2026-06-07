@@ -44,10 +44,15 @@ jobs:
       - name: Configure Pages
         uses: actions/configure-pages@v6
 
-      - name: Upload static docs
+      - name: Build Pages artifact
+        run: |
+          mkdir -p _site
+          cp -R docs/tour _site/tour
+
+      - name: Upload tour site
         uses: actions/upload-pages-artifact@v4
         with:
-          path: docs
+          path: _site
 
       - name: Deploy
         id: deployment
