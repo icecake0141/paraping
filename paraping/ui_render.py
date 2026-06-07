@@ -27,6 +27,7 @@ from collections import deque
 from datetime import datetime, timezone, tzinfo
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
+from paraping import ui_graph as _ui_graph
 from paraping import ui_panels as _ui_panels
 from paraping import ui_text as _ui_text
 from paraping.stats import (
@@ -54,13 +55,18 @@ from paraping.ui_text import (
 
 ANSI_ESCAPE_RE = _ui_text.ANSI_ESCAPE_RE
 truncate_visible = _ui_text.truncate_visible
+build_ascii_graph = _ui_graph.build_ascii_graph
+build_sparkline = _ui_graph.build_sparkline
+build_time_axis = _ui_graph.build_time_axis
 box_lines = _ui_panels.box_lines
 can_render_full_summary = _ui_panels.can_render_full_summary
 format_summary_line = _ui_panels.format_summary_line
 pad_lines = _ui_panels.pad_lines
+render_fullscreen_rtt_graph = _ui_graph.render_fullscreen_rtt_graph
 render_help_view = _ui_panels.render_help_view
 render_status_box = _ui_panels.render_status_box
 render_summary_view = _ui_panels.render_summary_view
+resample_values = _ui_graph.resample_values
 resolve_boxed_dimensions = _ui_panels.resolve_boxed_dimensions
 
 # Display constants
@@ -938,96 +944,6 @@ def resize_buffers(buffers: Dict[int, Dict[str, Any]], timeline_width: int, symb
 
 
 # ============================================================================
-# Graph Utilities
-# ============================================================================
-
-
-def build_sparkline(rtt_values: Sequence[Optional[float]], status_symbols: Sequence[str], fail_symbol: str) -> str:
-    """Build a sparkline from RTT values."""
-    spark_chars = "▁▂▃▄▅▆▇█"
-    if rtt_values:
-        numeric_values = [value for value in rtt_values if value is not None]
-    else:
-        numeric_values = []
-
-    if numeric_values:
-        min_val = min(numeric_values)
-        max_val = max(numeric_values)
-        span = max_val - min_val
-        if span == 0:
-            span = 1
-        indices = []
-        for value in rtt_values:
-            if value is None:
-                indices.append(0)
-            else:
-                idx = round((value - min_val) / span * (len(spark_chars) - 1))
-                indices.append(max(0, min(len(spark_chars) - 1, idx)))
-    else:
-        indices = []
-        for symbol in status_symbols:
-            if symbol == fail_symbol:
-                indices.append(0)
-            else:
-                indices.append(len(spark_chars) - 1)
-
-    return "".join(spark_chars[idx] for idx in indices)
-
-
-def build_ascii_graph(values: Sequence[Optional[float]], width: int, height: int, style: str = "line") -> List[str]:
-    """Build an ASCII graph from values."""
-    if width <= 0 or height <= 0:
-        return []
-
-    trimmed_values: List[Optional[float]] = list(values[-width:]) if values else []
-    if len(trimmed_values) < width:
-        padding: List[Optional[float]] = [None] * (width - len(trimmed_values))
-        trimmed_values = padding + trimmed_values
-
-    numeric_values = [value for value in trimmed_values if value is not None]
-    if not numeric_values:
-        return [" " * width for _ in range(height)]
-
-    min_val = min(numeric_values)
-    max_val = max(numeric_values)
-    span = max_val - min_val
-    if span == 0:
-        span = 1.0
-
-    grid = [[" " for _ in range(width)] for _ in range(height)]
-    for x, value in enumerate(trimmed_values):
-        if value is None:
-            grid[height - 1][x] = "x"
-            continue
-        scaled = int(round((value - min_val) / span * (height - 1)))
-        y = height - 1 - scaled
-        if style == "bar":
-            for y_fill in range(y, height):
-                grid[y_fill][x] = "#"
-        else:
-            grid[y][x] = "*"
-
-    return ["".join(row) for row in grid]
-
-
-def resample_values(values: Sequence[Optional[float]], target_width: int) -> List[Optional[float]]:
-    """Resample values to fit a target width."""
-    if target_width <= 0:
-        return []
-    if not values:
-        return [None] * target_width
-    if target_width == 1:
-        return [values[-1]]
-    if len(values) == 1:
-        return [values[0]] * target_width
-    if len(values) == target_width:
-        return list(values)
-
-    last_index = len(values) - 1
-    return [values[round(i * last_index / (target_width - 1))] for i in range(target_width)]
-
-
-# ============================================================================
 # Display Building Functions
 # ============================================================================
 
@@ -1278,68 +1194,6 @@ def build_display_entries(  # noqa: C901
             entries.sort(key=lambda item: item["label"])
 
     return [(entry["host_id"], entry["label"]) for entry in entries]
-
-
-def build_time_axis(
-    timeline_width: int,
-    label_width: int,
-    interval_seconds: float = 1.0,
-    label_period_seconds: float = 10.0,
-) -> str:
-    """
-    Build a time axis string for the timeline/sparkline view.
-
-    The axis shows time labels (e.g., "30", "20", "10") at regular intervals,
-    representing seconds-ago values that decrease from left to right.
-
-    Args:
-        timeline_width: Width of the timeline area in characters
-        label_width: Width of the label column (for alignment with timeline)
-        interval_seconds: Ping interval in seconds (time per column)
-        label_period_seconds: Time between axis labels in seconds
-
-    Returns:
-        Formatted axis string with padding and labels
-    """
-    if timeline_width <= 0:
-        return ""
-
-    # Build the axis from left to right with decreasing "seconds ago" values.
-    # The leftmost column is oldest, and the rightmost column is newest (0s ago).
-    axis_chars = [" "] * timeline_width
-
-    # Place labels at regular intervals, checking for overlaps
-    for i in range(timeline_width):
-        # Time from right (seconds ago), so rightmost column is 0s.
-        time_from_right = (timeline_width - 1 - i) * interval_seconds
-
-        # Check if this position should have a label
-        # We want labels at label_period, 2*label_period, ... from the right.
-        # 0 is intentionally omitted.
-        if i > 0 and abs(time_from_right % label_period_seconds) < interval_seconds and time_from_right >= interval_seconds:
-            label_value = int(time_from_right)
-            label_str = str(label_value)
-
-            # Check if label fits and doesn't overlap with existing labels
-            if i + len(label_str) <= timeline_width:
-                # Check for overlap: ensure all positions (plus a one-char gap) are empty
-                overlap = False
-                start_index = max(0, i - 1)
-                end_index = min(timeline_width, i + len(label_str) + 1)
-                for j in range(start_index, end_index):
-                    if axis_chars[j] != " ":
-                        overlap = True
-                        break
-
-                # Place label only if no overlap
-                if not overlap:
-                    for j, char in enumerate(label_str):
-                        if i + j < timeline_width:
-                            axis_chars[i + j] = char
-
-    axis_timeline = "".join(axis_chars)
-    # Add label padding and separator to match timeline format
-    return f"{' ' * label_width} | {axis_timeline}"
 
 
 def format_status_line(host: str, timeline: str, label_width: int) -> str:
@@ -2047,83 +1901,6 @@ def render_host_selection_view(
         remaining = len(display_entries) - end_index
         lines.append(f"... ({remaining} more)".ljust(width)[:width])
 
-    lines = pad_lines(lines, width, height)
-    lines[-1] = status_line[:width].ljust(width)
-    return lines
-
-
-def render_fullscreen_rtt_graph(
-    host_label: str,
-    rtt_values: Sequence[Optional[float]],
-    time_history: Sequence[Optional[float]],
-    width: int,
-    height: int,
-    display_mode: str,
-    paused: bool,
-    timestamp: str,
-    dormant: bool = False,
-) -> List[str]:
-    """Render a fullscreen RTT graph for a selected host."""
-    if width <= 0 or height <= 0:
-        return []
-
-    graph_style = "bar" if display_mode == "sparkline" else "line"
-    pause_label = "DORMANT" if dormant else ("PAUSED" if paused else "LIVE")
-    graph_label = "Bar" if graph_style == "bar" else "Line"
-    header = f"ParaPing - {pause_label} RTT Graph " f"[{host_label} | {graph_label}] {timestamp}"
-
-    rtt_ms = [value * 1000 if value is not None else None for value in rtt_values]
-    numeric_values = [value for value in rtt_ms if value is not None]
-    if numeric_values:
-        min_val = min(numeric_values)
-        max_val = max(numeric_values)
-        latest_val = numeric_values[-1]
-        range_line = "RTT range (Y-axis, ms): " f"{min_val:.1f}-{max_val:.1f} | latest: {latest_val:.1f}"
-    else:
-        min_val = max_val = 0.0
-        range_line = "RTT range (Y-axis, ms): n/a"
-
-    status_line = "ESC: back | v: toggle graph | x: select host"
-
-    y_tick_labels = [
-        f"{max_val:.1f}",
-        f"{(min_val + max_val) / 2:.1f}",
-        f"{min_val:.1f}",
-    ]
-    y_axis_width = max(len(label) for label in y_tick_labels) if numeric_values else 1
-    graph_width = max(1, width - y_axis_width - 3)
-
-    graph_height = max(0, height - 5)
-    resampled_values = resample_values(rtt_ms, graph_width)
-    resampled_times = resample_values(time_history, graph_width)
-    graph_lines = build_ascii_graph(resampled_values, graph_width, graph_height, style=graph_style)
-    if not numeric_values and graph_height > 0:
-        message = "No RTT samples yet"
-        message_line = message[:graph_width].center(graph_width)
-        mid = graph_height // 2
-        graph_lines[mid] = message_line
-
-    y_tick_positions = {
-        0: y_tick_labels[0],
-        max(0, graph_height // 2): y_tick_labels[1],
-        max(0, graph_height - 1): y_tick_labels[2],
-    }
-
-    lines = [header[:width], range_line[:width], "-" * width]
-    for idx, line in enumerate(graph_lines):
-        label = y_tick_positions.get(idx, "")
-        label_text = label.rjust(y_axis_width)
-        lines.append(f"{label_text} | {line}".ljust(width)[:width])
-
-    time_values = [value for value in resampled_times if value is not None]
-    if time_values:
-        oldest_time = next(value for value in resampled_times if value is not None)
-        latest_time = next(value for value in reversed(resampled_times) if value is not None)
-        oldest_age = max(0, int(round(latest_time - oldest_time)))
-        x_axis_line = "X-axis (seconds ago, oldest→newest): " f"{oldest_age}s → 0s"
-    else:
-        x_axis_line = "X-axis (seconds ago): n/a"
-    lines.append(x_axis_line[:width].ljust(width))
     lines = pad_lines(lines, width, height)
     lines[-1] = status_line[:width].ljust(width)
     return lines
