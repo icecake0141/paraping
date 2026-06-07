@@ -78,9 +78,9 @@ const translations = {
     "heritage.title": "小さなツールの系譜。",
     "heritage.body":
       "ParaPing は、約20年前に個人サイトなどで流通していた古い C 製ユーティリティ mping から着想を得ています。ターミナルから素早く複数宛先を見渡す、という精神を引き継いでいます。",
-    "deadman.title": "deadman も検討してください。",
+    "deadman.title": "先行ツール deadman の紹介",
     "deadman.body":
-      "deadman は ping を使った軽量でポータブルな curses ベースのホスト状態確認ツールです。シンプルな取り回しと移植性が重要な本番環境では、評価する価値があります。",
+      "deadman は ping を使った軽量でポータブルな curses ベースのホスト状態確認ツールです。シンプルな取り回しと移植性が重要な本番環境では、特に優位性を発揮するでしょう。",
     "deadman.link": "deadman を GitHub で開く",
     "footer.copy": "ParaPing ユーザエクスペリエンスツアー",
     "footer.repo": "GitHub",
