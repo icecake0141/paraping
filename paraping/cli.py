@@ -28,7 +28,7 @@ import time
 import tty
 import warnings
 from collections import deque
-from concurrent.futures import ThreadPoolExecutor  # noqa: F401 - tests patch for tests patching this symbol.
+from concurrent.futures import ThreadPoolExecutor  # noqa: F401 - tests patch this symbol.
 from datetime import datetime, timezone, tzinfo
 from typing import Any, Callable, Dict, List, Optional, Union
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError

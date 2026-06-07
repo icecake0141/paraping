@@ -163,19 +163,19 @@ class TestHostSelectionKeyBindings(unittest.TestCase):
 
     def test_j_key_moves_selection_down(self):
         """Test that 'j' key moves selection down (next)"""
-        # This is validated through the code changes in top-level script shim.
+        # This is validated through the CLI interaction handler.
         # The key handler for 'j' increments host_select_index.
         pass
 
     def test_enter_key_selects_host(self):
         """Test that ENTER key selects the current host"""
-        # This is validated through the code changes in top-level script shim
+        # This is validated through the CLI interaction handler.
         # The key handler for '\r' and '\n' sets graph_host_id
         pass
 
     def test_esc_key_cancels_host_selection(self):
         """Test that ESC key exits host selection without selecting"""
-        # This is validated through the code changes in top-level script shim
+        # This is validated through the CLI interaction handler.
         # The key handler for '\x1b' (ESC) sets host_select_active = False
         pass
 

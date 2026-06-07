@@ -31,7 +31,7 @@ Relevant tests:
 
 - `pytest tests/unit/test_cli.py -v`
 - `pytest tests/unit/test_config.py -v`
-- `pytest tests/unit/test_main_options.py -v`
+- `pytest tests/unit/test_cli_options.py -v`
 - `pytest tests/unit/test_docs_usage_sync.py -v`
 
 Notes:
@@ -94,9 +94,9 @@ Primary files:
 
 Relevant tests:
 
-- `pytest tests/unit/test_main_rendering.py -v`
-- `pytest tests/unit/test_main_display.py -v`
-- `pytest tests/unit/test_main_layout.py -v`
+- `pytest tests/unit/test_ui_render.py -v`
+- `pytest tests/unit/test_ui_display.py -v`
+- `pytest tests/unit/test_ui_layout.py -v`
 - `pytest tests/unit/test_runtime_render_state.py -v`
 - `pytest tests/unit/test_runtime_term_size.py -v`
 
@@ -119,7 +119,7 @@ Relevant tests:
 
 - `pytest tests/unit/test_keymap.py -v`
 - `pytest tests/unit/test_input_keys.py -v`
-- `pytest tests/unit/test_main_interaction.py -v`
+- `pytest tests/unit/test_cli_interaction.py -v`
 - `pytest tests/unit/test_docs_usage_sync.py -v`
 
 Notes:
