@@ -33,6 +33,7 @@ from datetime import datetime, timezone, tzinfo
 from typing import Any, Callable, Dict, List, Optional, Union
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from paraping.cli_interaction import toggle_display_pause, toggle_dormant_mode
 from paraping.cli_options import CLI_OPTION_SPECS, OptionSpec
 from paraping.config import DEFAULT_CONFIG_PATH, load_config, save_config_overrides
 from paraping.core import (
@@ -985,26 +986,10 @@ def _handle_user_input(
         state["updated"] = True
 
     def _handle_display_pause_toggle() -> None:
-        state["display_paused"] = not state["display_paused"]
-        state["paused"] = state["display_paused"] or state["dormant"]
-        if state["dormant"] or (state["pause_mode"] == "ping" and state["display_paused"]):
-            state["pause_event"].set()
-        else:
-            state["pause_event"].clear()
-        state["status_message"] = "Display paused" if state["display_paused"] else "Display resumed"
-        state["force_render"] = True
-        state["updated"] = True
+        toggle_display_pause(state)
 
     def _handle_dormant_toggle() -> None:
-        state["dormant"] = not state["dormant"]
-        state["paused"] = state["display_paused"] or state["dormant"]
-        if state["dormant"] or (state["pause_mode"] == "ping" and state["display_paused"]):
-            state["pause_event"].set()
-        else:
-            state["pause_event"].clear()
-        state["status_message"] = "Dormant mode enabled" if state["dormant"] else "Dormant mode disabled"
-        state["force_render"] = True
-        state["updated"] = True
+        toggle_dormant_mode(state)
 
     def _handle_snapshot_save() -> None:
         now_utc = datetime.now(timezone.utc)
