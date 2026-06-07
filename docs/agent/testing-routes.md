@@ -34,15 +34,15 @@ pytest tests/ -v --cov=. --cov-report=term-missing --cov-report=xml
 
 | Change area | Start with |
 | --- | --- |
-| CLI options and startup behavior | `pytest tests/unit/test_cli.py tests/unit/test_main_options.py -v` |
+| CLI options and startup behavior | `pytest tests/unit/test_cli.py tests/unit/test_cli_options.py -v` |
 | Runtime config | `pytest tests/unit/test_config.py -v` |
 | Scheduler and intervals | `pytest tests/unit/test_scheduler.py tests/unit/test_scheduler_integration.py tests/unit/test_rate_limit.py -v` |
 | runtime event engine | `pytest tests/unit/test_runtime_engine.py -v` |
 | History and render-state resolution | `pytest tests/unit/test_runtime_history.py tests/unit/test_runtime_render_state.py tests/unit/test_timeline_sync.py -v` |
 | Host parsing | `pytest tests/unit/test_runtime_hosts.py tests/unit/test_core.py -v` |
-| Rendering and layout | `pytest tests/unit/test_main_rendering.py tests/unit/test_main_display.py tests/unit/test_main_layout.py -v` |
+| Rendering and layout | `pytest tests/unit/test_ui_render.py tests/unit/test_ui_display.py tests/unit/test_ui_layout.py -v` |
 | Terminal sizing and paging | `pytest tests/unit/test_runtime_term_size.py tests/unit/test_runtime_paging.py tests/unit/test_core_term_size_normalization.py -v` |
-| Hotkeys and key input | `pytest tests/unit/test_keymap.py tests/unit/test_input_keys.py tests/unit/test_main_interaction.py -v` |
+| Hotkeys and key input | `pytest tests/unit/test_keymap.py tests/unit/test_input_keys.py tests/unit/test_cli_interaction.py -v` |
 | Ping worker and helper wrapper | `pytest tests/unit/test_pinger.py tests/unit/test_ping_wrapper.py -v` |
 | Native ping helper contract | `pytest tests/contract/test_ping_helper_contract.py -v` |
 | ASN lookup | `pytest tests/integration/test_network_asn.py -v` |

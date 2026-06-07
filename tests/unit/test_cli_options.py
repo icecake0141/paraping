@@ -83,7 +83,7 @@ class TestHandleOptions(unittest.TestCase):
         with patch(
             "sys.argv",
             [
-                "top-level script shim",
+                "paraping",
                 "-s",
                 "0.7",
                 "-P",

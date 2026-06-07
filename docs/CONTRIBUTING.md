@@ -259,7 +259,7 @@ process does not need root privileges.
 ```
 user input (hosts.txt)
   → cli.run()
-  → core.read_input_file() / core.build_host_infos()  [compat wrappers to paraping.runtime.hosts]
+  → core.read_input_file() / core.build_host_infos()  [runtime host parsing facade]
   → Scheduler.add_host()
   → pinger.scheduler_driven_worker_ping() [per-host thread]
       → Scheduler.get_next_ping_times()   [sleep until scheduled time]
@@ -269,7 +269,7 @@ user input (hosts.txt)
           → ping_helper binary (ICMP syscall)
       → result_queue.put({'status': 'success'/'fail'/'slow', ...})
       → SequenceTracker.mark_replied()
-  → main event loop consumes result_queue
+  → cli event loop consumes result_queue
   → updates runtime monitor state + summary stats
   → paraping.runtime.history.update_history_buffer()
   → paraping.runtime.render_state.resolve_render_state()
@@ -290,7 +290,7 @@ cli.parse_args()
   → per-host SequenceTracker (paraping.runtime.sequence_tracker) created (max 3 outstanding pings)
   → threading.Thread started per host  →  scheduler_driven_worker_ping()
   → network_rdns / network_asn background threads started
-  → main event loop: poll result_queue + keyboard input + history timer
+  → cli event loop: poll result_queue + keyboard input + history timer
   → first ui_render.render() call draws initial terminal frame
 ```
 
@@ -319,8 +319,8 @@ main loop picks up result
 #### 3. Terminal Resize (SIGWINCH)
 
 ```
-OS delivers SIGWINCH  →  resize flag set in main event loop
-main loop detects resize flag:
+OS delivers SIGWINCH  →  resize flag set in cli event loop
+cli event loop detects resize flag:
   → ui_render.get_terminal_size()  →  new (columns, lines)
   → compare to last_term_size
   → paraping.runtime.paging.get_cached_page_step() invalidates cached page step
