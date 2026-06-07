@@ -136,8 +136,8 @@ Run the test suite before submitting changes:
 # Run all tests with coverage
 pytest tests/ -v --cov=. --cov-report=term-missing
 
-# Run specific test file
-pytest tests/test_main.py -v
+# Run focused main compatibility tests
+pytest tests/unit/test_main_lazy_wrappers.py tests/unit/test_main_public_api_surface.py -v
 ```
 
 Tests must pass with good coverage. Add tests for new functionality.
@@ -492,8 +492,8 @@ pylint . --fail-under=9.0
 # カバレッジ付きですべてのテストを実行
 pytest tests/ -v --cov=. --cov-report=term-missing
 
-# 特定のテストファイルを実行
-pytest tests/test_main.py -v
+# main 互換性テストを絞って実行
+pytest tests/unit/test_main_lazy_wrappers.py tests/unit/test_main_public_api_surface.py -v
 ```
 
 テストは良好なカバレッジでパスする必要があります。新機能にはテストを追加してください。

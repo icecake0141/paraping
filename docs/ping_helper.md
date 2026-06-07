@@ -376,8 +376,8 @@ Implements standard RFC 1071 Internet checksum:
 
 The helper is tested via:
 
-1. **Python wrapper tests** (`tests/test_ping_wrapper.py`): Integration tests via `ping_wrapper.py`
-2. **Contract tests** (`tests/test_ping_helper_contract.py`): CLI contract verification
+1. **Python wrapper tests** (`tests/unit/test_ping_wrapper.py`): Integration tests via `ping_wrapper.py`
+2. **Contract tests** (`tests/contract/test_ping_helper_contract.py`): CLI contract verification
    - Output format parsing
    - Exit code behavior
    - Argument validation
@@ -385,7 +385,7 @@ The helper is tested via:
 
 Run tests:
 ```bash
-python3 -m pytest tests/test_ping_wrapper.py tests/test_ping_helper_contract.py -v
+python3 -m pytest tests/unit/test_ping_wrapper.py tests/contract/test_ping_helper_contract.py -v
 ```
 
 ## References
@@ -761,8 +761,8 @@ Error: cannot resolve host example.invalid: Name or service not known
 
 ヘルパーは以下を介してテストされます：
 
-1. **Python ラッパーテスト**（`tests/test_ping_wrapper.py`）：`ping_wrapper.py` を介した統合テスト
-2. **コントラクトテスト**（`tests/test_ping_helper_contract.py`）：CLI コントラクトの検証
+1. **Python ラッパーテスト**（`tests/unit/test_ping_wrapper.py`）：`ping_wrapper.py` を介した統合テスト
+2. **コントラクトテスト**（`tests/contract/test_ping_helper_contract.py`）：CLI コントラクトの検証
    - 出力形式の解析
    - 終了コードの動作
    - 引数の検証
@@ -770,7 +770,7 @@ Error: cannot resolve host example.invalid: Name or service not known
 
 テストを実行：
 ```bash
-python3 -m pytest tests/test_ping_wrapper.py tests/test_ping_helper_contract.py -v
+python3 -m pytest tests/unit/test_ping_wrapper.py tests/contract/test_ping_helper_contract.py -v
 ```
 
 ## 参考文献
