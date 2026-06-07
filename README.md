@@ -57,6 +57,7 @@ make run ARGS='--help'
 
 - [Specification](docs/specification.md)
 - [Usage Guide](docs/usage.md)
+- [User Experience Tour](https://icecake0141.github.io/paraping/tour/)
 - [Testing](docs/testing.md)
 - [Docs Index](docs/index.md)
 - [Contributing](docs/CONTRIBUTING.md)
@@ -107,6 +108,7 @@ make run ARGS='--help'
 
 - [仕様 / Specification](docs/specification.md)
 - [使い方 / Usage Guide](docs/usage.md)
+- [ユーザエクスペリエンスツアー / User Experience Tour](https://icecake0141.github.io/paraping/tour/)
 - [テスト / Testing](docs/testing.md)
 - [ドキュメント一覧 / Docs Index](docs/index.md)
 - [コントリビュート / Contributing](docs/CONTRIBUTING.md)
