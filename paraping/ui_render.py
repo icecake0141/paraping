@@ -22,17 +22,14 @@ view rendering, graph utilities, formatting functions, and terminal utilities.
 import math
 import os
 import sys
-import textwrap
 import time
 from collections import deque
 from datetime import datetime, timezone, tzinfo
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
+from paraping import ui_panels as _ui_panels
 from paraping import ui_text as _ui_text
-from paraping.keymap import build_help_items
 from paraping.stats import (
-    build_summary_all_suffix,
-    build_summary_suffix,
     compute_fail_streak,
     compute_group_summary_data,
     compute_summary_data,
@@ -57,6 +54,14 @@ from paraping.ui_text import (
 
 ANSI_ESCAPE_RE = _ui_text.ANSI_ESCAPE_RE
 truncate_visible = _ui_text.truncate_visible
+box_lines = _ui_panels.box_lines
+can_render_full_summary = _ui_panels.can_render_full_summary
+format_summary_line = _ui_panels.format_summary_line
+pad_lines = _ui_panels.pad_lines
+render_help_view = _ui_panels.render_help_view
+render_status_box = _ui_panels.render_status_box
+render_summary_view = _ui_panels.render_summary_view
+resolve_boxed_dimensions = _ui_panels.resolve_boxed_dimensions
 
 # Display constants
 ACTIVITY_INDICATOR_WIDTH = 10
@@ -750,13 +755,6 @@ def compute_summary_height_bounds(
     return content_height, minimal_height
 
 
-def resolve_boxed_dimensions(width: int, height: int, boxed: bool) -> Tuple[int, int, bool]:
-    """Resolve dimensions for boxed content."""
-    if not boxed or width < 2 or height < 3:
-        return width, height, False
-    return width - 2, height - 2, True
-
-
 def should_show_asn(
     host_infos: Sequence[Dict[str, Any]],
     mode: str,
@@ -896,14 +894,6 @@ def compute_host_scroll_bounds(
 # ============================================================================
 
 
-def pad_lines(lines: Sequence[str], width: int, height: int) -> List[str]:
-    """Pad lines to fill the specified width and height."""
-    padded = [pad_visible(line, width) for line in lines[:height]]
-    while len(padded) < height:
-        padded.append("".ljust(width))
-    return padded
-
-
 def extract_trailing_pulse_space(lines: Sequence[str], boxed: bool) -> Tuple[List[str], int]:
     """Return trimmed lines and Pulse height derived from trailing empty rows."""
     trimmed = list(lines)
@@ -929,19 +919,6 @@ def extract_trailing_pulse_space(lines: Sequence[str], boxed: bool) -> Tuple[Lis
     if empty_rows <= 1:
         return list(lines), 0
     return trimmed, empty_rows - 1
-
-
-def box_lines(lines: Sequence[str], width: int, height: int) -> List[str]:
-    """Draw a box around lines."""
-    inner_width, inner_height, can_box = resolve_boxed_dimensions(width, height, True)
-    if not can_box:
-        return pad_lines(lines, width, height)
-    inner_lines = pad_lines(lines, inner_width, inner_height)
-    border = "-" * inner_width
-    boxed = [f"+{border}+"]
-    boxed.extend(f"|{line}|" for line in inner_lines)
-    boxed.append(f"+{border}+")
-    return boxed
 
 
 def resize_buffers(buffers: Dict[int, Dict[str, Any]], timeline_width: int, symbols: Dict[str, str]) -> None:
@@ -1301,36 +1278,6 @@ def build_display_entries(  # noqa: C901
             entries.sort(key=lambda item: item["label"])
 
     return [(entry["host_id"], entry["label"]) for entry in entries]
-
-
-def can_render_full_summary(summary_data: Sequence[Dict[str, Any]], width: int) -> bool:
-    """Check if we can render the full summary with all information."""
-    if not summary_data:
-        return False
-    max_suffix_len = max(len(build_summary_all_suffix(entry)) for entry in summary_data)
-    return width >= max_suffix_len + 1
-
-
-def format_summary_line(entry: Dict[str, Any], width: int, summary_mode: str, prefer_all: bool = False) -> str:
-    """Format a single summary line."""
-    status_suffix = None
-    if prefer_all:
-        all_suffix = build_summary_all_suffix(entry)
-        if width >= len(all_suffix) + 1:
-            status_suffix = all_suffix
-    if status_suffix is None:
-        status_suffix = build_summary_suffix(entry, summary_mode)
-
-    indent = "  " * max(0, int(entry.get("indent_level", 0)))
-    host_text = f"{indent}{entry['host']}"
-    available_for_host = width - len(status_suffix)
-    if available_for_host > 0:
-        host_display = host_text[:available_for_host]
-    else:
-        host_display = host_text
-
-    full_line = f"{host_display}{status_suffix}"
-    return full_line[:width]
 
 
 def build_time_axis(
@@ -2058,91 +2005,6 @@ def render_main_view(
     )
 
 
-def render_summary_view(
-    summary_data: Sequence[Dict[str, Any]],
-    width: int,
-    height: int,
-    summary_mode: str,
-    prefer_all: bool = False,
-    boxed: bool = False,
-) -> List[str]:
-    """Render the summary view."""
-    if width <= 0 or height <= 0:
-        return []
-
-    render_width, _, can_box = resolve_boxed_dimensions(width, height, boxed)
-    mode_labels = {
-        "rates": "Rates",
-        "rtt": "Avg RTT",
-        "ttl": "TTL",
-        "streak": "Streak",
-    }
-    allow_all = prefer_all and can_render_full_summary(summary_data, render_width)
-    mode_label = "All" if allow_all else mode_labels.get(summary_mode, "Rates")
-    lines = [f"Summary ({mode_label})", "-" * render_width]
-
-    # Add legend for Rates mode explaining Snt/Rcv/Los
-    # Show legend when displaying rates mode (standalone) or all mode (which includes rates)
-    show_legend = (summary_mode == "rates" and not allow_all) or allow_all
-    if show_legend and summary_data:
-        legend = "Snt/Rcv/Los: Sent/Received/Lost packets"
-        if len(legend) <= render_width:
-            lines.append(legend)
-
-    for entry in summary_data:
-        lines.append(format_summary_line(entry, render_width, summary_mode, prefer_all=allow_all))
-
-    if can_box:
-        return box_lines(lines, width, height)
-    return pad_lines(lines, width, height)
-
-
-def render_help_view(width: int, height: int, boxed: bool = False) -> List[str]:
-    """Render the help view."""
-    render_width, render_height, can_box = resolve_boxed_dimensions(width, height, boxed)
-    header_lines = [
-        "ParaPing - Help",
-        "-" * render_width,
-    ]
-    help_items = build_help_items()
-
-    def _wrap_items(items: Sequence[str], line_width: int) -> List[str]:
-        wrapped: List[str] = []
-        for item in items:
-            chunks = textwrap.wrap(
-                item,
-                width=max(1, line_width),
-                break_long_words=False,
-                break_on_hyphens=False,
-                subsequent_indent="    ",
-            )
-            wrapped.extend(chunks or [""])
-        return wrapped
-
-    lines = list(header_lines)
-    body_height = max(0, render_height - len(header_lines))
-    single_column = _wrap_items(help_items, render_width)
-    # Use two columns when vertical space is tight and enough horizontal space exists.
-    if len(single_column) > body_height and render_width >= 72:
-        gap = 3
-        col_width = max(1, (render_width - gap) // 2)
-        split_at = (len(help_items) + 1) // 2
-        left_items = help_items[:split_at]
-        right_items = help_items[split_at:]
-        left_lines = _wrap_items(left_items, col_width)
-        right_lines = _wrap_items(right_items, col_width)
-        for row_index in range(max(len(left_lines), len(right_lines))):
-            left = left_lines[row_index] if row_index < len(left_lines) else ""
-            right = right_lines[row_index] if row_index < len(right_lines) else ""
-            lines.append(f"{left.ljust(col_width)}{' ' * gap}{right}".rstrip())
-    else:
-        lines.extend(single_column)
-
-    if can_box:
-        return box_lines(lines, width, height)
-    return pad_lines(lines, width, height)
-
-
 def render_host_selection_view(
     display_entries: Sequence[Tuple[Any, ...]],
     selected_index: int,
@@ -2265,18 +2127,6 @@ def render_fullscreen_rtt_graph(
     lines = pad_lines(lines, width, height)
     lines[-1] = status_line[:width].ljust(width)
     return lines
-
-
-def render_status_box(status_line: str, width: int) -> List[str]:
-    """Render a status box around the status line."""
-    if width <= 0:
-        return []
-    if width < 2:
-        return [status_line[:width]]
-    inner_width = width - 2
-    content = pad_visible(status_line[:inner_width], inner_width)
-    border = "-" * inner_width
-    return [f"+{border}+", f"|{content}|", f"+{border}+"]
 
 
 def build_display_lines(  # noqa: C901
