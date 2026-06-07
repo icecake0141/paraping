@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark light">
+    <title>ParaPing User Experience Tour</title>
+    <meta
+      name="description"
+      content="A visual tour of ParaPing, an interactive CLI for monitoring multiple ping targets in parallel."
+    >
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="../">ParaPing</a>
+      <nav aria-label="Tour navigation">
+        <a href="#workflow" data-i18n="nav.workflow">Workflow</a>
+        <a href="#groups" data-i18n="nav.groups">Groups</a>
+        <a href="#lookup" data-i18n="nav.lookup">Lookups</a>
+        <a href="#alternatives" data-i18n="nav.alternatives">Alternatives</a>
+      </nav>
+      <div class="language-toggle" aria-label="Language">
+        <button type="button" class="is-active" data-lang-button="en">EN</button>
+        <button type="button" data-lang-button="ja">日本語</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow" data-i18n="hero.eyebrow">Parallel ICMP monitoring for terminal-first operators</p>
+          <h1 data-i18n="hero.title">Watch many destinations fail, recover, and slow down in one CLI.</h1>
+          <p data-i18n="hero.body">
+            ParaPing turns repeated ping checks into a live terminal cockpit: concurrent targets, compact history,
+            group summaries, ASN context, and reverse DNS labels without leaving the shell.
+          </p>
+          <div class="hero-actions">
+            <a class="primary-action" href="https://github.com/icecake0141/paraping" data-i18n="hero.repo">View repository</a>
+            <a class="secondary-action" href="../usage.md" data-i18n="hero.usage">Read usage guide</a>
+          </div>
+        </div>
+        <figure class="hero-media">
+          <img src="assets/timeline-overview.png" alt="ParaPing timeline view showing multiple hosts and a summary panel">
+        </figure>
+      </section>
+
+      <section id="workflow" class="section-band">
+        <div class="section-copy">
+          <p class="eyebrow" data-i18n="workflow.eyebrow">CLI workflow</p>
+          <h2 data-i18n="workflow.title">Multiple destinations, one live surface.</h2>
+          <p data-i18n="workflow.body">
+            Start with command-line targets or a host file, then keep watching the timeline while sorting, filtering,
+            pausing, and changing views interactively.
+          </p>
+        </div>
+        <figure class="wide-shot">
+          <img src="assets/latency-failures.png" alt="ParaPing square view highlighting latency and failures">
+          <figcaption data-i18n="workflow.caption">Slow responses and failed checks stay visible while healthy hosts continue updating.</figcaption>
+        </figure>
+      </section>
+
+      <section id="groups" class="feature-grid">
+        <article>
+          <h2 data-i18n="groups.title">Group the view around how you operate.</h2>
+          <p data-i18n="groups.body">
+            Use site labels, tags, ASN, or hierarchical keys such as site&gt;tag1 to turn a long host list into a
+            readable operational map.
+          </p>
+        </article>
+        <figure>
+          <img src="assets/group-summary.png" alt="ParaPing grouped summary view">
+        </figure>
+      </section>
+
+      <section id="lookup" class="feature-grid feature-grid-reverse">
+        <article>
+          <h2 data-i18n="lookup.title">Add network context without opening another tool.</h2>
+          <p data-i18n="lookup.body">
+            Toggle display names between IP, reverse DNS, and aliases. Add ASN labels when route ownership matters
+            during triage.
+          </p>
+        </article>
+        <figure>
+          <img src="assets/asn-rdns.png" alt="ParaPing sparkline view with reverse DNS and ASN labels">
+        </figure>
+      </section>
+
+      <section class="section-band compact">
+        <div class="section-copy">
+          <p class="eyebrow" data-i18n="reliability.eyebrow">Independent updates</p>
+          <h2 data-i18n="reliability.title">One troubled target should not freeze the rest of the story.</h2>
+          <p data-i18n="reliability.body">
+            ParaPing is designed so each destination can keep producing results independently. Slow, failing, or
+            pending checks do not hide what is happening elsewhere.
+          </p>
+        </div>
+        <figure class="wide-shot">
+          <img src="assets/summary-fullscreen.png" alt="ParaPing fullscreen summary view">
+        </figure>
+      </section>
+
+      <section id="alternatives" class="notes">
+        <article>
+          <h2 data-i18n="heritage.title">A small-tool lineage.</h2>
+          <p data-i18n="heritage.body">
+            ParaPing is inspired by mping, an old C utility that circulated on personal websites roughly two decades
+            ago. The goal is the same spirit: quick multi-target visibility from the terminal.
+          </p>
+        </article>
+        <article>
+          <h2 data-i18n="deadman.title">Also consider deadman.</h2>
+          <p data-i18n="deadman.body">
+            deadman is a lightweight, portable, curses-based host status checker using ping. For production
+            environments where simple handling and portability matter, it is well worth evaluating.
+          </p>
+          <a href="https://github.com/upa/deadman" data-i18n="deadman.link">Open deadman on GitHub</a>
+        </article>
+      </section>
+    </main>
+
+    <footer>
+      <span data-i18n="footer.copy">ParaPing User Experience Tour</span>
+      <a href="https://github.com/icecake0141/paraping" data-i18n="footer.repo">GitHub</a>
+    </footer>
+
+    <script src="tour.js"></script>
+  </body>
+</html>
