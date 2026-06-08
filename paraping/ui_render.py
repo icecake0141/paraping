@@ -31,6 +31,7 @@ from paraping import ui_graph as _ui_graph
 from paraping import ui_layout as _ui_layout
 from paraping import ui_panels as _ui_panels
 from paraping import ui_pulse as _ui_pulse
+from paraping import ui_status as _ui_status
 from paraping import ui_text as _ui_text
 from paraping import ui_timeline as _ui_timeline
 from paraping.stats import compute_group_summary_data, compute_summary_data, resolve_group_labels, resolve_primary_group_label
@@ -62,6 +63,10 @@ build_group_header_line_map = _ui_display_entries.build_group_header_line_map
 build_group_tree_label_map = _ui_display_entries.build_group_tree_label_map
 can_render_full_summary = _ui_panels.can_render_full_summary
 compute_activity_indicator_width = _ui_pulse.compute_activity_indicator_width
+_parse_positive_float = _ui_status._parse_positive_float
+build_status_line = _ui_status.build_status_line
+build_status_metrics = _ui_status.build_status_metrics
+estimate_ping_rate = _ui_status.estimate_ping_rate
 format_asn_label = _ui_display_entries.format_asn_label
 format_display_name = _ui_display_entries.format_display_name
 format_status_line = _ui_timeline.format_status_line
@@ -89,10 +94,8 @@ status_from_symbol = _ui_timeline.status_from_symbol
 ACTIVITY_INDICATOR_WIDTH = _ui_pulse.ACTIVITY_INDICATOR_WIDTH
 ACTIVITY_INDICATOR_HEIGHT = _ui_pulse.ACTIVITY_INDICATOR_HEIGHT
 ACTIVITY_INDICATOR_SPEED_HZ = _ui_pulse.ACTIVITY_INDICATOR_SPEED_HZ
-STATUS_METRICS_SEPARATOR = " | "
-STATUS_METRICS_TEMPLATE = STATUS_METRICS_SEPARATOR.join(
-    ["Hosts: {hosts}", "Success: {success}", "Errors: {errors}", "Rate: {rate}"]
-)
+STATUS_METRICS_SEPARATOR = _ui_status.STATUS_METRICS_SEPARATOR
+STATUS_METRICS_TEMPLATE = _ui_status.STATUS_METRICS_TEMPLATE
 
 # Global state for rendering
 LAST_RENDER_LINES: Optional[List[str]] = None
@@ -315,112 +318,6 @@ def resize_buffers(buffers: Dict[int, Dict[str, Any]], timeline_width: int, symb
 # ============================================================================
 # Display Building Functions
 # ============================================================================
-
-
-def _parse_positive_float(value: Optional[str]) -> Optional[float]:
-    """Parse a strictly positive float from a string, returning None if invalid.
-
-    Handles None or empty values and invalid string conversions from environment variables.
-    """
-    if not value:
-        return None
-    try:
-        parsed = float(value)
-    except (TypeError, ValueError):
-        return None
-    if parsed <= 0:
-        return None
-    return parsed
-
-
-def estimate_ping_rate(host_count: int, interval_seconds: float) -> Optional[float]:
-    """Estimate the ping rate using environment variables when provided.
-
-    Returns None when the interval value is invalid.
-    """
-    rate_env = _parse_positive_float(os.getenv("PARAPING_PING_RATE"))
-    if rate_env is not None:
-        return rate_env
-    # Allow PARAPING_PING_INTERVAL to override the provided interval for rate estimation.
-    interval_env = _parse_positive_float(os.getenv("PARAPING_PING_INTERVAL"))
-    interval_value = interval_env if interval_env is not None else interval_seconds
-    # Defensive guard in case an unexpected non-positive interval is provided.
-    if interval_value <= 0:
-        return None
-    return host_count / interval_value
-
-
-def build_status_metrics(
-    host_infos: Optional[Sequence[Dict[str, Any]]],
-    stats: Optional[Dict[int, Dict[str, Any]]],
-    interval_seconds: float = 1.0,
-) -> str:
-    """Build a status metrics string for hosts, counts, and estimated rate."""
-    host_count = len(host_infos) if host_infos else 0
-    successful_pings = 0
-    error_count = 0
-    stats_map = stats or {}
-    for info in host_infos or []:
-        stat_entry = stats_map.get(info["id"], {})
-        # Slow pings still represent successful responses for aggregate success counts.
-        total_successful = stat_entry.get("success", 0) + stat_entry.get("slow", 0)
-        successful_pings += total_successful
-        error_count += stat_entry.get("fail", 0)
-    estimated_rate = estimate_ping_rate(host_count, interval_seconds)
-    rate_label = f"{estimated_rate:.1f}/s" if estimated_rate is not None else "n/a"
-    return STATUS_METRICS_TEMPLATE.format(
-        hosts=host_count,
-        success=successful_pings,
-        errors=error_count,
-        rate=rate_label,
-    )
-
-
-def build_status_line(
-    sort_mode: str,
-    filter_mode: str,
-    summary_mode: str,
-    paused: bool,
-    status_message: Optional[str] = None,
-    summary_all: bool = False,
-    summary_fullscreen: bool = False,
-    dormant: bool = False,
-    summary_scope: str = "host",
-    group_by: str = "none",
-) -> str:
-    """Build the status line showing current modes and settings."""
-    sort_labels = {
-        "failures": "Failure Count",
-        "streak": "Failure Streak",
-        "latency": "Latest Latency",
-        "host": "Host Name",
-    }
-    filter_labels = {
-        "failures": "Failures Only",
-        "latency": "High Latency Only",
-        "all": "All Items",
-    }
-    summary_labels = {
-        "rates": "Rates",
-        "rtt": "Avg RTT",
-        "ttl": "TTL",
-        "streak": "Streak",
-    }
-    sort_label = sort_labels.get(sort_mode, sort_mode)
-    filter_label = filter_labels.get(filter_mode, filter_mode)
-    summary_label = "All" if summary_all else summary_labels.get(summary_mode, summary_mode)
-    status = f"Sort: {sort_label} | Filter: {filter_label} | Summary: {summary_label}"
-    if summary_scope == "group":
-        status += f" | Group: {group_by}"
-    if summary_fullscreen:
-        status += " | Summary View: Fullscreen"
-    if dormant:
-        status += " | DORMANT"
-    elif paused:
-        status += " | PAUSED"
-    if status_message:
-        status += f" | {status_message}"
-    return status
 
 
 # ============================================================================
