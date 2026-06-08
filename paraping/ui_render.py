@@ -31,20 +31,14 @@ from paraping import ui_graph as _ui_graph
 from paraping import ui_panels as _ui_panels
 from paraping import ui_pulse as _ui_pulse
 from paraping import ui_text as _ui_text
+from paraping import ui_timeline as _ui_timeline
 from paraping.stats import compute_group_summary_data, compute_summary_data, resolve_group_labels, resolve_primary_group_label
-from paraping.ui_text import (
-    ANSI_RESET,
-    STATUS_COLORS,
-    colorize_text,
-    pad_visible,
-    rjust_visible,
-    strip_ansi,
-    visible_cell_width,
-)
+from paraping.ui_text import ANSI_RESET, colorize_text, rjust_visible, strip_ansi, visible_cell_width
 
 ANSI_ESCAPE_RE = _ui_text.ANSI_ESCAPE_RE
 truncate_visible = _ui_text.truncate_visible
 visible_len = _ui_text.visible_len
+pad_visible = _ui_text.pad_visible
 _resolve_kitt_gradient_rings = _ui_pulse._resolve_kitt_gradient_rings
 _resolve_kitt_scanner_speed_hz = _ui_pulse._resolve_kitt_scanner_speed_hz
 build_ascii_graph = _ui_graph.build_ascii_graph
@@ -54,6 +48,9 @@ build_kitt_scanner_bar = _ui_pulse.build_kitt_scanner_bar
 build_sparkline = _ui_graph.build_sparkline
 build_time_axis = _ui_graph.build_time_axis
 box_lines = _ui_panels.box_lines
+build_colored_sparkline = _ui_timeline.build_colored_sparkline
+build_colored_square_timeline = _ui_timeline.build_colored_square_timeline
+build_colored_timeline = _ui_timeline.build_colored_timeline
 build_display_entries = _ui_display_entries.build_display_entries
 build_display_names = _ui_display_entries.build_display_names
 build_group_header_line_map = _ui_display_entries.build_group_header_line_map
@@ -62,7 +59,11 @@ can_render_full_summary = _ui_panels.can_render_full_summary
 compute_activity_indicator_width = _ui_pulse.compute_activity_indicator_width
 format_asn_label = _ui_display_entries.format_asn_label
 format_display_name = _ui_display_entries.format_display_name
+format_status_line = _ui_timeline.format_status_line
 format_summary_line = _ui_panels.format_summary_line
+host_label_status = _ui_timeline.host_label_status
+latest_non_pending_status_from_timeline = _ui_timeline.latest_non_pending_status_from_timeline
+latest_status_from_timeline = _ui_timeline.latest_status_from_timeline
 pad_lines = _ui_panels.pad_lines
 render_fullscreen_rtt_graph = _ui_graph.render_fullscreen_rtt_graph
 render_help_view = _ui_panels.render_help_view
@@ -72,8 +73,10 @@ render_status_box = _ui_panels.render_status_box
 render_summary_view = _ui_panels.render_summary_view
 resolve_display_name = _ui_display_entries.resolve_display_name
 resolve_group_header_lines = _ui_display_entries.resolve_group_header_lines
+resolve_host_label_status = _ui_timeline.resolve_host_label_status
 resample_values = _ui_graph.resample_values
 resolve_boxed_dimensions = _ui_panels.resolve_boxed_dimensions
+status_from_symbol = _ui_timeline.status_from_symbol
 
 # Display constants
 ACTIVITY_INDICATOR_WIDTH = _ui_pulse.ACTIVITY_INDICATOR_WIDTH
@@ -89,75 +92,9 @@ LAST_RENDER_LINES: Optional[List[str]] = None
 KITT_SCANNER_STATE = _ui_pulse.KITT_SCANNER_STATE
 
 
-def status_from_symbol(symbol: str, symbols: Dict[str, str]) -> Optional[str]:
-    """Get status name from symbol character."""
-    for status, status_symbol in symbols.items():
-        if symbol == status_symbol:
-            return status
-    return None
-
-
-def latest_status_from_timeline(timeline: Sequence[str], symbols: Dict[str, str]) -> Optional[str]:
-    """Get the latest status from a timeline."""
-    if not timeline:
-        return None
-    return status_from_symbol(timeline[-1], symbols)
-
-
-def latest_non_pending_status_from_timeline(timeline: Sequence[str], symbols: Dict[str, str]) -> Optional[str]:
-    """Get the latest non-pending status from a timeline."""
-    for symbol in reversed(timeline):
-        status = status_from_symbol(symbol, symbols)
-        if status and status != "pending":
-            return status
-    return None
-
-
-def host_label_status(status: Optional[str]) -> Optional[str]:
-    """Map timeline status to host-label color status.
-
-    Pending host labels keep the latest non-pending color (resolved by caller).
-    When no non-pending history exists, labels remain uncolored.
-    """
-    if status == "pending":
-        return None
-    return status
-
-
 # ============================================================================
 # Color/Timeline Building Functions
 # ============================================================================
-
-
-def build_colored_timeline(timeline: Sequence[str], symbols: Dict[str, str], use_color: bool) -> str:
-    """Build a colored timeline string from symbols."""
-    return "".join(colorize_text(symbol, status_from_symbol(symbol, symbols), use_color) for symbol in timeline)
-
-
-def resolve_host_label_status(timeline: Sequence[str], symbols: Dict[str, str], is_removed: bool = False) -> Optional[str]:
-    """Resolve host label status with pending fallback behavior."""
-    if is_removed:
-        return None
-    status = latest_status_from_timeline(timeline, symbols)
-    if status == "pending":
-        status = latest_non_pending_status_from_timeline(timeline, symbols)
-    return host_label_status(status)
-
-
-def build_colored_sparkline(
-    sparkline: str,
-    status_symbols: Sequence[str],
-    symbols: Dict[str, str],
-    use_color: bool,
-) -> str:
-    """Build a colored sparkline from characters and status symbols."""
-    if not use_color:
-        return sparkline
-    colored = []
-    for char, symbol in zip(sparkline, status_symbols):
-        status = status_from_symbol(symbol, symbols)
-        colored.append(colorize_text(char, status, use_color))
-    return "".join(colored)
 
 
 # ============================================================================
@@ -498,11 +435,6 @@ def resize_buffers(buffers: Dict[int, Dict[str, Any]], timeline_width: int, symb
 # ============================================================================
 
 
-def format_status_line(host: str, timeline: str, label_width: int) -> str:
-    """Format a status line with host and timeline."""
-    return f"{pad_visible(host, label_width)} | {timeline}"
-
-
 def _parse_positive_float(value: Optional[str]) -> Optional[float]:
     """Parse a strictly positive float from a string, returning None if invalid.
 
@@ -790,49 +722,6 @@ def render_sparkline_view(
     if can_box:
         return box_lines(lines, width, height)
     return pad_lines(lines, width, height)
-
-
-def build_colored_square_timeline(timeline_symbols: Sequence[str], symbols: Dict[str, str], use_color: bool) -> str:
-    """Build a colored timeline of squares from status symbols."""
-    # Square view uses different colors than timeline view:
-    # - Square view: green for OK (success/slow), red for fail, gray for pending
-    # - Timeline view: white for success, yellow for slow, red for fail
-    # Green is not in STATUS_COLORS because timeline uses white for success
-    green_color = "\x1b[32m"  # Green for OK status
-    gray_color = "\x1b[37m"  # Gray for pending/unknown
-
-    squares = []
-    for symbol in timeline_symbols:
-        status = status_from_symbol(symbol, symbols)
-        square = "■"
-
-        # Determine square color based on status
-        # OK = success or slow (green), NG = fail (red), pending = pending (gray)
-        # In monochrome mode, use different symbols to distinguish statuses:
-        # - fail: blank space (clearly shows failure)
-        # - success/slow: solid square (shows success)
-        # - pending: dash/hyphen (shows pending)
-        if status == "fail":
-            if use_color:
-                colored_square = f"{STATUS_COLORS['fail']}{square}{ANSI_RESET}"
-            else:
-                colored_square = " "  # Blank for failed ping in monochrome
-        elif status in ("success", "slow"):
-            # success and slow both show green square (OK status)
-            if use_color:
-                colored_square = f"{green_color}{square}{ANSI_RESET}"
-            else:
-                colored_square = square  # Solid square for success in monochrome
-        else:
-            # pending or None status - show pending square
-            if use_color:
-                colored_square = f"{gray_color}{square}{ANSI_RESET}"
-            else:
-                colored_square = "-"  # Dash for pending in monochrome
-
-        squares.append(colored_square)
-
-    return "".join(squares)
 
 
 def render_square_view(
