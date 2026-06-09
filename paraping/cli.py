@@ -20,22 +20,21 @@ import argparse
 import logging
 import os
 import queue
-import re
 import sys
 import termios
 import threading
 import time
 import tty
-import warnings
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor  # noqa: F401 - tests patch this symbol.
 from datetime import datetime, timezone, tzinfo
 from typing import Any, Callable, Dict, List, Optional, Union
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from paraping import cli_args as _cli_args
+from paraping.cli_args import add_option_from_spec, apply_config_to_args, apply_option_defaults
 from paraping.cli_grouping import build_group_by_modes, count_entry_tags, sync_group_by_modes
 from paraping.cli_interaction import toggle_display_pause, toggle_dormant_mode
-from paraping.cli_options import CLI_OPTION_SPECS, OptionSpec
 from paraping.config import DEFAULT_CONFIG_PATH, load_config, save_config_overrides
 from paraping.core import (
     _normalize_term_size,
@@ -259,126 +258,17 @@ def _configure_logging(
     )
 
 
-def _add_option_from_spec(parser: argparse.ArgumentParser, spec: OptionSpec) -> None:
-    """Register one option spec on the argparse parser."""
-    kwargs: Dict[str, Any] = {
-        "dest": spec.dest,
-        "default": None,
-        "help": spec.help_text,
-    }
-    if spec.boolean:
-        kwargs["action"] = argparse.BooleanOptionalAction
-    else:
-        if spec.value_type is not None:
-            kwargs["type"] = str.upper if spec.dest == "log_level" else spec.value_type
-        if spec.choices:
-            kwargs["choices"] = list(spec.choices)
-    parser.add_argument(*spec.flags, **kwargs)
-
-
-def _apply_option_defaults(args: argparse.Namespace) -> None:
-    """Apply defaults for unset values after config overlay."""
-    for spec in CLI_OPTION_SPECS:
-        if getattr(args, spec.dest, None) is None:
-            setattr(args, spec.dest, spec.default)
-
-
+_add_option_from_spec = add_option_from_spec
+_apply_option_defaults = apply_option_defaults
 _count_entry_tags = count_entry_tags
 _build_group_by_modes = build_group_by_modes
 _sync_group_by_modes = sync_group_by_modes
-
-
-def _apply_config_to_args(args: argparse.Namespace, config: Dict[str, Any]) -> None:
-    """
-    Overlay config file values onto a parsed argument namespace.
-
-    Only fields that are still ``None`` (i.e. not explicitly set on the CLI)
-    are updated.  Config-supplied ``hosts`` are applied only when the user has
-    not provided any hosts on the CLI and has not used ``--input``/``-f``.
-
-    Args:
-        args: Namespace returned by ``argparse.ArgumentParser.parse_args()``.
-        config: Dictionary of values loaded from the config file.
-    """
-    for key, value in config.items():
-        if key == "verbose_ui_errors":
-            key = "ui_log_errors"
-        if key == "hosts":
-            if not getattr(args, "hosts", None) and not getattr(args, "input", None):
-                args.hosts = value
-        elif hasattr(args, key) and getattr(args, key) is None:
-            setattr(args, key, value)
+_apply_config_to_args = apply_config_to_args
 
 
 def handle_options() -> argparse.Namespace:
     """Parse and validate command-line arguments."""
-    parser = argparse.ArgumentParser(
-        description="ParaPing - Perform ICMP ping operations to multiple hosts concurrently",
-        epilog="Note: ParaPing enforces a global rate limit of 50 pings/sec for flood protection. "
-        "The tool will exit with an error if (host_count / interval) > 50.",
-    )
-    for spec in CLI_OPTION_SPECS:
-        _add_option_from_spec(parser, spec)
-
-    parser.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        default=False,
-        help=argparse.SUPPRESS,
-    )
-    parser.add_argument(
-        "--verbose-ui-errors",
-        action="store_true",
-        dest="deprecated_verbose_ui_errors",
-        default=False,
-        help=argparse.SUPPRESS,
-    )
-    parser.add_argument(
-        "--no-config",
-        action="store_true",
-        default=False,
-        help="Skip loading ~/.paraping.conf config file",
-    )
-    parser.add_argument("hosts", nargs="*", help="Hosts to ping (IP addresses or hostnames)")
-
-    args = parser.parse_args()
-
-    # Load and apply config file unless --no-config was given
-    if not args.no_config:
-        try:
-            config = load_config()
-            _apply_config_to_args(args, config)
-        except (ValueError, ImportError) as exc:
-            parser.error(str(exc))
-
-    if args.verbose:
-        warnings.warn("--verbose is deprecated; use --log-level DEBUG instead.", DeprecationWarning, stacklevel=2)
-        if getattr(args, "log_level", None) is None:
-            args.log_level = "DEBUG"
-    if args.deprecated_verbose_ui_errors:
-        warnings.warn(
-            "--verbose-ui-errors is deprecated; use --ui-log-errors instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        args.ui_log_errors = True
-
-    _apply_option_defaults(args)
-    args.log_level = str(args.log_level).upper()
-    if args.log_level not in ("DEBUG", "INFO", "WARNING", "ERROR"):
-        parser.error("--log-level must be one of DEBUG|INFO|WARNING|ERROR")
-    args.verbose_ui_errors = args.ui_log_errors
-
-    if args.timeout <= 0:
-        parser.error("--timeout must be a positive integer.")
-    if not 0.1 <= args.interval <= 60.0:
-        parser.error("--interval must be between 0.1 and 60.0 seconds.")
-    if args.group_by not in ("none", "asn", "site", "tag", "site>tag1", "tag1>site") and not re.match(
-        r"^tag\d+$", args.group_by
-    ):
-        parser.error("--group-by must be one of none|asn|site|tag|tagN|site>tag1|tag1>site")
-    return args
+    return _cli_args.handle_options(config_loader=load_config)
 
 
 def _setup_hosts_and_state(args: argparse.Namespace) -> Optional[Dict[str, Any]]:
