@@ -42,6 +42,16 @@ from paraping.cli_hosts import (
     rebuild_host_info_map,
 )
 from paraping.cli_interaction import toggle_display_pause, toggle_dormant_mode
+from paraping.cli_modes import (
+    DISPLAY_NAME_MODES,
+    DISPLAY_VIEW_MODES,
+    FILTER_MODES,
+    KITT_STYLE_MODES,
+    SORT_MODES,
+    SUMMARY_MODES,
+    SUMMARY_SCOPE_MODES,
+    resolve_mode_index,
+)
 from paraping.cli_runtime import (
     build_runtime_config_overrides,
     check_terminal_resize_and_request_redraw,
@@ -1151,13 +1161,13 @@ def run(args: argparse.Namespace) -> None:
     initial_render_buffers, initial_render_stats = project_render_state(setup["monitor_state"], setup["symbols"])
     initial_term_size = get_terminal_size(fallback=(80, 24))
     now_monotonic = time.monotonic()
-    modes = ["ip", "rdns", "alias"]
-    display_modes = ["timeline", "sparkline", "square"]
-    summary_modes = ["rates", "rtt", "ttl", "streak"]
-    summary_scope_modes = ["host", "group"]
-    sort_modes = ["config", "failures", "streak", "latency", "host"]
-    filter_modes = ["failures", "latency", "all"]
-    kitt_style_modes = ["scanner", "gradient"]
+    modes = DISPLAY_NAME_MODES
+    display_modes = DISPLAY_VIEW_MODES
+    summary_modes = SUMMARY_MODES
+    summary_scope_modes = SUMMARY_SCOPE_MODES
+    sort_modes = SORT_MODES
+    filter_modes = FILTER_MODES
+    kitt_style_modes = KITT_STYLE_MODES
     arg_values = vars(args) if hasattr(args, "__dict__") else {}
     initial_display_name = arg_values.get("display_name", "alias")
     initial_view = arg_values.get("view", "timeline")
@@ -1169,26 +1179,24 @@ def run(args: argparse.Namespace) -> None:
     state = {
         **setup,
         "modes": modes,
-        "mode_index": modes.index(initial_display_name) if initial_display_name in modes else 2,
+        "mode_index": resolve_mode_index(modes, initial_display_name, default_index=2),
         "show_help": False,
         "display_modes": display_modes,
-        "display_mode_index": display_modes.index(initial_view) if initial_view in display_modes else 0,
+        "display_mode_index": resolve_mode_index(display_modes, initial_view),
         "summary_modes": summary_modes,
-        "summary_mode_index": summary_modes.index(initial_summary_mode) if initial_summary_mode in summary_modes else 0,
+        "summary_mode_index": resolve_mode_index(summary_modes, initial_summary_mode),
         "summary_scope_modes": summary_scope_modes,
-        "summary_scope_mode_index": (
-            summary_scope_modes.index(initial_summary_scope) if initial_summary_scope in summary_scope_modes else 0
-        ),
+        "summary_scope_mode_index": resolve_mode_index(summary_scope_modes, initial_summary_scope),
         "group_by_modes": _build_group_by_modes(setup["host_infos"]),
         "group_by_mode_index": 0,
         "kitt_mode_enabled": bool(arg_values.get("kitt", False)),
         "kitt_style_modes": kitt_style_modes,
-        "kitt_style_index": kitt_style_modes.index(initial_kitt_style) if initial_kitt_style in kitt_style_modes else 0,
+        "kitt_style_index": resolve_mode_index(kitt_style_modes, initial_kitt_style),
         "summary_fullscreen": bool(arg_values.get("summary_fullscreen", False)),
         "sort_modes": sort_modes,
-        "sort_mode_index": sort_modes.index(initial_sort) if initial_sort in sort_modes else 0,
+        "sort_mode_index": resolve_mode_index(sort_modes, initial_sort),
         "filter_modes": filter_modes,
-        "filter_mode_index": filter_modes.index(initial_filter) if initial_filter in filter_modes else 2,
+        "filter_mode_index": resolve_mode_index(filter_modes, initial_filter, default_index=2),
         "running": True,
         "paused": False,
         "dormant": False,
