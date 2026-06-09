@@ -19,9 +19,8 @@ including ANSI text utilities, color/timeline building, layout computation,
 view rendering, graph utilities, formatting functions, and terminal utilities.
 """
 
-import os
 import sys
-import time
+import time  # noqa: F401  # Backward-compatible patch target for pulse animation tests.
 from collections import deque
 from datetime import datetime, timezone, tzinfo
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
@@ -32,10 +31,11 @@ from paraping import ui_layout as _ui_layout
 from paraping import ui_panels as _ui_panels
 from paraping import ui_pulse as _ui_pulse
 from paraping import ui_status as _ui_status
+from paraping import ui_terminal as _ui_terminal
 from paraping import ui_text as _ui_text
 from paraping import ui_timeline as _ui_timeline
 from paraping.stats import compute_group_summary_data, compute_summary_data, resolve_group_labels, resolve_primary_group_label
-from paraping.ui_text import ANSI_RESET, colorize_text, rjust_visible, strip_ansi, visible_cell_width
+from paraping.ui_text import colorize_text, rjust_visible, strip_ansi, visible_cell_width
 
 ANSI_ESCAPE_RE = _ui_text.ANSI_ESCAPE_RE
 truncate_visible = _ui_text.truncate_visible
@@ -64,17 +64,26 @@ build_group_tree_label_map = _ui_display_entries.build_group_tree_label_map
 can_render_full_summary = _ui_panels.can_render_full_summary
 compute_activity_indicator_width = _ui_pulse.compute_activity_indicator_width
 _parse_positive_float = _ui_status._parse_positive_float
+_find_pulse_start = _ui_terminal._find_pulse_start
+_find_safe_diff_start = _ui_terminal._find_safe_diff_start
+_rewind_to_escape_boundary = _ui_terminal._rewind_to_escape_boundary
 build_status_line = _ui_status.build_status_line
 build_status_metrics = _ui_status.build_status_metrics
+cycle_panel_position = _ui_terminal.cycle_panel_position
 estimate_ping_rate = _ui_status.estimate_ping_rate
 format_asn_label = _ui_display_entries.format_asn_label
 format_display_name = _ui_display_entries.format_display_name
 format_status_line = _ui_timeline.format_status_line
 format_summary_line = _ui_panels.format_summary_line
+format_timestamp = _ui_terminal.format_timestamp
+format_timezone_label = _ui_terminal.format_timezone_label
+flash_screen = _ui_terminal.flash_screen
+get_terminal_size = _ui_terminal.get_terminal_size
 host_label_status = _ui_timeline.host_label_status
 latest_non_pending_status_from_timeline = _ui_timeline.latest_non_pending_status_from_timeline
 latest_status_from_timeline = _ui_timeline.latest_status_from_timeline
 pad_lines = _ui_panels.pad_lines
+prepare_terminal_for_exit = _ui_terminal.prepare_terminal_for_exit
 render_fullscreen_rtt_graph = _ui_graph.render_fullscreen_rtt_graph
 render_help_view = _ui_panels.render_help_view
 render_kitt_bottom_band = _ui_pulse.render_kitt_bottom_band
@@ -82,13 +91,16 @@ render_pulse_panel = _ui_pulse.render_pulse_panel
 render_status_box = _ui_panels.render_status_box
 render_summary_view = _ui_panels.render_summary_view
 _summary_render_width = _ui_layout.summary_render_width
+ring_bell = _ui_terminal.ring_bell
 resolve_display_name = _ui_display_entries.resolve_display_name
 resolve_group_header_lines = _ui_display_entries.resolve_group_header_lines
 resolve_host_label_status = _ui_timeline.resolve_host_label_status
 resample_values = _ui_graph.resample_values
 resolve_boxed_dimensions = _ui_panels.resolve_boxed_dimensions
+should_flash_on_fail = _ui_terminal.should_flash_on_fail
 should_show_asn = _ui_layout.should_show_asn
 status_from_symbol = _ui_timeline.status_from_symbol
+toggle_panel_visibility = _ui_terminal.toggle_panel_visibility
 
 # Display constants
 ACTIVITY_INDICATOR_WIDTH = _ui_pulse.ACTIVITY_INDICATOR_WIDTH
@@ -110,47 +122,6 @@ KITT_SCANNER_STATE = _ui_pulse.KITT_SCANNER_STATE
 # ============================================================================
 # Layout/Geometry Functions
 # ============================================================================
-
-
-def get_terminal_size(fallback: Tuple[int, int] = (80, 24)) -> os.terminal_size:
-    """
-    Get the terminal size by directly querying the terminal.
-
-    This function uses os.get_terminal_size() which queries the actual
-    terminal instead of checking COLUMNS/LINES environment variables
-    first (like shutil does). This ensures the size updates when the
-    terminal is resized.
-
-    Args:
-        fallback: Tuple of (columns, lines) to use if terminal size
-                  cannot be determined
-
-    Returns:
-        os.terminal_size with columns and lines attributes
-    """
-    try:
-        # Try stdout first
-        if sys.stdout.isatty():
-            return os.get_terminal_size(sys.stdout.fileno())
-    except (AttributeError, ValueError, OSError):
-        pass
-
-    try:
-        # Try stderr if stdout fails
-        if sys.stderr.isatty():
-            return os.get_terminal_size(sys.stderr.fileno())
-    except (AttributeError, ValueError, OSError):
-        pass
-
-    try:
-        # Try stdin as last resort
-        if sys.stdin.isatty():
-            return os.get_terminal_size(sys.stdin.fileno())
-    except (AttributeError, ValueError, OSError):
-        pass
-
-    # Fall back to default size
-    return os.terminal_size(fallback)
 
 
 def compute_host_scroll_bounds(
@@ -1141,136 +1112,3 @@ def reset_render_cache() -> None:
     KITT_SCANNER_STATE["last_monotonic"] = -1.0
     KITT_SCANNER_STATE["scanner_phase"] = 0.0
     KITT_SCANNER_STATE["last_error_ratio"] = 0.0
-
-
-def _find_pulse_start(lines: Sequence[str]) -> Optional[int]:
-    """Return the first Pulse band line index if present."""
-    for index, line in enumerate(lines):
-        if strip_ansi(line).startswith("Pulse ["):
-            return index
-    return None
-
-
-def _find_safe_diff_start(previous_line: str, current_line: str) -> int:
-    """Return a safe raw-string offset where line contents diverge."""
-    max_common = min(len(previous_line), len(current_line))
-    index = 0
-    while index < max_common and previous_line[index] == current_line[index]:
-        index += 1
-    if index <= 0:
-        return 0
-    safe_previous = _rewind_to_escape_boundary(previous_line, index)
-    safe_current = _rewind_to_escape_boundary(current_line, index)
-    return min(safe_previous, safe_current)
-
-
-def _rewind_to_escape_boundary(text: str, index: int) -> int:
-    """Rewind index if it points inside an ANSI escape sequence."""
-    if index <= 0 or index > len(text):
-        return max(0, min(index, len(text)))
-    esc_index = text.rfind("\x1b", 0, index)
-    if esc_index == -1:
-        return index
-    sequence_end = text.find("m", esc_index, index)
-    if sequence_end == -1:
-        return esc_index
-    return index
-
-
-# ============================================================================
-# Formatting Functions
-# ============================================================================
-
-
-def format_timezone_label(now_utc: datetime, display_tz: tzinfo) -> str:
-    """Format the timezone label for display."""
-    tzinfo = now_utc.astimezone(display_tz).tzinfo
-    tz_name = tzinfo.tzname(now_utc) if tzinfo else None
-    if tz_name:
-        return tz_name
-    tz_key = getattr(display_tz, "key", None)
-    if isinstance(tz_key, str):
-        return tz_key
-    return "UTC"
-
-
-def format_timestamp(now_utc: datetime, display_tz: tzinfo) -> str:
-    """Format a timestamp with timezone label."""
-    timestamp = now_utc.astimezone(display_tz).strftime("%Y-%m-%d %H:%M:%S")
-    tz_label = format_timezone_label(now_utc, display_tz)
-    return f"{timestamp} ({tz_label})"
-
-
-# ============================================================================
-# Terminal Utilities
-# ============================================================================
-
-
-def prepare_terminal_for_exit() -> None:
-    """Prepare the terminal for exit by clearing the screen area."""
-    if not sys.stdout.isatty():
-        return
-    term_size = get_terminal_size(fallback=(80, 24))
-    sys.stdout.write("\n" * term_size.lines)
-    sys.stdout.flush()
-
-
-def flash_screen() -> None:
-    """Flash the screen with a white background for ~100ms."""
-    if not sys.stdout.isatty():
-        return
-    # ANSI escape sequences for visual flash effect
-    save_cursor = "\x1b7"  # Save cursor position
-    set_white_bg = "\x1b[47m"  # White background
-    set_black_fg = "\x1b[30m"  # Black foreground
-    clear_screen = "\x1b[2J"  # Clear screen
-    move_home = "\x1b[H"  # Move cursor to home position
-    restore_cursor = "\x1b8"  # Restore cursor position
-    flash_duration_seconds = 0.1  # Duration of flash effect
-
-    # Apply white flash effect and clear screen
-    sys.stdout.write(save_cursor + set_white_bg + set_black_fg + clear_screen + move_home)
-    sys.stdout.flush()
-    time.sleep(flash_duration_seconds)
-    # Restore normal display
-    sys.stdout.write(ANSI_RESET + restore_cursor)
-    sys.stdout.flush()
-
-
-def ring_bell() -> None:
-    """Ring the terminal bell."""
-    if not sys.stdout.isatty():
-        return
-    sys.stdout.write("\a")
-    sys.stdout.flush()
-
-
-def should_flash_on_fail(status: str, flash_on_fail: bool, show_help: bool) -> bool:
-    """Return True when the failure flash should be displayed."""
-    return status == "fail" and flash_on_fail and not show_help
-
-
-# ============================================================================
-# Panel Utilities
-# ============================================================================
-
-
-def toggle_panel_visibility(
-    current_position: str,
-    last_visible_position: Optional[str],
-    default_position: str = "right",
-) -> Tuple[str, str]:
-    """Toggle panel visibility between 'none' and last visible position."""
-    if current_position == "none":
-        restored_position = last_visible_position or default_position
-        return restored_position, restored_position
-    return "none", current_position
-
-
-def cycle_panel_position(current_position: str, default_position: str = "right") -> str:
-    """Cycle through panel positions (left, right, top, bottom)."""
-    positions = ["left", "right", "top", "bottom"]
-    if current_position not in positions:
-        return default_position if default_position in positions else positions[0]
-    next_index = (positions.index(current_position) + 1) % len(positions)
-    return positions[next_index]
