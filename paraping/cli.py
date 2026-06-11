@@ -31,6 +31,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from paraping import cli_args as _cli_args
 from paraping.cli_args import add_option_from_spec, apply_config_to_args, apply_option_defaults
+from paraping.cli_frame import build_override_lines, clamp_host_scroll_offset, resolve_display_timestamp, should_render_frame
 from paraping.cli_grouping import build_group_by_modes, count_entry_tags, sync_group_by_modes
 from paraping.cli_hosts import (
     active_host_count,
@@ -877,98 +878,23 @@ def _update_render_state(state: Dict[str, Any]) -> None:
 def _render_frame(args: argparse.Namespace, state: Dict[str, Any]) -> None:
     """Render a frame when needed based on update and refresh timing state."""
     now = time.time()
-    refresh_interval = 0.05 if state["kitt_mode_enabled"] else state["refresh_interval"]
-    should_render = state["force_render"] or (
-        not state["paused"] and (state["updated"] or (now - state["last_render"]) >= refresh_interval)
-    )
-    if not should_render:
+    if not should_render_frame(state, now):
         return
-    display_timestamp = format_timestamp(datetime.now(timezone.utc), state["display_tz"])
-    snapshot_timestamp = state.get("render_snapshot_timestamp")
-    if snapshot_timestamp is not None:
-        snapshot_dt = datetime.fromtimestamp(snapshot_timestamp, timezone.utc)
-        display_timestamp = format_timestamp(snapshot_dt, state["display_tz"])
-    max_offset, _visible_hosts, _total_hosts = compute_host_scroll_bounds(
-        state["host_infos"],
-        state["render_buffers"],
-        state["render_stats"],
-        state["symbols"],
-        state["panel_position"],
-        state["modes"][state["mode_index"]],
-        state["sort_modes"][state["sort_mode_index"]],
-        state["filter_modes"][state["filter_mode_index"]],
-        args.slow_threshold,
-        state["show_asn"],
-        summary_mode=state["summary_modes"][state["summary_mode_index"]],
-        summary_scope=state["summary_scope_modes"][state["summary_scope_mode_index"]],
-        group_by=state["group_by_modes"][state["group_by_mode_index"]],
-        group_sort_enabled=state["summary_scope_modes"][state["summary_scope_mode_index"]] == "group",
-        pulse_position=state["pulse_position"],
-    )
-    state["host_scroll_offset"] = min(state["host_scroll_offset"], max_offset)
-    override_lines = None
+    display_timestamp = resolve_display_timestamp(state, format_timestamp_func=format_timestamp)
+    clamp_host_scroll_offset(args, state, compute_host_scroll_bounds_func=compute_host_scroll_bounds)
     term_size = get_terminal_size(fallback=(80, 24))
-    if state["show_help"]:
-        override_lines = render_help_view(term_size.columns, term_size.lines)
-    elif state["host_select_active"]:
-        include_asn = should_show_asn(
-            state["host_infos"],
-            state["modes"][state["mode_index"]],
-            state["show_asn"],
-            term_size.columns,
-        )
-        display_names = build_display_names(
-            state["host_infos"],
-            state["modes"][state["mode_index"]],
-            include_asn,
-            asn_width=8,
-        )
-        display_entries = build_display_entries(
-            state["host_infos"],
-            display_names,
-            state["render_buffers"],
-            state["render_stats"],
-            state["symbols"],
-            state["sort_modes"][state["sort_mode_index"]],
-            state["filter_modes"][state["filter_mode_index"]],
-            args.slow_threshold,
-            group_by=state["group_by_modes"][state["group_by_mode_index"]],
-            group_sort_enabled=state["summary_scope_modes"][state["summary_scope_mode_index"]] == "group",
-        )
-        override_lines = render_host_selection_view(
-            display_entries,
-            state["host_select_index"],
-            term_size.columns,
-            term_size.lines,
-            state["modes"][state["mode_index"]],
-        )
-    elif state["graph_host_id"] is not None:
-        include_asn = should_show_asn(
-            state["host_infos"],
-            state["modes"][state["mode_index"]],
-            state["show_asn"],
-            term_size.columns,
-        )
-        display_names = build_display_names(
-            state["host_infos"],
-            state["modes"][state["mode_index"]],
-            include_asn,
-            asn_width=8,
-        )
-        host_info_by_id = {info["id"]: info for info in state["host_infos"]}
-        fallback_label = host_info_by_id.get(state["graph_host_id"], {}).get("alias", "unknown-host")
-        host_label = display_names.get(state["graph_host_id"], fallback_label)
-        override_lines = render_fullscreen_rtt_graph(
-            host_label,
-            state["render_buffers"][state["graph_host_id"]]["rtt_history"],
-            state["render_buffers"][state["graph_host_id"]]["time_history"],
-            term_size.columns,
-            term_size.lines,
-            state["display_modes"][state["display_mode_index"]],
-            state["render_paused"],
-            display_timestamp,
-            dormant=state["dormant"],
-        )
+    override_lines = build_override_lines(
+        args,
+        state,
+        term_size,
+        display_timestamp,
+        render_help_view_func=render_help_view,
+        should_show_asn_func=should_show_asn,
+        build_display_names_func=build_display_names,
+        build_display_entries_func=build_display_entries,
+        render_host_selection_view_func=render_host_selection_view,
+        render_fullscreen_rtt_graph_func=render_fullscreen_rtt_graph,
+    )
     render_display(
         state["host_infos"],
         state["render_buffers"],
