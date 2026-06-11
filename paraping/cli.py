@@ -26,9 +26,8 @@ import threading
 import time
 import tty
 from concurrent.futures import ThreadPoolExecutor  # noqa: F401 - tests patch this symbol.
-from datetime import datetime, timezone, tzinfo
-from typing import Any, Callable, Dict, List, Optional, Union
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from datetime import datetime, timezone
+from typing import Any, Callable, Dict, List, Optional
 
 from paraping import cli_args as _cli_args
 from paraping.cli_args import add_option_from_spec, apply_config_to_args, apply_option_defaults
@@ -49,6 +48,7 @@ from paraping.cli_runtime import (
     round_interval_seconds,
     update_runtime_interval,
 )
+from paraping.cli_setup import setup_hosts_and_state
 from paraping.cli_state import build_initial_state
 from paraping.config import DEFAULT_CONFIG_PATH, load_config, save_config_overrides
 from paraping.core import (
@@ -62,11 +62,8 @@ from paraping.input_keys import read_key
 from paraping.keymap import KeyContext, resolve_action
 from paraping.network_asn import asn_worker, should_retry_asn
 from paraping.pinger import rdns_worker, scheduler_driven_worker_ping
-from paraping.runtime.constants import MAX_HOST_THREADS
-from paraping.runtime.engine import MonitorState
 from paraping.runtime.event_mirror import mirror_ping_event
 from paraping.runtime.history import update_history_buffer
-from paraping.runtime.rate_limit import validate_global_rate_limit
 from paraping.runtime.render_projection import project_render_state
 from paraping.runtime.render_state import resolve_render_state
 from paraping.runtime.scheduler import Scheduler
@@ -224,97 +221,15 @@ def handle_options() -> argparse.Namespace:
 
 def _setup_hosts_and_state(args: argparse.Namespace) -> Optional[Dict[str, Any]]:
     """Parse host input and initialize host/runtime state required by the monitor loop."""
-    if args.count < 0:
-        print("Error: Count must be a non-negative number (0 for infinite).")
-        return None
-    if args.timeout <= 0:
-        print("Error: Timeout must be a positive number of seconds.")
-        return None
-    if args.interval < 0.1 or args.interval > 60.0:
-        print("Error: Interval must be between 0.1 and 60.0 seconds.")
-        return None
-
-    all_hosts: List[Union[str, Dict[str, Any]]] = []
-    if args.hosts:
-        all_hosts.extend({"host": host, "alias": host} for host in args.hosts)
-    if args.input:
-        parsed_hosts, parse_report = read_input_file_with_report(args.input)
-        if parse_report.has_errors:
-            print(f"Error: {args.input} contains {parse_report.error_count} format error(s).", file=sys.stderr)
-            for issue in parse_report.issues:
-                if issue.severity != "error":
-                    continue
-                line_label = issue.line_number if issue.line_number > 0 else "-"
-                print(f"{args.input}:{line_label}: {issue.reason} | {issue.raw_line}", file=sys.stderr)
-            sys.exit(1)
-        all_hosts.extend(parsed_hosts)
-    if not all_hosts:
-        print("Error: No hosts specified. Provide hosts as arguments or use -f/--input option.")
-        return None
-    if len(all_hosts) > MAX_HOST_THREADS:
-        print(
-            "Error: Host count exceeds maximum supported threads "
-            f"({len(all_hosts)} > {MAX_HOST_THREADS}). Reduce the host list."
-        )
-        return None
-
-    is_valid, _computed_rate, error_message = validate_global_rate_limit(len(all_hosts), args.interval)
-    if not is_valid:
-        print(error_message, file=sys.stderr)
-        sys.exit(1)
-
-    display_tz: tzinfo = timezone.utc
-    if args.timezone:
-        try:
-            display_tz = ZoneInfo(args.timezone)
-        except ZoneInfoNotFoundError:
-            print(f"Error: Unknown timezone '{args.timezone}'. Use an IANA name like 'Asia/Tokyo'.")
-            return None
-    snapshot_tz: tzinfo = display_tz if args.snapshot_timezone == "display" else timezone.utc
-    panel_position = args.panel_position
-    pulse_position = "bottom" if getattr(args, "kitt", False) else "none"
-    symbols: Dict[str, str] = {"success": ".", "fail": "x", "slow": "!", "pending": "-"}
-    host_infos, host_info_map = build_host_infos(all_hosts)
-    host_labels = [info["alias"] for info in host_infos]
-    timeline_width = _compute_initial_timeline_width(
-        host_labels, get_terminal_size(fallback=(80, 24)), panel_position, pulse_position
+    return setup_hosts_and_state(
+        args,
+        read_input_file_with_report_func=read_input_file_with_report,
+        build_host_infos_func=build_host_infos,
+        compute_initial_timeline_width_func=_compute_initial_timeline_width,
+        get_terminal_size_func=get_terminal_size,
+        os_module=os,
+        queue_factory=queue.Queue,
     )
-    ping_helper_path = os.path.abspath(os.path.expanduser(args.ping_helper))
-    if not os.path.exists(ping_helper_path):
-        print(
-            "Error: ping_helper binary not found at "
-            f"'{ping_helper_path}'. Run 'make build' first. "
-            "On macOS, run ParaPing with sudo because setcap is unavailable.",
-            file=sys.stderr,
-        )
-        return None
-    if not os.access(ping_helper_path, os.X_OK):
-        print(
-            "Error: ping_helper is not executable at "
-            f"'{ping_helper_path}'. Run 'chmod +x {ping_helper_path}' "
-            "or rebuild with 'make build'.",
-            file=sys.stderr,
-        )
-        return None
-    return {
-        "all_hosts": all_hosts,
-        "display_tz": display_tz,
-        "snapshot_tz": snapshot_tz,
-        "ping_helper_path": ping_helper_path,
-        "panel_position": panel_position,
-        "panel_toggle_default": panel_position if panel_position != "none" else "right",
-        "last_panel_position": panel_position if panel_position != "none" else None,
-        "pulse_position": pulse_position,
-        "pulse_toggle_default": "bottom",
-        "last_pulse_position": pulse_position if pulse_position != "none" else "bottom",
-        "symbols": symbols,
-        "host_infos": host_infos,
-        "host_info_map": host_info_map,
-        # Shadow state for incremental runtime migration. This does not affect
-        # rendering yet; it only mirrors ping events for parity validation.
-        "monitor_state": MonitorState(host_ids=[info["id"] for info in host_infos], timeline_width=timeline_width),
-        "result_queue": queue.Queue(),
-    }
 
 
 _rebuild_host_info_map = rebuild_host_info_map
