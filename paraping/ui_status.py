@@ -16,6 +16,8 @@
 import os
 from typing import Any, Dict, Optional, Sequence
 
+from paraping.types import HostInfo
+
 STATUS_METRICS_SEPARATOR = " | "
 STATUS_METRICS_TEMPLATE = STATUS_METRICS_SEPARATOR.join(
     ["Hosts: {hosts}", "Success: {success}", "Errors: {errors}", "Rate: {rate}"]
@@ -48,7 +50,7 @@ def estimate_ping_rate(host_count: int, interval_seconds: float) -> Optional[flo
 
 
 def build_status_metrics(
-    host_infos: Optional[Sequence[Dict[str, Any]]],
+    host_infos: Optional[Sequence[HostInfo]],
     stats: Optional[Dict[int, Dict[str, Any]]],
     interval_seconds: float = 1.0,
 ) -> str:

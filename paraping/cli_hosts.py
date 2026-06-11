@@ -15,16 +15,18 @@
 
 from typing import Any, Callable, Dict, List
 
+from paraping.types import HostInfo
 
-def rebuild_host_info_map(host_infos: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+
+def rebuild_host_info_map(host_infos: List[HostInfo]) -> Dict[str, List[HostInfo]]:
     """Rebuild host-to-info mapping for DNS/ASN updates."""
-    host_info_map: Dict[str, List[Dict[str, Any]]] = {}
+    host_info_map: Dict[str, List[HostInfo]] = {}
     for info in host_infos:
         host_info_map.setdefault(info["host"], []).append(info)
     return host_info_map
 
 
-def build_host_info_from_entry(entry: Dict[str, Any], host_id: int) -> Dict[str, Any]:
+def build_host_info_from_entry(entry: Dict[str, Any], host_id: int) -> HostInfo:
     """Create a host info record from parsed input entry."""
     host = entry.get("host") or entry.get("ip") or ""
     alias = entry.get("alias") or host
@@ -63,7 +65,7 @@ def purge_expired_removed_hosts(
     sync_group_by_modes: Callable[[Dict[str, Any]], None],
 ) -> None:
     """Permanently remove hosts after retirement window expires."""
-    remaining_infos: List[Dict[str, Any]] = []
+    remaining_infos: List[HostInfo] = []
     purged_ids: List[int] = []
     for info in state["host_infos"]:
         if info.get("active", True):

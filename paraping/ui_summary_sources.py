@@ -17,13 +17,14 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Sequence, Tuple
 
 from paraping.stats import compute_group_summary_data, compute_summary_data, resolve_group_labels, resolve_primary_group_label
+from paraping.types import HostInfo
 
 
 @dataclass(frozen=True)
 class SummarySources:
     """Prepared host and summary data for display rendering."""
 
-    active_host_infos: List[Dict[str, Any]]
+    active_host_infos: List[HostInfo]
     host_group_labels: Dict[int, str]
     host_tree_labels: Dict[int, str]
     ordered_host_ids: List[int]
@@ -35,7 +36,7 @@ class SummarySources:
 
 
 def prepare_summary_sources(
-    host_infos: Sequence[Dict[str, Any]],
+    host_infos: Sequence[HostInfo],
     display_entries: Sequence[Tuple[int, str]],
     display_names: Dict[int, str],
     buffers: Dict[int, Dict[str, Any]],
@@ -88,7 +89,7 @@ def prepare_summary_sources(
 
 
 def build_group_summary_data(
-    active_host_infos: List[Dict[str, Any]],
+    active_host_infos: List[HostInfo],
     display_names: Dict[int, str],
     buffers: Dict[int, Dict[str, Any]],
     stats: Dict[int, Dict[str, Any]],
@@ -119,7 +120,7 @@ def build_group_summary_data(
 
 
 def count_kitt_error_hosts(
-    active_host_infos: Sequence[Dict[str, Any]],
+    active_host_infos: Sequence[HostInfo],
     buffers: Dict[int, Dict[str, Any]],
     symbols: Dict[str, str],
 ) -> int:

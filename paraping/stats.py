@@ -22,6 +22,8 @@ import math
 import re
 from typing import Any, Deque, Dict, List, Optional, Sequence, Tuple
 
+from paraping.types import HostInfo
+
 TAG_INDEX_GROUP_RE = re.compile(r"^tag(\d+)$")
 HIER_GROUP_SITE_TAG1 = "site>tag1"
 HIER_GROUP_TAG1_SITE = "tag1>site"
@@ -134,7 +136,7 @@ def build_summary_all_suffix(entry: Dict[str, Any]) -> str:
 
 
 def compute_summary_data(
-    host_infos: Sequence[Dict[str, Any]],
+    host_infos: Sequence[HostInfo],
     display_names: Dict[int, str],
     buffers: Dict[int, Dict[str, Any]],
     stats: Dict[int, Dict[str, Any]],
@@ -266,7 +268,7 @@ def natural_sort_key(value: str) -> Tuple[Tuple[int, Any], ...]:
     return tuple(key)
 
 
-def normalize_host_tags(host_info: Dict[str, Any]) -> List[str]:
+def normalize_host_tags(host_info: HostInfo) -> List[str]:
     """Return de-duplicated host tags in config order, with whitespace removed."""
     tags = host_info.get("tags") or []
     if not isinstance(tags, list):
@@ -282,13 +284,13 @@ def normalize_host_tags(host_info: Dict[str, Any]) -> List[str]:
     return normalized
 
 
-def resolve_site_group_label(host_info: Dict[str, Any]) -> str:
+def resolve_site_group_label(host_info: HostInfo) -> str:
     """Resolve a site-based group label for one host."""
     site_value = str(host_info.get("site") or "").strip()
     return f"site:{site_value}" if site_value else "site:unknown"
 
 
-def resolve_tag_index_group_label(host_info: Dict[str, Any], tag_index: int) -> str:
+def resolve_tag_index_group_label(host_info: HostInfo, tag_index: int) -> str:
     """Resolve a positional tag label (1-based) for one host."""
     normalized = normalize_host_tags(host_info)
     if tag_index < 1 or tag_index > len(normalized):
@@ -301,7 +303,7 @@ def is_hierarchical_group_by(group_by: str) -> bool:
     return group_by in (HIER_GROUP_SITE_TAG1, HIER_GROUP_TAG1_SITE)
 
 
-def resolve_group_components(host_info: Dict[str, Any], group_by: str) -> List[str]:
+def resolve_group_components(host_info: HostInfo, group_by: str) -> List[str]:
     """Resolve display components for a group mode (1 item for flat, 2 for hierarchy)."""
     if group_by == "asn":
         asn_value = host_info.get("asn")
@@ -321,7 +323,7 @@ def resolve_group_components(host_info: Dict[str, Any], group_by: str) -> List[s
     return ["all"]
 
 
-def resolve_group_labels(host_info: Dict[str, Any], group_by: str) -> List[str]:
+def resolve_group_labels(host_info: HostInfo, group_by: str) -> List[str]:
     """Resolve all group labels for one host based on grouping mode."""
     if group_by == "asn":
         return resolve_group_components(host_info, group_by)
@@ -340,7 +342,7 @@ def resolve_group_labels(host_info: Dict[str, Any], group_by: str) -> List[str]:
     return ["all"]
 
 
-def resolve_primary_group_label(host_info: Dict[str, Any], group_by: str) -> str:
+def resolve_primary_group_label(host_info: HostInfo, group_by: str) -> str:
     """Resolve the primary group label used for host-row ordering."""
     if group_by == "site>tag1":
         return resolve_site_tag1_labels(host_info)["site_label"]
@@ -348,7 +350,7 @@ def resolve_primary_group_label(host_info: Dict[str, Any], group_by: str) -> str
     return labels[0] if labels else "unknown"
 
 
-def resolve_site_tag1_labels(host_info: Dict[str, Any]) -> Dict[str, str]:
+def resolve_site_tag1_labels(host_info: HostInfo) -> Dict[str, str]:
     """Resolve hierarchical labels used by `site>tag1` grouping mode."""
     site_value = str(host_info.get("site") or "").strip()
     site_label = f"site:{site_value}" if site_value else "site:unknown"
@@ -368,7 +370,7 @@ def resolve_site_tag1_labels(host_info: Dict[str, Any]) -> Dict[str, str]:
 
 
 def compute_group_summary_data(
-    host_infos: Sequence[Dict[str, Any]],
+    host_infos: Sequence[HostInfo],
     display_names: Dict[int, str],
     buffers: Dict[int, Dict[str, Any]],
     stats: Dict[int, Dict[str, Any]],

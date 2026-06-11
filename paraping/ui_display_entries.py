@@ -25,9 +25,10 @@ from paraping.stats import (
     resolve_primary_group_label,
     resolve_site_tag1_labels,
 )
+from paraping.types import HostInfo
 
 
-def resolve_display_name(host_info: Dict[str, Any], mode: str) -> str:
+def resolve_display_name(host_info: HostInfo, mode: str) -> str:
     """Resolve the display name for a host based on mode."""
     if mode == "ip":
         return str(host_info["ip"])
@@ -42,7 +43,7 @@ def resolve_display_name(host_info: Dict[str, Any], mode: str) -> str:
     return str(host_info["ip"])
 
 
-def format_asn_label(host_info: Dict[str, Any], asn_width: int) -> str:
+def format_asn_label(host_info: HostInfo, asn_width: int) -> str:
     """Format the ASN label for display."""
     if host_info.get("asn_pending"):
         label = "resolving..."
@@ -53,7 +54,7 @@ def format_asn_label(host_info: Dict[str, Any], asn_width: int) -> str:
 
 
 def format_display_name(
-    host_info: Dict[str, Any],
+    host_info: HostInfo,
     mode: str,
     include_asn: bool,
     asn_width: int,
@@ -72,7 +73,7 @@ def format_display_name(
     return formatted
 
 
-def build_display_names(host_infos: Sequence[Dict[str, Any]], mode: str, include_asn: bool, asn_width: int) -> Dict[int, str]:
+def build_display_names(host_infos: Sequence[HostInfo], mode: str, include_asn: bool, asn_width: int) -> Dict[int, str]:
     """Build display names for all hosts."""
     base_label_width = 0
     if include_asn:
@@ -81,7 +82,7 @@ def build_display_names(host_infos: Sequence[Dict[str, Any]], mode: str, include
 
 
 def build_display_entries(  # noqa: C901
-    host_infos: Sequence[Dict[str, Any]],
+    host_infos: Sequence[HostInfo],
     display_names: Dict[int, str],
     buffers: Dict[int, Dict[str, Any]],
     stats: Dict[int, Dict[str, Any]],
@@ -306,7 +307,7 @@ def build_group_tree_label_map(
 
 
 def build_group_header_line_map(  # noqa: C901
-    active_host_infos: Sequence[Dict[str, Any]],
+    active_host_infos: Sequence[HostInfo],
     ordered_host_ids: Sequence[int],
     group_by: str,
     group_summary_data: Sequence[Dict[str, Any]],
