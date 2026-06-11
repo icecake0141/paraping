@@ -40,6 +40,12 @@ from paraping.cli_hosts import (
     purge_expired_removed_hosts,
     rebuild_host_info_map,
 )
+from paraping.cli_input_contexts import (
+    handle_graph_context,
+    handle_help_context,
+    handle_host_select_context,
+    resolve_input_context,
+)
 from paraping.cli_interaction import toggle_display_pause, toggle_dormant_mode
 from paraping.cli_render_state import (
     drain_asn_results,
@@ -67,7 +73,7 @@ from paraping.core import (
     read_input_file_with_report,
 )
 from paraping.input_keys import read_key
-from paraping.keymap import KeyContext, resolve_action
+from paraping.keymap import resolve_action
 from paraping.network_asn import asn_worker, should_retry_asn
 from paraping.pinger import rdns_worker, scheduler_driven_worker_ping
 from paraping.runtime.event_mirror import mirror_ping_event
@@ -393,14 +399,7 @@ def _handle_user_input(
 ) -> bool:
     """Process one keyboard input event and return True when the current loop iteration should be skipped."""
     skip_iteration = False
-    context: KeyContext = "main"
-    if state.get("show_help"):
-        context = "help"
-    elif state.get("host_select_active"):
-        context = "host_select"
-    elif state.get("graph_host_id") is not None:
-        context = "graph"
-
+    context = resolve_input_context(state)
     action = resolve_action(key, context) or ""
 
     if action == "quit":
@@ -409,12 +408,7 @@ def _handle_user_input(
         return skip_iteration
 
     if context == "help":
-        if action in ("help_toggle", "back"):
-            state["show_help"] = False
-            state["force_render"] = True
-            state["updated"] = True
-            skip_iteration = True
-        return skip_iteration
+        return handle_help_context(action, state)
 
     if action == "help_toggle":
         state["show_help"] = True
@@ -423,75 +417,10 @@ def _handle_user_input(
         return skip_iteration
 
     if context == "host_select":
-        render_buffers = state["render_buffers"]
-        render_stats = state["render_stats"]
-        term_size = get_terminal_size(fallback=(80, 24))
-        include_asn = should_show_asn(
-            state["host_infos"],
-            state["modes"][state["mode_index"]],
-            state["show_asn"],
-            term_size.columns,
-        )
-        display_names = build_display_names(
-            state["host_infos"],
-            state["modes"][state["mode_index"]],
-            include_asn,
-            asn_width=8,
-        )
-        display_entries = build_display_entries(
-            state["host_infos"],
-            display_names,
-            render_buffers,
-            render_stats,
-            state["symbols"],
-            state["sort_modes"][state["sort_mode_index"]],
-            state["filter_modes"][state["filter_mode_index"]],
-            args.slow_threshold,
-            group_by=state["group_by_modes"][state["group_by_mode_index"]],
-            group_sort_enabled=state["summary_scope_modes"][state["summary_scope_mode_index"]] == "group",
-        )
-        if not display_entries:
-            state["host_select_index"] = 0
-        else:
-            state["host_select_index"] = min(max(state["host_select_index"], 0), len(display_entries) - 1)
-        if action == "select_prev" and display_entries:
-            state["host_select_index"] = max(0, state["host_select_index"] - 1)
-            state["force_render"] = True
-            state["updated"] = True
-        elif action == "select_next" and display_entries:
-            state["host_select_index"] = min(len(display_entries) - 1, state["host_select_index"] + 1)
-            state["force_render"] = True
-            state["updated"] = True
-        elif action == "select_confirm":
-            if display_entries:
-                state["graph_host_id"] = display_entries[state["host_select_index"]][0]
-                state["host_select_active"] = False
-                state["force_render"] = True
-                state["updated"] = True
-        elif action == "back":
-            state["host_select_active"] = False
-            state["force_render"] = True
-            state["updated"] = True
-        if action:
-            skip_iteration = True
-        return skip_iteration
+        return handle_host_select_context(action, args, state)
 
     if context == "graph":
-        if action == "back":
-            state["graph_host_id"] = None
-            state["force_render"] = True
-            state["updated"] = True
-            skip_iteration = True
-        elif action == "host_select_open":
-            state["host_select_active"] = True
-            state["graph_host_id"] = None
-            state["force_render"] = True
-            state["updated"] = True
-            skip_iteration = True
-        elif action == "graph_toggle":
-            state["display_mode_index"] = (state["display_mode_index"] + 1) % len(state["display_modes"])
-            state["updated"] = True
-        return skip_iteration
+        return handle_graph_context(action, state)
 
     action_handlers: Dict[str, Callable[[], None]] = {}
 
