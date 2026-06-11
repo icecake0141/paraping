@@ -28,6 +28,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 from paraping import ui_display_entries as _ui_display_entries
 from paraping import ui_graph as _ui_graph
 from paraping import ui_layout as _ui_layout
+from paraping import ui_main_header as _ui_main_header
 from paraping import ui_panels as _ui_panels
 from paraping import ui_pulse as _ui_pulse
 from paraping import ui_status as _ui_status
@@ -61,6 +62,7 @@ build_display_entries = _ui_display_entries.build_display_entries
 build_display_names = _ui_display_entries.build_display_names
 build_group_header_line_map = _ui_display_entries.build_group_header_line_map
 build_group_tree_label_map = _ui_display_entries.build_group_tree_label_map
+build_main_header = _ui_main_header.build_main_header
 can_render_full_summary = _ui_panels.can_render_full_summary
 compute_activity_indicator_width = _ui_pulse.compute_activity_indicator_width
 _parse_positive_float = _ui_status._parse_positive_float
@@ -573,24 +575,16 @@ def render_main_view(
 ) -> List[str]:
     """Render the main view (timeline, sparkline, or square)."""
     del kitt_style  # Main-panel style remains unchanged; bottom band handles style rendering.
-    pause_label = "DORMANT" if dormant else ("PAUSED" if paused else "LIVE")
-    header_base = f"ParaPing - {pause_label} results [{mode_label} | {display_mode}] {timestamp}"
-    activity_indicator = ""
-    if not paused:
-        indicator_width = compute_activity_indicator_width(width, header_base)
-        if indicator_width > 0:
-            indicator_height = ACTIVITY_INDICATOR_HEIGHT + (2 if kitt_mode_enabled else 0)
-            indicator_speed = ACTIVITY_INDICATOR_SPEED_HZ + (4 if kitt_mode_enabled else 0)
-            activity_indicator = build_activity_indicator(
-                now_utc,
-                width=indicator_width,
-                max_height=indicator_height,
-                speed_hz=indicator_speed,
-            )
-    if activity_indicator:
-        header = f"{header_base} {activity_indicator}"
-    else:
-        header = header_base
+    header = build_main_header(
+        width,
+        mode_label,
+        display_mode,
+        paused,
+        dormant,
+        timestamp,
+        now_utc,
+        kitt_mode_enabled=kitt_mode_enabled,
+    )
     if display_mode == "sparkline":
         return render_sparkline_view(
             display_entries,

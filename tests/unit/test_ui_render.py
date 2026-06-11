@@ -37,6 +37,7 @@ from paraping.ui_render import (  # noqa: E402
     build_display_names,
     build_kitt_gradient_bar,
     build_kitt_scanner_bar,
+    build_main_header,
     build_status_line,
     build_status_metrics,
     build_time_axis,
@@ -1312,6 +1313,66 @@ class TestRenderMainView(unittest.TestCase):
             now_utc=self._now(),
         )
         self.assertIsInstance(lines, list)
+
+
+class TestMainHeader(unittest.TestCase):
+    """Test main panel header composition."""
+
+    def _now(self):
+        return datetime.fromtimestamp(0, tz=timezone.utc)
+
+    def test_build_main_header_live_includes_activity_when_space_allows(self):
+        """LIVE header should include an activity indicator when there is room."""
+        header = build_main_header(
+            80,
+            "ip",
+            "timeline",
+            paused=False,
+            dormant=False,
+            timestamp="ts",
+            now_utc=self._now(),
+        )
+        self.assertIn("LIVE", header)
+        self.assertGreater(len(header), len("ParaPing - LIVE results [ip | timeline] ts"))
+
+    def test_build_main_header_paused_omits_activity(self):
+        """PAUSED header should not render an activity indicator."""
+        header = build_main_header(
+            80,
+            "ip",
+            "timeline",
+            paused=True,
+            dormant=False,
+            timestamp="ts",
+            now_utc=self._now(),
+        )
+        self.assertEqual(header, "ParaPing - PAUSED results [ip | timeline] ts")
+
+    def test_build_main_header_dormant_takes_precedence(self):
+        """DORMANT header should take precedence over PAUSED."""
+        header = build_main_header(
+            80,
+            "ip",
+            "timeline",
+            paused=True,
+            dormant=True,
+            timestamp="ts",
+            now_utc=self._now(),
+        )
+        self.assertEqual(header, "ParaPing - DORMANT results [ip | timeline] ts")
+
+    def test_build_main_header_width_without_activity_space(self):
+        """Header should fall back to text only when the panel is narrow."""
+        header = build_main_header(
+            10,
+            "ip",
+            "timeline",
+            paused=False,
+            dormant=False,
+            timestamp="ts",
+            now_utc=self._now(),
+        )
+        self.assertEqual(header, "ParaPing - LIVE results [ip | timeline] ts")
 
 
 class TestScrollOverflow(unittest.TestCase):
