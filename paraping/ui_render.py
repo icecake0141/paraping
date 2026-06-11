@@ -19,7 +19,6 @@ including ANSI text utilities, color/timeline building, layout computation,
 view rendering, graph utilities, formatting functions, and terminal utilities.
 """
 
-import sys
 import time  # noqa: F401  # Backward-compatible patch target for pulse animation tests.
 from collections import deque
 from datetime import datetime, timezone, tzinfo
@@ -36,11 +35,12 @@ from paraping import ui_summary_sources as _ui_summary_sources
 from paraping import ui_terminal as _ui_terminal
 from paraping import ui_text as _ui_text
 from paraping import ui_timeline as _ui_timeline
-from paraping.ui_text import colorize_text, rjust_visible, strip_ansi, visible_cell_width
+from paraping.ui_text import colorize_text, rjust_visible, strip_ansi
 
 ANSI_ESCAPE_RE = _ui_text.ANSI_ESCAPE_RE
 truncate_visible = _ui_text.truncate_visible
 visible_len = _ui_text.visible_len
+visible_cell_width = _ui_text.visible_cell_width
 pad_visible = _ui_text.pad_visible
 _resolve_kitt_gradient_rings = _ui_pulse._resolve_kitt_gradient_rings
 _resolve_kitt_scanner_speed_hz = _ui_pulse._resolve_kitt_scanner_speed_hz
@@ -66,7 +66,6 @@ build_main_header = _ui_main_header.build_main_header
 can_render_full_summary = _ui_panels.can_render_full_summary
 compute_activity_indicator_width = _ui_pulse.compute_activity_indicator_width
 _parse_positive_float = _ui_status._parse_positive_float
-_find_pulse_start = _ui_terminal._find_pulse_start
 _find_safe_diff_start = _ui_terminal._find_safe_diff_start
 _rewind_to_escape_boundary = _ui_terminal._rewind_to_escape_boundary
 build_status_line = _ui_status.build_status_line
@@ -94,6 +93,7 @@ render_pulse_panel = _ui_pulse.render_pulse_panel
 render_status_box = _ui_panels.render_status_box
 render_summary_view = _ui_panels.render_summary_view
 _summary_render_width = _ui_layout.summary_render_width
+render_terminal_frame = _ui_terminal.render_terminal_frame
 ring_bell = _ui_terminal.ring_bell
 resolve_display_name = _ui_display_entries.resolve_display_name
 resolve_group_header_lines = _ui_display_entries.resolve_group_header_lines
@@ -1013,47 +1013,7 @@ def render_display(  # noqa: C901
     if not combined_lines:
         return
 
-    if LAST_RENDER_LINES is None:
-        sys.stdout.write("\x1b[2J\x1b[H")
-        output_chunks = []
-        for index, line in enumerate(combined_lines):
-            output_chunks.append(f"\x1b[{index + 1};1H\x1b[2K{line}")
-        sys.stdout.write("".join(output_chunks))
-        sys.stdout.flush()
-        LAST_RENDER_LINES = combined_lines
-        return
-
-    max_lines = max(len(LAST_RENDER_LINES), len(combined_lines))
-    pulse_start = _find_pulse_start(combined_lines)
-    if pulse_start is None:
-        pulse_start = _find_pulse_start(LAST_RENDER_LINES)
-    output_chunks = []
-    for index in range(max_lines):
-        previous_line = LAST_RENDER_LINES[index] if index < len(LAST_RENDER_LINES) else None
-        current_line = combined_lines[index] if index < len(combined_lines) else ""
-        if previous_line == current_line and index < len(combined_lines):
-            continue
-        if previous_line is None:
-            output_chunks.append(f"\x1b[{index + 1};1H\x1b[2K{current_line}")
-            continue
-        if not current_line:
-            output_chunks.append(f"\x1b[{index + 1};1H\x1b[2K")
-            continue
-        if pulse_start is not None and index >= pulse_start:
-            output_chunks.append(f"\x1b[{index + 1};1H\x1b[2K{current_line}")
-            continue
-        diff_start = _find_safe_diff_start(previous_line, current_line)
-        if diff_start <= 0:
-            output_chunks.append(f"\x1b[{index + 1};1H{current_line}\x1b[K")
-            continue
-        col = visible_cell_width(current_line[:diff_start]) + 1
-        output_chunks.append(f"\x1b[{index + 1};{col}H{current_line[diff_start:]}\x1b[K")
-
-    if output_chunks:
-        sys.stdout.write("".join(output_chunks))
-        sys.stdout.flush()
-
-    LAST_RENDER_LINES = combined_lines
+    LAST_RENDER_LINES = render_terminal_frame(LAST_RENDER_LINES, combined_lines)
 
 
 def reset_render_cache() -> None:
