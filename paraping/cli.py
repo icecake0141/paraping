@@ -25,7 +25,6 @@ import termios
 import threading
 import time
 import tty
-from collections import deque
 from concurrent.futures import ThreadPoolExecutor  # noqa: F401 - tests patch this symbol.
 from datetime import datetime, timezone, tzinfo
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -42,16 +41,6 @@ from paraping.cli_hosts import (
     rebuild_host_info_map,
 )
 from paraping.cli_interaction import toggle_display_pause, toggle_dormant_mode
-from paraping.cli_modes import (
-    DISPLAY_NAME_MODES,
-    DISPLAY_VIEW_MODES,
-    FILTER_MODES,
-    KITT_STYLE_MODES,
-    SORT_MODES,
-    SUMMARY_MODES,
-    SUMMARY_SCOPE_MODES,
-    resolve_mode_index,
-)
 from paraping.cli_runtime import (
     build_runtime_config_overrides,
     check_terminal_resize_and_request_redraw,
@@ -60,6 +49,7 @@ from paraping.cli_runtime import (
     round_interval_seconds,
     update_runtime_interval,
 )
+from paraping.cli_state import build_initial_state
 from paraping.config import DEFAULT_CONFIG_PATH, load_config, save_config_overrides
 from paraping.core import (
     _normalize_term_size,
@@ -72,7 +62,7 @@ from paraping.input_keys import read_key
 from paraping.keymap import KeyContext, resolve_action
 from paraping.network_asn import asn_worker, should_retry_asn
 from paraping.pinger import rdns_worker, scheduler_driven_worker_ping
-from paraping.runtime.constants import HISTORY_DURATION_MINUTES, MAX_HOST_THREADS, SNAPSHOT_INTERVAL_SECONDS
+from paraping.runtime.constants import MAX_HOST_THREADS
 from paraping.runtime.engine import MonitorState
 from paraping.runtime.event_mirror import mirror_ping_event
 from paraping.runtime.history import update_history_buffer
@@ -1161,88 +1151,18 @@ def run(args: argparse.Namespace) -> None:
     initial_render_buffers, initial_render_stats = project_render_state(setup["monitor_state"], setup["symbols"])
     initial_term_size = get_terminal_size(fallback=(80, 24))
     now_monotonic = time.monotonic()
-    modes = DISPLAY_NAME_MODES
-    display_modes = DISPLAY_VIEW_MODES
-    summary_modes = SUMMARY_MODES
-    summary_scope_modes = SUMMARY_SCOPE_MODES
-    sort_modes = SORT_MODES
-    filter_modes = FILTER_MODES
-    kitt_style_modes = KITT_STYLE_MODES
-    arg_values = vars(args) if hasattr(args, "__dict__") else {}
-    initial_display_name = arg_values.get("display_name", "alias")
-    initial_view = arg_values.get("view", "timeline")
-    initial_summary_mode = arg_values.get("summary_mode", "rates")
-    initial_summary_scope = arg_values.get("summary_scope", "host")
-    initial_sort = arg_values.get("sort", "config")
-    initial_filter = arg_values.get("filter", "all")
-    initial_kitt_style = arg_values.get("kitt_style", "scanner")
-    state = {
-        **setup,
-        "modes": modes,
-        "mode_index": resolve_mode_index(modes, initial_display_name, default_index=2),
-        "show_help": False,
-        "display_modes": display_modes,
-        "display_mode_index": resolve_mode_index(display_modes, initial_view),
-        "summary_modes": summary_modes,
-        "summary_mode_index": resolve_mode_index(summary_modes, initial_summary_mode),
-        "summary_scope_modes": summary_scope_modes,
-        "summary_scope_mode_index": resolve_mode_index(summary_scope_modes, initial_summary_scope),
-        "group_by_modes": _build_group_by_modes(setup["host_infos"]),
-        "group_by_mode_index": 0,
-        "kitt_mode_enabled": bool(arg_values.get("kitt", False)),
-        "kitt_style_modes": kitt_style_modes,
-        "kitt_style_index": resolve_mode_index(kitt_style_modes, initial_kitt_style),
-        "summary_fullscreen": bool(arg_values.get("summary_fullscreen", False)),
-        "sort_modes": sort_modes,
-        "sort_mode_index": resolve_mode_index(sort_modes, initial_sort),
-        "filter_modes": filter_modes,
-        "filter_mode_index": resolve_mode_index(filter_modes, initial_filter, default_index=2),
-        "running": True,
-        "paused": False,
-        "dormant": False,
-        "display_paused": False,
-        "pause_mode": args.pause_mode,
-        "pause_event": threading.Event(),
-        "stop_event": threading.Event(),
-        "status_message": None,
-        "force_render": False,
-        "show_asn": bool(arg_values.get("show_asn", True)),
-        "color_supported": sys.stdout.isatty(),
-        "use_color": args.color and sys.stdout.isatty(),
-        "flash_on_fail": getattr(args, "flash_on_fail", False),
-        "bell_on_fail": getattr(args, "bell_on_fail", False),
-        "asn_cache": {},
-        "asn_failure_ttl": 300.0,
-        "host_select_active": False,
-        "host_select_index": 0,
-        "graph_host_id": None,
-        "history_buffer": deque(maxlen=int(HISTORY_DURATION_MINUTES * 60 / SNAPSHOT_INTERVAL_SECONDS)),
-        "history_offset": 0,
-        "last_snapshot_time": 0.0,
-        "cached_page_step": None,
-        "last_term_size": None,
-        "host_scroll_offset": 0,
-        "render_buffers": initial_render_buffers,
-        "render_stats": initial_render_stats,
-        "render_snapshot_timestamp": None,
-        "render_paused": False,
-        "done_host_ids": set(),
-        "worker_threads": {},
-        "next_host_id": (max((info["id"] for info in setup["host_infos"]), default=-1) + 1),
-        "updated": True,
-        "interval_seconds": args.interval,
-        "last_render": 0.0,
-        "refresh_interval": 0.10,
-        "last_observed_term_size": initial_term_size,
-        "next_resize_check_time": now_monotonic + 1.0,
-        "resize_check_interval": 1.0,
-        "expect_completion": args.count > 0,
-        "rdns_request_queue": queue.Queue(),
-        "rdns_result_queue": queue.Queue(),
-        "asn_request_queue": queue.Queue(),
-        "asn_result_queue": queue.Queue(),
-        "worker_stop": threading.Event(),
-    }
+    stdout_isatty = sys.stdout.isatty()
+    state = build_initial_state(
+        args,
+        setup,
+        initial_render_buffers,
+        initial_render_stats,
+        initial_term_size,
+        now_monotonic,
+        queue_factory=queue.Queue,
+        event_factory=threading.Event,
+        stdout_isatty=stdout_isatty,
+    )
     initial_group_by = getattr(args, "group_by", "none")
     _sync_group_by_modes(state, preferred_group_by=initial_group_by)
     for info in state["host_infos"]:
