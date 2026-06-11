@@ -17,9 +17,9 @@ import os
 import sys
 import time
 from datetime import datetime, tzinfo
-from typing import Optional, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple
 
-from paraping.ui_text import ANSI_RESET, strip_ansi
+from paraping.ui_text import ANSI_RESET, strip_ansi, visible_cell_width
 
 
 def get_terminal_size(fallback: Tuple[int, int] = (80, 24)) -> os.terminal_size:
@@ -95,6 +95,50 @@ def _rewind_to_escape_boundary(text: str, index: int) -> int:
     if sequence_end == -1:
         return esc_index
     return index
+
+
+def render_terminal_frame(previous_lines: Optional[Sequence[str]], current_lines: List[str]) -> List[str]:
+    """Render current frame lines with a full redraw or safe incremental diff."""
+    if previous_lines is None:
+        sys.stdout.write("\x1b[2J\x1b[H")
+        output_chunks = [f"\x1b[{index + 1};1H\x1b[2K{line}" for index, line in enumerate(current_lines)]
+        sys.stdout.write("".join(output_chunks))
+        sys.stdout.flush()
+        return current_lines
+
+    max_lines = max(len(previous_lines), len(current_lines))
+    pulse_start = _find_pulse_start(current_lines)
+    if pulse_start is None:
+        pulse_start = _find_pulse_start(previous_lines)
+    output_chunks = []
+    for index in range(max_lines):
+        previous_line = previous_lines[index] if index < len(previous_lines) else None
+        current_line = current_lines[index] if index < len(current_lines) else ""
+        if previous_line == current_line and index < len(current_lines):
+            continue
+        output_chunks.append(_build_line_update(index, previous_line, current_line, pulse_start))
+
+    if output_chunks:
+        sys.stdout.write("".join(output_chunks))
+        sys.stdout.flush()
+    return current_lines
+
+
+def _build_line_update(index: int, previous_line: Optional[str], current_line: str, pulse_start: Optional[int]) -> str:
+    """Build the ANSI update sequence for one changed terminal row."""
+    line_number = index + 1
+    if previous_line is None:
+        return f"\x1b[{line_number};1H\x1b[2K{current_line}"
+    if not current_line:
+        return f"\x1b[{line_number};1H\x1b[2K"
+    if pulse_start is not None and index >= pulse_start:
+        return f"\x1b[{line_number};1H\x1b[2K{current_line}"
+
+    diff_start = _find_safe_diff_start(previous_line, current_line)
+    if diff_start <= 0:
+        return f"\x1b[{line_number};1H{current_line}\x1b[K"
+    col = visible_cell_width(current_line[:diff_start]) + 1
+    return f"\x1b[{line_number};{col}H{current_line[diff_start:]}\x1b[K"
 
 
 def format_timezone_label(now_utc: datetime, display_tz: tzinfo) -> str:
