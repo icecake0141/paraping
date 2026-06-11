@@ -39,6 +39,11 @@ from paraping import ui_timeline as _ui_timeline
 from paraping.types import HostInfo
 from paraping.ui_text import colorize_text, rjust_visible, strip_ansi
 
+# Compatibility exports
+#
+# Historically, tests and consumers imported most UI helpers from ui_render.
+# Keep these aliases centralized here while implementations live in focused
+# modules such as ui_layout, ui_panels, ui_timeline, and ui_terminal.
 ANSI_ESCAPE_RE = _ui_text.ANSI_ESCAPE_RE
 truncate_visible = _ui_text.truncate_visible
 visible_len = _ui_text.visible_len
@@ -113,6 +118,97 @@ ACTIVITY_INDICATOR_HEIGHT = _ui_pulse.ACTIVITY_INDICATOR_HEIGHT
 ACTIVITY_INDICATOR_SPEED_HZ = _ui_pulse.ACTIVITY_INDICATOR_SPEED_HZ
 STATUS_METRICS_SEPARATOR = _ui_status.STATUS_METRICS_SEPARATOR
 STATUS_METRICS_TEMPLATE = _ui_status.STATUS_METRICS_TEMPLATE
+
+__all__ = [
+    "ACTIVITY_INDICATOR_HEIGHT",
+    "ACTIVITY_INDICATOR_SPEED_HZ",
+    "ACTIVITY_INDICATOR_WIDTH",
+    "ANSI_ESCAPE_RE",
+    "DisplayGeometry",
+    "KITT_SCANNER_STATE",
+    "LAST_RENDER_LINES",
+    "STATUS_METRICS_SEPARATOR",
+    "STATUS_METRICS_TEMPLATE",
+    "_find_safe_diff_start",
+    "_parse_positive_float",
+    "_resolve_kitt_gradient_rings",
+    "_resolve_kitt_scanner_speed_hz",
+    "_rewind_to_escape_boundary",
+    "box_lines",
+    "build_activity_indicator",
+    "build_ascii_graph",
+    "build_colored_sparkline",
+    "build_colored_square_timeline",
+    "build_colored_timeline",
+    "build_display_entries",
+    "build_display_lines",
+    "build_display_names",
+    "build_group_header_line_map",
+    "build_group_tree_label_map",
+    "build_kitt_gradient_bar",
+    "build_kitt_scanner_bar",
+    "build_main_header",
+    "build_sparkline",
+    "build_status_line",
+    "build_status_metrics",
+    "build_time_axis",
+    "can_render_full_summary",
+    "colorize_text",
+    "compute_activity_indicator_width",
+    "compute_host_scroll_bounds",
+    "compute_main_layout",
+    "compute_panel_sizes",
+    "compute_pulse_panel_sizes",
+    "compute_summary_height_bounds",
+    "cycle_panel_position",
+    "estimate_ping_rate",
+    "extract_trailing_pulse_space",
+    "flash_screen",
+    "format_asn_label",
+    "format_display_name",
+    "format_status_line",
+    "format_summary_line",
+    "format_timestamp",
+    "format_timezone_label",
+    "get_terminal_size",
+    "host_label_status",
+    "latest_non_pending_status_from_timeline",
+    "latest_status_from_timeline",
+    "pad_lines",
+    "pad_visible",
+    "prepare_summary_sources",
+    "prepare_terminal_for_exit",
+    "render_display",
+    "render_fullscreen_rtt_graph",
+    "render_help_view",
+    "render_host_selection_view",
+    "render_kitt_bottom_band",
+    "render_main_view",
+    "render_pulse_panel",
+    "render_sparkline_view",
+    "render_square_view",
+    "render_status_box",
+    "render_summary_view",
+    "render_terminal_frame",
+    "render_timeline_view",
+    "reset_render_cache",
+    "resample_values",
+    "resize_buffers",
+    "resolve_boxed_dimensions",
+    "resolve_display_name",
+    "resolve_group_header_lines",
+    "resolve_host_label_status",
+    "ring_bell",
+    "rjust_visible",
+    "should_flash_on_fail",
+    "should_show_asn",
+    "status_from_symbol",
+    "strip_ansi",
+    "toggle_panel_visibility",
+    "truncate_visible",
+    "visible_cell_width",
+    "visible_len",
+]
 
 # Global state for rendering
 LAST_RENDER_LINES: Optional[List[str]] = None
