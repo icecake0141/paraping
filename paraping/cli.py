@@ -44,6 +44,7 @@ from paraping.cli_input_contexts import (
     handle_graph_context,
     handle_help_context,
     handle_host_select_context,
+    mark_updated,
     resolve_input_context,
 )
 from paraping.cli_interaction import toggle_display_pause, toggle_dormant_mode
@@ -412,8 +413,7 @@ def _handle_user_input(
 
     if action == "help_toggle":
         state["show_help"] = True
-        state["force_render"] = True
-        state["updated"] = True
+        mark_updated(state, force_render=True)
         return skip_iteration
 
     if context == "host_select":
@@ -429,14 +429,12 @@ def _handle_user_input(
             state["status_message"] = "Reload unavailable in this context"
         else:
             state["status_message"] = _apply_manual_reload(args, state, scheduler, ping_lock, sequence_tracker)
-        state["updated"] = True
-        state["force_render"] = True
+        mark_updated(state, force_render=True)
 
     def _handle_force_redraw() -> None:
         reset_render_cache()
         state["status_message"] = "Full redraw requested"
-        state["force_render"] = True
-        state["updated"] = True
+        mark_updated(state, force_render=True)
 
     def _handle_interval_change(delta_seconds: float) -> None:
         if scheduler is None or ping_lock is None:
@@ -449,17 +447,16 @@ def _handle_user_input(
             else:
                 target_interval = min(MAX_INTERVAL_SECONDS, target_interval)
             state["status_message"] = _update_runtime_interval(state, scheduler, ping_lock, target_interval)
-        state["force_render"] = True
-        state["updated"] = True
+        mark_updated(state, force_render=True)
 
     def _handle_display_mode_cycle() -> None:
         state["mode_index"] = (state["mode_index"] + 1) % len(state["modes"])
         state["cached_page_step"] = None
-        state["updated"] = True
+        mark_updated(state)
 
     def _handle_view_cycle() -> None:
         state["display_mode_index"] = (state["display_mode_index"] + 1) % len(state["display_modes"])
-        state["updated"] = True
+        mark_updated(state)
 
     def _handle_kitt_toggle() -> None:
         state["kitt_mode_enabled"] = not state["kitt_mode_enabled"]
@@ -472,8 +469,7 @@ def _handle_user_input(
             state["last_pulse_position"] = restored_position
         state["status_message"] = "Pulse mode enabled" if state["kitt_mode_enabled"] else "Pulse mode disabled"
         state["cached_page_step"] = None
-        state["force_render"] = True
-        state["updated"] = True
+        mark_updated(state, force_render=True)
 
     def _handle_kitt_style_cycle() -> None:
         if state["kitt_mode_enabled"]:
@@ -482,42 +478,41 @@ def _handle_user_input(
             state["status_message"] = f"Pulse style: {current_style}"
         else:
             state["status_message"] = "Pulse mode is off (press 'y' first)"
-        state["force_render"] = True
-        state["updated"] = True
+        mark_updated(state, force_render=True)
 
     def _handle_sort_cycle() -> None:
         state["sort_mode_index"] = (state["sort_mode_index"] + 1) % len(state["sort_modes"])
         state["cached_page_step"] = None
-        state["updated"] = True
+        mark_updated(state)
 
     def _handle_filter_cycle() -> None:
         state["filter_mode_index"] = (state["filter_mode_index"] + 1) % len(state["filter_modes"])
         state["cached_page_step"] = None
-        state["updated"] = True
+        mark_updated(state)
 
     def _handle_asn_toggle() -> None:
         state["show_asn"] = not state["show_asn"]
         state["cached_page_step"] = None
-        state["updated"] = True
+        mark_updated(state)
 
     def _handle_summary_mode_cycle() -> None:
         state["summary_mode_index"] = (state["summary_mode_index"] + 1) % len(state["summary_modes"])
         state["status_message"] = f"Summary: {state['summary_modes'][state['summary_mode_index']].upper()}"
-        state["updated"] = True
+        mark_updated(state)
 
     def _handle_summary_scope_cycle() -> None:
         state["summary_scope_mode_index"] = (state["summary_scope_mode_index"] + 1) % len(state["summary_scope_modes"])
         scope = state["summary_scope_modes"][state["summary_scope_mode_index"]]
         state["status_message"] = f"Summary scope: {scope.upper()}"
         state["cached_page_step"] = None
-        state["updated"] = True
+        mark_updated(state)
 
     def _handle_group_key_cycle() -> None:
         state["group_by_mode_index"] = (state["group_by_mode_index"] + 1) % len(state["group_by_modes"])
         group_by = state["group_by_modes"][state["group_by_mode_index"]]
         state["status_message"] = f"Group key: {group_by}"
         state["cached_page_step"] = None
-        state["updated"] = True
+        mark_updated(state)
 
     def _handle_color_toggle() -> None:
         if not state["color_supported"]:
@@ -525,22 +520,19 @@ def _handle_user_input(
         else:
             state["use_color"] = not state["use_color"]
             state["status_message"] = "Color output enabled" if state["use_color"] else "Color output disabled"
-        state["force_render"] = True
-        state["updated"] = True
+        mark_updated(state, force_render=True)
 
     def _handle_bell_toggle() -> None:
         state["bell_on_fail"] = not state["bell_on_fail"]
         state["status_message"] = "Bell on fail enabled" if state["bell_on_fail"] else "Bell on fail disabled"
-        state["force_render"] = True
-        state["updated"] = True
+        mark_updated(state, force_render=True)
 
     def _handle_summary_fullscreen_toggle() -> None:
         state["summary_fullscreen"] = not state["summary_fullscreen"]
         state["status_message"] = (
             "Summary fullscreen view enabled" if state["summary_fullscreen"] else "Summary fullscreen view disabled"
         )
-        state["force_render"] = True
-        state["updated"] = True
+        mark_updated(state, force_render=True)
 
     def _handle_panel_toggle() -> None:
         state["panel_position"], state["last_panel_position"] = toggle_panel_visibility(
@@ -550,8 +542,7 @@ def _handle_user_input(
         )
         state["status_message"] = "Summary panel hidden" if state["panel_position"] == "none" else "Summary panel shown"
         state["cached_page_step"] = None
-        state["force_render"] = True
-        state["updated"] = True
+        mark_updated(state, force_render=True)
 
     def _handle_panel_position_cycle() -> None:
         reference_position = (
@@ -563,8 +554,7 @@ def _handle_user_input(
         state["last_panel_position"] = state["panel_position"]
         state["status_message"] = f"Summary panel position: {state['panel_position'].upper()}"
         state["cached_page_step"] = None
-        state["force_render"] = True
-        state["updated"] = True
+        mark_updated(state, force_render=True)
 
     def _handle_pulse_panel_toggle() -> None:
         state["pulse_position"], state["last_pulse_position"] = toggle_panel_visibility(
@@ -574,8 +564,7 @@ def _handle_user_input(
         )
         state["status_message"] = "Pulse panel hidden" if state["pulse_position"] == "none" else "Pulse panel shown"
         state["cached_page_step"] = None
-        state["force_render"] = True
-        state["updated"] = True
+        mark_updated(state, force_render=True)
 
     def _handle_pulse_panel_position_cycle() -> None:
         reference_position = (
@@ -587,8 +576,7 @@ def _handle_user_input(
         state["last_pulse_position"] = state["pulse_position"]
         state["status_message"] = f"Pulse panel position: {state['pulse_position'].upper()}"
         state["cached_page_step"] = None
-        state["force_render"] = True
-        state["updated"] = True
+        mark_updated(state, force_render=True)
 
     def _handle_display_pause_toggle() -> None:
         toggle_display_pause(state)
@@ -631,7 +619,7 @@ def _handle_user_input(
         with open(snapshot_name, "w", encoding="utf-8") as snapshot_file:
             snapshot_file.write("\n".join(snapshot_lines) + "\n")
         state["status_message"] = f"Saved: {snapshot_name}"
-        state["updated"] = True
+        mark_updated(state)
 
     def _handle_settings_save() -> None:
         try:
@@ -640,8 +628,7 @@ def _handle_user_input(
             state["status_message"] = f"Settings save failed: {exc}"
         else:
             state["status_message"] = f"Saved settings: {DEFAULT_CONFIG_PATH}"
-        state["force_render"] = True
-        state["updated"] = True
+        mark_updated(state, force_render=True)
 
     def _handle_history_prev() -> None:
         if state["history_offset"] < len(state["history_buffer"]) - 1:
@@ -661,8 +648,7 @@ def _handle_user_input(
                 pulse_position=state["pulse_position"],
             )
             state["history_offset"] = min(state["history_offset"] + page_step, len(state["history_buffer"]) - 1)
-            state["force_render"] = True
-            state["updated"] = True
+            mark_updated(state, force_render=True)
             if 0 < state["history_offset"] <= len(state["history_buffer"]):
                 snapshot = state["history_buffer"][-(state["history_offset"] + 1)]
                 state["status_message"] = f"Viewing {int(time.time() - snapshot['timestamp'])}s ago"
@@ -685,8 +671,7 @@ def _handle_user_input(
                 pulse_position=state["pulse_position"],
             )
             state["history_offset"] = max(0, state["history_offset"] - page_step)
-            state["force_render"] = True
-            state["updated"] = True
+            mark_updated(state, force_render=True)
             if state["history_offset"] == 0:
                 state["status_message"] = "Returned to LIVE view"
             else:
@@ -718,20 +703,17 @@ def _handle_user_input(
             state["host_scroll_offset"] = max(0, state["host_scroll_offset"] - 1)
             end_index = min(state["host_scroll_offset"] + visible_hosts, total_hosts)
             state["status_message"] = f"Hosts {state['host_scroll_offset'] + 1}-{end_index} of {total_hosts}"
-            state["force_render"] = True
-            state["updated"] = True
+            mark_updated(state, force_render=True)
         elif delta > 0 and state["host_scroll_offset"] < max_offset and total_hosts > 0:
             state["host_scroll_offset"] = min(max_offset, state["host_scroll_offset"] + 1)
             end_index = min(state["host_scroll_offset"] + visible_hosts, total_hosts)
             state["status_message"] = f"Hosts {state['host_scroll_offset'] + 1}-{end_index} of {total_hosts}"
-            state["force_render"] = True
-            state["updated"] = True
+            mark_updated(state, force_render=True)
 
     def _handle_host_select_open() -> None:
         state["host_select_active"] = True
         state["host_select_index"] = 0
-        state["force_render"] = True
-        state["updated"] = True
+        mark_updated(state, force_render=True)
 
     action_handlers = {
         "reload_hosts": _handle_reload,
