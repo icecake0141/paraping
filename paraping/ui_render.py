@@ -31,10 +31,10 @@ from paraping import ui_layout as _ui_layout
 from paraping import ui_panels as _ui_panels
 from paraping import ui_pulse as _ui_pulse
 from paraping import ui_status as _ui_status
+from paraping import ui_summary_sources as _ui_summary_sources
 from paraping import ui_terminal as _ui_terminal
 from paraping import ui_text as _ui_text
 from paraping import ui_timeline as _ui_timeline
-from paraping.stats import compute_group_summary_data, compute_summary_data, resolve_group_labels, resolve_primary_group_label
 from paraping.ui_text import colorize_text, rjust_visible, strip_ansi, visible_cell_width
 
 ANSI_ESCAPE_RE = _ui_text.ANSI_ESCAPE_RE
@@ -83,6 +83,7 @@ host_label_status = _ui_timeline.host_label_status
 latest_non_pending_status_from_timeline = _ui_timeline.latest_non_pending_status_from_timeline
 latest_status_from_timeline = _ui_timeline.latest_status_from_timeline
 pad_lines = _ui_panels.pad_lines
+prepare_summary_sources = _ui_summary_sources.prepare_summary_sources
 prepare_terminal_for_exit = _ui_terminal.prepare_terminal_for_exit
 render_fullscreen_rtt_graph = _ui_graph.render_fullscreen_rtt_graph
 render_help_view = _ui_panels.render_help_view
@@ -180,35 +181,16 @@ def compute_host_scroll_bounds(
         group_by=group_by,
         group_sort_enabled=group_sort_enabled,
     )
-    active_host_infos = [info for info in host_infos if info.get("active", True)]
-    active_host_ids = {info["id"] for info in active_host_infos}
-    ordered_host_ids = [host_id for host_id, _label in display_entries if host_id in active_host_ids]
-    summary_data = compute_summary_data(
-        active_host_infos,
+    summary_source = prepare_summary_sources(
+        host_infos,
+        display_entries,
         display_names,
         buffers,
         stats,
         symbols,
-        ordered_host_ids=ordered_host_ids,
-    )
-    group_summary_data: List[Dict[str, Any]] = []
-    if group_by != "none":
-        group_order: List[str] = []
-        host_group_labels = {info["id"]: resolve_primary_group_label(info, group_by) for info in active_host_infos}
-        for host_id in ordered_host_ids:
-            label = host_group_labels.get(host_id)
-            if label and label not in group_order:
-                group_order.append(label)
-        group_summary_data = compute_group_summary_data(
-            active_host_infos,
-            display_names,
-            buffers,
-            stats,
-            symbols,
-            group_by=group_by,
-            ordered_group_labels=group_order,
-        )
-    summary_source = group_summary_data if summary_scope == "group" and group_by != "none" else summary_data
+        summary_scope,
+        group_by,
+    ).summary_source
     if panel_position in ("top", "bottom"):
         _, _, summary_width, summary_height, _ = compute_panel_sizes(
             term_width,
@@ -796,41 +778,22 @@ def build_display_lines(  # noqa: C901
         min_main_width=20,
         min_panel_height=3,
     )
-    active_host_infos = [info for info in host_infos if info.get("active", True)]
-    active_host_ids = {info["id"] for info in active_host_infos}
-    host_group_labels = {info["id"]: resolve_primary_group_label(info, group_by) for info in active_host_infos}
-    host_tree_labels = (
-        {info["id"]: resolve_group_labels(info, group_by)[0] for info in active_host_infos}
-        if group_by == "site>tag1"
-        else host_group_labels
-    )
-    ordered_host_ids = [host_id for host_id, _label in display_entries if host_id in active_host_ids]
-    summary_data = compute_summary_data(
-        active_host_infos,
+    summary_sources = prepare_summary_sources(
+        host_infos,
+        display_entries,
         display_names,
         buffers,
         stats,
         symbols,
-        ordered_host_ids=ordered_host_ids,
+        summary_scope,
+        group_by,
     )
-    group_summary_data: List[Dict[str, Any]] = []
-    if group_by != "none":
-        group_order: List[str] = []
-        group_label_source = host_tree_labels if group_by == "site>tag1" else host_group_labels
-        for host_id in ordered_host_ids:
-            label = group_label_source.get(host_id)
-            if label and label not in group_order:
-                group_order.append(label)
-        group_summary_data = compute_group_summary_data(
-            active_host_infos,
-            display_names,
-            buffers,
-            stats,
-            symbols,
-            group_by=group_by,
-            ordered_group_labels=group_order,
-        )
-    summary_source = group_summary_data if summary_scope == "group" and group_by != "none" else summary_data
+    active_host_infos = summary_sources.active_host_infos
+    host_group_labels = summary_sources.host_group_labels
+    host_tree_labels = summary_sources.host_tree_labels
+    ordered_host_ids = summary_sources.ordered_host_ids
+    group_summary_data = summary_sources.group_summary_data
+    summary_source = summary_sources.summary_source
     if not summary_fullscreen and resolved_position in ("top", "bottom") and summary_height > 0:
         summary_render_width = _summary_render_width(summary_width, use_panel_boxes)
         summary_all_for_height = can_render_full_summary(summary_source, summary_render_width)
@@ -846,14 +809,8 @@ def build_display_lines(  # noqa: C901
         summary_height = max(summary_height, min(minimal_height, max_summary_height))
         main_height = max(min_main_height, panel_height - summary_height - gap_size)
     group_header_lines = build_group_header_line_map(active_host_infos, ordered_host_ids, group_by, group_summary_data)
-    kitt_total_hosts = len(active_host_infos)
-    fail_symbol = symbols.get("fail")
-    kitt_error_hosts = 0
-    if fail_symbol:
-        for info in active_host_infos:
-            timeline = buffers.get(info["id"], {}).get("timeline")
-            if timeline and timeline[-1] == fail_symbol:
-                kitt_error_hosts += 1
+    kitt_total_hosts = summary_sources.kitt_total_hosts
+    kitt_error_hosts = summary_sources.kitt_error_hosts
     summary_all = False
     main_lines = []
     summary_lines = []
