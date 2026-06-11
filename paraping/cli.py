@@ -40,6 +40,13 @@ from paraping.cli_hosts import (
     rebuild_host_info_map,
 )
 from paraping.cli_interaction import toggle_display_pause, toggle_dormant_mode
+from paraping.cli_render_state import (
+    drain_asn_results,
+    drain_ping_results,
+    drain_rdns_results,
+    enqueue_pending_asn_requests,
+    update_history_projection,
+)
 from paraping.cli_runtime import (
     build_runtime_config_overrides,
     check_terminal_resize_and_request_redraw,
@@ -843,76 +850,27 @@ def _update_render_state(state: Dict[str, Any]) -> None:
         state["updated"] = True
         state["force_render"] = True
 
-    while True:
-        try:
-            host, rdns_value = state["rdns_result_queue"].get_nowait()
-        except queue.Empty:
-            break
-        for info in state["host_info_map"].get(host, []):
-            info["rdns"] = rdns_value
-            info["rdns_pending"] = False
-        if not state["paused"]:
-            state["updated"] = True
-
-    while True:
-        try:
-            host, asn_value = state["asn_result_queue"].get_nowait()
-        except queue.Empty:
-            break
-        for info in state["host_info_map"].get(host, []):
-            info["asn"] = asn_value
-            info["asn_pending"] = False
-        ip_address = state["host_info_map"][host][0]["ip"] if state["host_info_map"].get(host) else host
-        state["asn_cache"][ip_address] = {"value": asn_value, "fetched_at": time.time()}
-        if not state["paused"]:
-            state["updated"] = True
+    drain_rdns_results(state)
+    drain_asn_results(state, now_func=time.time)
 
     now = time.time()
-    for host, infos in state["host_info_map"].items():
-        if not any(info.get("active", True) for info in infos):
-            continue
-        if any(info["asn_pending"] for info in infos) or any(info["asn"] is not None for info in infos):
-            continue
-        ip_address = infos[0]["ip"]
-        if should_retry_asn(ip_address, state["asn_cache"], now, state["asn_failure_ttl"]):
-            for info in infos:
-                info["asn_pending"] = True
-            state["asn_request_queue"].put((host, ip_address))
-
-    while True:
-        try:
-            result = state["result_queue"].get_nowait()
-        except queue.Empty:
-            break
-        host_id = result["host_id"]
-        if result.get("status") == "done":
-            state["done_host_ids"].add(host_id)
-            continue
-
-        status = result["status"]
-        mirror_ping_event(state["monitor_state"], result, status, host_id)
-        if should_flash_on_fail(status, state["flash_on_fail"], state["show_help"]):
-            flash_screen()
-        if status == "fail" and state["bell_on_fail"] and not state["show_help"]:
-            ring_bell()
-        if not state["paused"]:
-            state["updated"] = True
+    enqueue_pending_asn_requests(state, now, should_retry_asn_func=should_retry_asn)
+    drain_ping_results(
+        state,
+        mirror_ping_event_func=mirror_ping_event,
+        should_flash_on_fail_func=should_flash_on_fail,
+        flash_screen_func=flash_screen,
+        ring_bell_func=ring_bell,
+    )
 
     now = time.time()
-    state["last_snapshot_time"], state["history_offset"] = update_history_buffer(
-        state["history_buffer"],
-        state["monitor_state"],
+    update_history_projection(
+        state,
         now,
-        state["last_snapshot_time"],
-        state["history_offset"],
+        update_history_buffer_func=update_history_buffer,
+        resolve_render_state_func=resolve_render_state,
+        project_render_state_func=project_render_state,
     )
-    render_monitor_state, state["render_paused"], state["render_snapshot_timestamp"] = resolve_render_state(
-        state["history_offset"],
-        state["history_buffer"],
-        state["monitor_state"],
-        state["paused"],
-    )
-    state["render_buffers"], state["render_stats"] = project_render_state(render_monitor_state, state["symbols"])
     _purge_expired_removed_hosts(state)
 
 
