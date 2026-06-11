@@ -36,6 +36,7 @@ from paraping import ui_summary_sources as _ui_summary_sources
 from paraping import ui_terminal as _ui_terminal
 from paraping import ui_text as _ui_text
 from paraping import ui_timeline as _ui_timeline
+from paraping.types import HostInfo
 from paraping.ui_text import colorize_text, rjust_visible, strip_ansi
 
 ANSI_ESCAPE_RE = _ui_text.ANSI_ESCAPE_RE
@@ -204,7 +205,7 @@ class DisplayGeometry:
 
 
 def compute_host_scroll_bounds(
-    host_infos: Sequence[Dict[str, Any]],
+    host_infos: Sequence[HostInfo],
     buffers: Dict[int, Dict[str, Any]],
     stats: Dict[int, Dict[str, Any]],
     symbols: Dict[str, str],
@@ -750,7 +751,7 @@ def render_host_selection_view(
 
 
 def build_display_lines(  # noqa: C901
-    host_infos: Sequence[Dict[str, Any]],
+    host_infos: Sequence[HostInfo],
     buffers: Dict[int, Dict[str, Any]],
     stats: Dict[int, Dict[str, Any]],
     symbols: Dict[str, str],
@@ -991,7 +992,7 @@ def build_display_lines(  # noqa: C901
 
 
 def render_display(  # noqa: C901
-    host_infos: Sequence[Dict[str, Any]],
+    host_infos: Sequence[HostInfo],
     buffers: Dict[int, Dict[str, Any]],
     stats: Dict[int, Dict[str, Any]],
     symbols: Dict[str, str],

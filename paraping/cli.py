@@ -83,6 +83,7 @@ from paraping.runtime.render_projection import project_render_state
 from paraping.runtime.render_state import resolve_render_state
 from paraping.runtime.scheduler import Scheduler
 from paraping.runtime.sequence_tracker import SequenceTracker
+from paraping.types import HostInfo
 from paraping.ui_render import (
     build_display_entries,
     build_display_lines,
@@ -252,7 +253,7 @@ _build_host_info_from_entry = build_host_info_from_entry
 
 
 def _start_host_worker(
-    host_info: Dict[str, Any],
+    host_info: HostInfo,
     args: argparse.Namespace,
     state: Dict[str, Any],
     scheduler: Scheduler,

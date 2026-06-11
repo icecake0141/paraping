@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional, Protocol, Tuple
 
 import paraping.ui_render
 from paraping.runtime.term_size import extract_timeline_width_from_layout, normalize_term_size
+from paraping.types import HostInfo
 from paraping.ui_render import (
     build_display_entries,
     build_display_names,
@@ -24,7 +25,7 @@ class TerminalSizeLike(Protocol):
 
 
 def compute_history_page_step(
-    host_infos: List[Dict[str, Any]],
+    host_infos: List[HostInfo],
     buffers: Dict[int, Any],
     stats: Dict[int, Any],
     symbols: Dict[str, str],
@@ -72,7 +73,7 @@ def compute_history_page_step(
 def get_cached_page_step(
     cached_page_step: Optional[int],
     last_term_size: Optional[TerminalSizeLike],
-    host_infos: List[Dict[str, Any]],
+    host_infos: List[HostInfo],
     buffers: Dict[int, Any],
     stats: Dict[int, Any],
     symbols: Dict[str, str],

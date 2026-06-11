@@ -15,6 +15,7 @@
 
 from typing import Any, Dict, Sequence, Tuple
 
+from paraping.types import HostInfo
 from paraping.ui_display_entries import format_display_name, resolve_display_name
 from paraping.ui_panels import can_render_full_summary
 
@@ -125,7 +126,7 @@ def compute_summary_height_bounds(
 
 
 def should_show_asn(
-    host_infos: Sequence[Dict[str, Any]],
+    host_infos: Sequence[HostInfo],
     mode: str,
     show_asn: bool,
     term_width: int,

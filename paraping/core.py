@@ -28,6 +28,7 @@ from paraping.runtime.rate_limit import MAX_GLOBAL_PINGS_PER_SECOND
 from paraping.runtime.rate_limit import validate_global_rate_limit as runtime_validate_global_rate_limit
 from paraping.runtime.term_size import extract_timeline_width_from_layout as runtime_extract_timeline_width_from_layout
 from paraping.runtime.term_size import normalize_term_size as runtime_normalize_term_size
+from paraping.types import HostInfo
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +116,7 @@ def read_input_file_with_report(input_file: str) -> Tuple[List[Dict[str, Any]], 
 
 
 def compute_history_page_step(
-    host_infos: List[Dict[str, Any]],
+    host_infos: List[HostInfo],
     buffers: Dict[int, Any],
     stats: Dict[int, Any],
     symbols: Dict[str, str],
@@ -150,7 +151,7 @@ def compute_history_page_step(
 def get_cached_page_step(
     cached_page_step: Optional[int],
     last_term_size: Optional[TerminalSizeLike],
-    host_infos: List[Dict[str, Any]],
+    host_infos: List[HostInfo],
     buffers: Dict[int, Any],
     stats: Dict[int, Any],
     symbols: Dict[str, str],
