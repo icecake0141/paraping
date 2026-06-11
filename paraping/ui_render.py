@@ -21,6 +21,7 @@ view rendering, graph utilities, formatting functions, and terminal utilities.
 
 import time  # noqa: F401  # Backward-compatible patch target for pulse animation tests.
 from collections import deque
+from dataclasses import dataclass
 from datetime import datetime, timezone, tzinfo
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
@@ -117,6 +118,81 @@ LAST_RENDER_LINES: Optional[List[str]] = None
 KITT_SCANNER_STATE = _ui_pulse.KITT_SCANNER_STATE
 
 
+@dataclass(frozen=True)
+class DisplayGeometry:
+    """Resolved terminal and panel dimensions for one display frame."""
+
+    term_width: int
+    term_height: int
+    panel_height: int
+    status_box_height: int
+    main_width: int
+    main_height: int
+    summary_width: int
+    summary_height: int
+    pulse_width: int
+    resolved_position: str
+    resolved_pulse_position: str
+
+    @classmethod
+    def resolve(
+        cls,
+        panel_position: str,
+        pulse_position: str,
+        *,
+        kitt_mode_enabled: bool,
+        min_main_height: int,
+    ) -> "DisplayGeometry":
+        """Resolve terminal, summary, main, and Pulse panel dimensions."""
+        term_size = get_terminal_size(fallback=(80, 24))
+        term_width = term_size.columns
+        term_height = term_size.lines
+        status_box_height = 3 if term_height >= 4 and term_width >= 2 else 1
+        panel_height = max(1, term_height - status_box_height)
+        main_width, main_height, summary_width, summary_height, resolved_position = compute_panel_sizes(
+            term_width,
+            panel_height,
+            panel_position,
+            min_main_height=min_main_height,
+        )
+        main_width, main_height, pulse_width, _pulse_height, resolved_pulse_position = compute_pulse_panel_sizes(
+            main_width,
+            main_height,
+            pulse_position if kitt_mode_enabled else "none",
+            min_main_width=20,
+            min_panel_height=3,
+        )
+        return cls(
+            term_width=term_width,
+            term_height=term_height,
+            panel_height=panel_height,
+            status_box_height=status_box_height,
+            main_width=main_width,
+            main_height=main_height,
+            summary_width=summary_width,
+            summary_height=summary_height,
+            pulse_width=pulse_width,
+            resolved_position=resolved_position,
+            resolved_pulse_position=resolved_pulse_position,
+        )
+
+    def with_summary_height(self, summary_height: int, *, min_main_height: int, gap_size: int) -> "DisplayGeometry":
+        """Return geometry adjusted for a top/bottom summary panel height."""
+        return DisplayGeometry(
+            term_width=self.term_width,
+            term_height=self.term_height,
+            panel_height=self.panel_height,
+            status_box_height=self.status_box_height,
+            main_width=self.main_width,
+            main_height=max(min_main_height, self.panel_height - summary_height - gap_size),
+            summary_width=self.summary_width,
+            summary_height=summary_height,
+            pulse_width=self.pulse_width,
+            resolved_position=self.resolved_position,
+            resolved_pulse_position=self.resolved_pulse_position,
+        )
+
+
 # ============================================================================
 # Color/Timeline Building Functions
 # ============================================================================
@@ -147,30 +223,18 @@ def compute_host_scroll_bounds(
     pulse_position: str = "none",
 ) -> Tuple[int, int, int]:
     """Compute the scroll bounds for the host list."""
-    term_size = get_terminal_size(fallback=(80, 24))
-    term_width = term_size.columns
-    term_height = term_size.lines
     min_main_height = 5
     gap_size = 1
     use_panel_boxes = True
-    status_box_height = 3 if term_height >= 4 and term_width >= 2 else 1
-    panel_height = max(1, term_height - status_box_height)
-
-    include_asn = should_show_asn(host_infos, mode_label, show_asn, term_width, asn_width=asn_width)
-    display_names = build_display_names(host_infos, mode_label, include_asn, asn_width)
-    main_width, main_height, _, _, _ = compute_panel_sizes(
-        term_width,
-        panel_height,
+    geometry = DisplayGeometry.resolve(
         panel_position,
+        pulse_position,
+        kitt_mode_enabled=pulse_position != "none",
         min_main_height=min_main_height,
     )
-    main_width, main_height, _, _, _ = compute_pulse_panel_sizes(
-        main_width,
-        main_height,
-        pulse_position,
-        min_main_width=20,
-        min_panel_height=3,
-    )
+
+    include_asn = should_show_asn(host_infos, mode_label, show_asn, geometry.term_width, asn_width=asn_width)
+    display_names = build_display_names(host_infos, mode_label, include_asn, asn_width)
     display_entries = build_display_entries(
         host_infos,
         display_names,
@@ -193,30 +257,25 @@ def compute_host_scroll_bounds(
         summary_scope,
         group_by,
     ).summary_source
-    if panel_position in ("top", "bottom"):
-        _, _, summary_width, summary_height, _ = compute_panel_sizes(
-            term_width,
-            panel_height,
-            panel_position,
-            min_main_height=min_main_height,
-        )
-        summary_render_width = _summary_render_width(summary_width, use_panel_boxes)
+    if geometry.resolved_position in ("top", "bottom"):
+        summary_render_width = _summary_render_width(geometry.summary_width, use_panel_boxes)
         summary_all = can_render_full_summary(summary_source, summary_render_width)
         content_height, minimal_height = compute_summary_height_bounds(
             summary_source,
             summary_mode,
             summary_all,
-            summary_width,
+            geometry.summary_width,
             boxed=use_panel_boxes,
         )
-        max_summary_height = max(0, panel_height - min_main_height - gap_size)
+        max_summary_height = max(0, geometry.panel_height - min_main_height - gap_size)
+        summary_height = geometry.summary_height
         summary_height = min(summary_height, content_height, max_summary_height)
         summary_height = max(summary_height, min(minimal_height, max_summary_height))
-        main_height = max(min_main_height, panel_height - summary_height - gap_size)
+        geometry = geometry.with_summary_height(summary_height, min_main_height=min_main_height, gap_size=gap_size)
     host_labels = [entry[1] for entry in display_entries]
     if not host_labels:
         host_labels = [info["alias"] for info in host_infos]
-    _, _, _, visible_hosts = compute_main_layout(host_labels, main_width, main_height, header_lines)
+    _, _, _, visible_hosts = compute_main_layout(host_labels, geometry.main_width, geometry.main_height, header_lines)
     total_hosts = len(display_entries)
     max_offset = max(0, total_hosts - visible_hosts)
     return max_offset, visible_hosts, total_hosts
@@ -735,16 +794,17 @@ def build_display_lines(  # noqa: C901
     # Edge cases:
     # - Empty host list yields empty display_entries/summary_data but still renders headers.
     # - Small terminals force status_box_height=1 and may disable summary panels.
-    term_size = get_terminal_size(fallback=(80, 24))
-    term_width = term_size.columns
-    term_height = term_size.lines
     min_main_height = 5
     gap_size = 1
     use_panel_boxes = True
-    status_box_height = 3 if term_height >= 4 and term_width >= 2 else 1
-    panel_height = max(1, term_height - status_box_height)
+    geometry = DisplayGeometry.resolve(
+        panel_position,
+        pulse_position,
+        kitt_mode_enabled=kitt_mode_enabled,
+        min_main_height=min_main_height,
+    )
 
-    include_asn = should_show_asn(host_infos, mode_label, show_asn, term_width, asn_width=asn_width)
+    include_asn = should_show_asn(host_infos, mode_label, show_asn, geometry.term_width, asn_width=asn_width)
     display_names = build_display_names(host_infos, mode_label, include_asn, asn_width)
 
     display_entries = build_display_entries(
@@ -758,19 +818,6 @@ def build_display_lines(  # noqa: C901
         slow_threshold,
         group_by=group_by,
         group_sort_enabled=group_sort_enabled,
-    )
-    main_width, main_height, summary_width, summary_height, resolved_position = compute_panel_sizes(
-        term_width,
-        panel_height,
-        panel_position,
-        min_main_height=min_main_height,
-    )
-    main_width, main_height, pulse_width, _pulse_height, resolved_pulse_position = compute_pulse_panel_sizes(
-        main_width,
-        main_height,
-        pulse_position if kitt_mode_enabled else "none",
-        min_main_width=20,
-        min_panel_height=3,
     )
     summary_sources = prepare_summary_sources(
         host_infos,
@@ -788,20 +835,21 @@ def build_display_lines(  # noqa: C901
     ordered_host_ids = summary_sources.ordered_host_ids
     group_summary_data = summary_sources.group_summary_data
     summary_source = summary_sources.summary_source
-    if not summary_fullscreen and resolved_position in ("top", "bottom") and summary_height > 0:
-        summary_render_width = _summary_render_width(summary_width, use_panel_boxes)
+    if not summary_fullscreen and geometry.resolved_position in ("top", "bottom") and geometry.summary_height > 0:
+        summary_render_width = _summary_render_width(geometry.summary_width, use_panel_boxes)
         summary_all_for_height = can_render_full_summary(summary_source, summary_render_width)
         content_height, minimal_height = compute_summary_height_bounds(
             summary_source,
             summary_mode,
             summary_all_for_height,
-            summary_width,
+            geometry.summary_width,
             boxed=use_panel_boxes,
         )
-        max_summary_height = max(0, panel_height - min_main_height - gap_size)
+        max_summary_height = max(0, geometry.panel_height - min_main_height - gap_size)
+        summary_height = geometry.summary_height
         summary_height = min(summary_height, content_height, max_summary_height)
         summary_height = max(summary_height, min(minimal_height, max_summary_height))
-        main_height = max(min_main_height, panel_height - summary_height - gap_size)
+        geometry = geometry.with_summary_height(summary_height, min_main_height=min_main_height, gap_size=gap_size)
     group_header_lines = build_group_header_line_map(active_host_infos, ordered_host_ids, group_by, group_summary_data)
     kitt_total_hosts = summary_sources.kitt_total_hosts
     kitt_error_hosts = summary_sources.kitt_error_hosts
@@ -809,11 +857,11 @@ def build_display_lines(  # noqa: C901
     main_lines = []
     summary_lines = []
     if summary_fullscreen:
-        summary_all = can_render_full_summary(summary_source, term_width)
+        summary_all = can_render_full_summary(summary_source, geometry.term_width)
         summary_lines = render_summary_view(
             summary_source,
-            term_width,
-            panel_height,
+            geometry.term_width,
+            geometry.panel_height,
             summary_mode,
             prefer_all=summary_all,
             boxed=use_panel_boxes,
@@ -823,8 +871,8 @@ def build_display_lines(  # noqa: C901
             display_entries,
             buffers,
             symbols,
-            main_width,
-            main_height,
+            geometry.main_width,
+            geometry.main_height,
             mode_label,
             display_mode,
             paused,
@@ -844,12 +892,14 @@ def build_display_lines(  # noqa: C901
             kitt_style=kitt_style,
             group_by=group_by,
         )
-        summary_render_width = _summary_render_width(summary_width, use_panel_boxes)
-        summary_all = resolved_position in ("top", "bottom") and can_render_full_summary(summary_source, summary_render_width)
+        summary_render_width = _summary_render_width(geometry.summary_width, use_panel_boxes)
+        summary_all = geometry.resolved_position in ("top", "bottom") and can_render_full_summary(
+            summary_source, summary_render_width
+        )
         summary_lines = render_summary_view(
             summary_source,
-            summary_width,
-            summary_height,
+            geometry.summary_width,
+            geometry.summary_height,
             summary_mode,
             prefer_all=summary_all,
             boxed=use_panel_boxes,
@@ -858,26 +908,26 @@ def build_display_lines(  # noqa: C901
     gap = " "
     combined_lines = []
     if show_help:
-        combined_lines = render_help_view(term_width, panel_height, boxed=use_panel_boxes)
+        combined_lines = render_help_view(geometry.term_width, geometry.panel_height, boxed=use_panel_boxes)
     elif summary_fullscreen:
         combined_lines = summary_lines
     else:
         pulse_lines: List[str] = []
-        if kitt_mode_enabled and resolved_pulse_position in ("left", "right") and pulse_width > 0:
+        if kitt_mode_enabled and geometry.resolved_pulse_position in ("left", "right") and geometry.pulse_width > 0:
             pulse_lines = render_pulse_panel(
-                pulse_width,
-                main_height,
+                geometry.pulse_width,
+                geometry.main_height,
                 kitt_style,
                 now_utc,
                 use_color,
                 error_hosts=kitt_error_hosts,
                 total_hosts=kitt_total_hosts,
             )
-        elif kitt_mode_enabled and resolved_pulse_position in ("top", "bottom"):
+        elif kitt_mode_enabled and geometry.resolved_pulse_position in ("top", "bottom"):
             main_lines, pulse_height = extract_trailing_pulse_space(main_lines, boxed=use_panel_boxes)
             if pulse_height >= 3:
                 pulse_lines = render_pulse_panel(
-                    main_width,
+                    geometry.main_width,
                     pulse_height,
                     kitt_style,
                     now_utc,
@@ -886,31 +936,31 @@ def build_display_lines(  # noqa: C901
                     total_hosts=kitt_total_hosts,
                 )
 
-        if resolved_position in ("left", "right"):
+        if geometry.resolved_position in ("left", "right"):
             for main_line, summary_line in zip(main_lines, summary_lines):
-                if resolved_position == "left":
+                if geometry.resolved_position == "left":
                     combined_lines.append(f"{summary_line}{gap}{main_line}")
                 else:
                     combined_lines.append(f"{main_line}{gap}{summary_line}")
-        elif resolved_position == "top":
+        elif geometry.resolved_position == "top":
             combined_lines = summary_lines + [""] + main_lines
-        elif resolved_position == "bottom":
+        elif geometry.resolved_position == "bottom":
             combined_lines = main_lines + [""] + summary_lines
         else:
             combined_lines = main_lines
 
         if pulse_lines:
-            if resolved_pulse_position in ("left", "right"):
+            if geometry.resolved_pulse_position in ("left", "right"):
                 merged_lines = []
                 for combined_line, pulse_line in zip(combined_lines, pulse_lines):
-                    if resolved_pulse_position == "left":
+                    if geometry.resolved_pulse_position == "left":
                         merged_lines.append(f"{pulse_line}{gap}{combined_line}")
                     else:
                         merged_lines.append(f"{combined_line}{gap}{pulse_line}")
                 combined_lines = merged_lines
-            elif resolved_pulse_position == "top":
+            elif geometry.resolved_pulse_position == "top":
                 combined_lines = pulse_lines + [""] + combined_lines
-            elif resolved_pulse_position == "bottom":
+            elif geometry.resolved_pulse_position == "bottom":
                 combined_lines = combined_lines + [""] + pulse_lines
 
     status_metrics = build_status_metrics(active_host_infos, stats, interval_seconds=interval_seconds)
@@ -927,15 +977,15 @@ def build_display_lines(  # noqa: C901
         summary_scope=summary_scope,
         group_by=group_by,
     )
-    if panel_height > 0:
-        combined_lines = pad_lines(combined_lines, term_width, panel_height)
+    if geometry.panel_height > 0:
+        combined_lines = pad_lines(combined_lines, geometry.term_width, geometry.panel_height)
 
-    if status_box_height == 1:
-        status_lines = [status_line[:term_width].ljust(term_width)]
+    if geometry.status_box_height == 1:
+        status_lines = [status_line[: geometry.term_width].ljust(geometry.term_width)]
     else:
-        status_lines = render_status_box(status_line, term_width)
+        status_lines = render_status_box(status_line, geometry.term_width)
 
-    if panel_height <= 0:
+    if geometry.panel_height <= 0:
         return status_lines
     return combined_lines + status_lines
 
