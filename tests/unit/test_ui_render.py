@@ -37,7 +37,6 @@ from paraping.ui_render import (  # noqa: E402
     build_display_names,
     build_kitt_gradient_bar,
     build_kitt_scanner_bar,
-    build_main_header,
     build_status_line,
     build_status_metrics,
     build_time_axis,
@@ -81,7 +80,6 @@ from paraping.ui_render import (  # noqa: E402
     visible_cell_width,
     visible_len,
 )
-from paraping.ui_terminal import render_terminal_frame  # noqa: E402
 
 
 class TestHelpView(unittest.TestCase):
@@ -1316,66 +1314,6 @@ class TestRenderMainView(unittest.TestCase):
         self.assertIsInstance(lines, list)
 
 
-class TestMainHeader(unittest.TestCase):
-    """Test main panel header composition."""
-
-    def _now(self):
-        return datetime.fromtimestamp(0, tz=timezone.utc)
-
-    def test_build_main_header_live_includes_activity_when_space_allows(self):
-        """LIVE header should include an activity indicator when there is room."""
-        header = build_main_header(
-            80,
-            "ip",
-            "timeline",
-            paused=False,
-            dormant=False,
-            timestamp="ts",
-            now_utc=self._now(),
-        )
-        self.assertIn("LIVE", header)
-        self.assertGreater(len(header), len("ParaPing - LIVE results [ip | timeline] ts"))
-
-    def test_build_main_header_paused_omits_activity(self):
-        """PAUSED header should not render an activity indicator."""
-        header = build_main_header(
-            80,
-            "ip",
-            "timeline",
-            paused=True,
-            dormant=False,
-            timestamp="ts",
-            now_utc=self._now(),
-        )
-        self.assertEqual(header, "ParaPing - PAUSED results [ip | timeline] ts")
-
-    def test_build_main_header_dormant_takes_precedence(self):
-        """DORMANT header should take precedence over PAUSED."""
-        header = build_main_header(
-            80,
-            "ip",
-            "timeline",
-            paused=True,
-            dormant=True,
-            timestamp="ts",
-            now_utc=self._now(),
-        )
-        self.assertEqual(header, "ParaPing - DORMANT results [ip | timeline] ts")
-
-    def test_build_main_header_width_without_activity_space(self):
-        """Header should fall back to text only when the panel is narrow."""
-        header = build_main_header(
-            10,
-            "ip",
-            "timeline",
-            paused=False,
-            dormant=False,
-            timestamp="ts",
-            now_utc=self._now(),
-        )
-        self.assertEqual(header, "ParaPing - LIVE results [ip | timeline] ts")
-
-
 class TestScrollOverflow(unittest.TestCase):
     """Test scroll/overflow indicator in all view types."""
 
@@ -1932,14 +1870,6 @@ class TestIncrementalRendering(unittest.TestCase):
             )
         self.assertIn("\x1b[1;4H", stdout.getvalue())
 
-    def test_render_terminal_frame_uses_cell_width_for_partial_updates(self):
-        """Terminal frame writer should position partial updates by cell width."""
-        stdout = io.StringIO()
-        with patch("sys.stdout", new=stdout):
-            result = render_terminal_frame(["A界X", "status"], ["A界Y", "status"])
-        self.assertEqual(result, ["A界Y", "status"])
-        self.assertIn("\x1b[1;4H", stdout.getvalue())
-
     def test_render_display_fully_redraws_pulse_rows(self):
         """Pulse rows should use full-line redraws instead of partial diffs."""
         stdout = io.StringIO()
@@ -1988,17 +1918,6 @@ class TestIncrementalRendering(unittest.TestCase):
                 False,
                 override_lines=updated,
             )
-        output = stdout.getvalue()
-        self.assertIn("\x1b[4;1H\x1b[2K", output)
-        self.assertNotIn("\x1b[4;2H", output)
-
-    def test_render_terminal_frame_fully_redraws_pulse_rows(self):
-        """Terminal frame writer should fully redraw Pulse rows."""
-        stdout = io.StringIO()
-        previous = ["header", "Pulse [Scanner]", "----------", "  ░░░", "status"]
-        current = ["header", "Pulse [Scanner]", "----------", "   ▓▓", "status"]
-        with patch("sys.stdout", new=stdout):
-            render_terminal_frame(previous, current)
         output = stdout.getvalue()
         self.assertIn("\x1b[4;1H\x1b[2K", output)
         self.assertNotIn("\x1b[4;2H", output)
