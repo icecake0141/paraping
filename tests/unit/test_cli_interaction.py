@@ -26,6 +26,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../.
 
 from paraping.cli import _handle_user_input, handle_options
 from paraping.cli import run as main
+from paraping.cli_input_contexts import handle_graph_context, handle_help_context, resolve_input_context
 from paraping.input_keys import parse_escape_sequence
 from paraping.ui_render import (
     cycle_panel_position,
@@ -78,6 +79,39 @@ class TestEscapeSequenceParsing(unittest.TestCase):
         self.assertIn("RTT range", combined)
         self.assertIn("seconds ago", combined)
         self.assertIn("ESC: back", combined)
+
+
+class TestCLIInputContexts(unittest.TestCase):
+    """Test context-specific CLI input helpers."""
+
+    def test_resolve_input_context_priority(self):
+        """Help, host selection, graph, and main contexts should resolve in priority order."""
+        self.assertEqual(resolve_input_context({"show_help": True, "host_select_active": True}), "help")
+        self.assertEqual(resolve_input_context({"host_select_active": True, "graph_host_id": 1}), "host_select")
+        self.assertEqual(resolve_input_context({"graph_host_id": 1}), "graph")
+        self.assertEqual(resolve_input_context({}), "main")
+
+    def test_handle_help_context_closes_help(self):
+        """Help context back action should close the help view and force render."""
+        state = {"show_help": True, "force_render": False, "updated": False}
+
+        handled = handle_help_context("back", state)
+
+        self.assertTrue(handled)
+        self.assertFalse(state["show_help"])
+        self.assertTrue(state["force_render"])
+        self.assertTrue(state["updated"])
+
+    def test_handle_graph_context_back_returns_to_main(self):
+        """Graph context back action should clear selected graph host."""
+        state = {"graph_host_id": 1, "force_render": False, "updated": False}
+
+        handled = handle_graph_context("back", state)
+
+        self.assertTrue(handled)
+        self.assertIsNone(state["graph_host_id"])
+        self.assertTrue(state["force_render"])
+        self.assertTrue(state["updated"])
 
 
 class TestPanelToggle(unittest.TestCase):
