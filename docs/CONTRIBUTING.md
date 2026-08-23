@@ -21,7 +21,7 @@ Thank you for your interest in contributing to ParaPing! This document provides 
 ## Development Setup
 
 ### Prerequisites
-- Python 3.9 or newer
+- Python 3.10 or newer
 - GCC (for building the ping helper binary on Linux)
 - libcap2-bin (for setting capabilities on Linux)
 
@@ -377,7 +377,7 @@ ParaPing への貢献にご興味をお持ちいただきありがとうござ�
 ## 開発環境のセットアップ
 
 ### 前提条件
-- Python 3.9 以降
+- Python 3.10 以降
 - GCC（Linux で ping ヘルパーバイナリをビルドするため）
 - libcap2-bin（Linux で capabilities を設定するため）
 

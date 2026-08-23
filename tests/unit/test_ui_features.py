@@ -152,7 +152,6 @@ class TestHostSelectionKeyBindings(unittest.TestCase):
             patch("paraping.cli.render_display"),
             patch("paraping.cli.ThreadPoolExecutor"),
         ):
-
             mock_term_size.return_value = type("obj", (object,), {"columns": 80, "lines": 24})
 
             # Simulate key sequence: 'x' to enter selection, 'j' down, then 'k' up

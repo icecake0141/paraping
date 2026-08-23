@@ -161,7 +161,7 @@ def render_fullscreen_rtt_graph(
     graph_style = "bar" if display_mode == "sparkline" else "line"
     pause_label = "DORMANT" if dormant else ("PAUSED" if paused else "LIVE")
     graph_label = "Bar" if graph_style == "bar" else "Line"
-    header = f"ParaPing - {pause_label} RTT Graph " f"[{host_label} | {graph_label}] {timestamp}"
+    header = f"ParaPing - {pause_label} RTT Graph [{host_label} | {graph_label}] {timestamp}"
 
     rtt_ms = [value * 1000 if value is not None else None for value in rtt_values]
     numeric_values = [value for value in rtt_ms if value is not None]
@@ -169,7 +169,7 @@ def render_fullscreen_rtt_graph(
         min_val = min(numeric_values)
         max_val = max(numeric_values)
         latest_val = numeric_values[-1]
-        range_line = "RTT range (Y-axis, ms): " f"{min_val:.1f}-{max_val:.1f} | latest: {latest_val:.1f}"
+        range_line = f"RTT range (Y-axis, ms): {min_val:.1f}-{max_val:.1f} | latest: {latest_val:.1f}"
     else:
         min_val = max_val = 0.0
         range_line = "RTT range (Y-axis, ms): n/a"
@@ -211,7 +211,7 @@ def render_fullscreen_rtt_graph(
         oldest_time = next(value for value in resampled_times if value is not None)
         latest_time = next(value for value in reversed(resampled_times) if value is not None)
         oldest_age = max(0, int(round(latest_time - oldest_time)))
-        x_axis_line = "X-axis (seconds ago, oldest→newest): " f"{oldest_age}s → 0s"
+        x_axis_line = f"X-axis (seconds ago, oldest→newest): {oldest_age}s → 0s"
     else:
         x_axis_line = "X-axis (seconds ago): n/a"
     lines.append(x_axis_line[:width].ljust(width))

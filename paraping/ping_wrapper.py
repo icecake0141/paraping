@@ -102,7 +102,7 @@ def ping_with_helper(
         raise ValueError("icmp_seq must be between 0 and 65535.")
 
     if not os.path.exists(helper_path):
-        raise FileNotFoundError(f"ping_helper binary not found at {helper_path}. " f"Please run 'make build' to compile it.")
+        raise FileNotFoundError(f"ping_helper binary not found at {helper_path}. Please run 'make build' to compile it.")
 
     try:
         # Build command arguments

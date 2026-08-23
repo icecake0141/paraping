@@ -965,7 +965,7 @@ def run(args: argparse.Namespace) -> None:
         total = host_stats.total
         percentage = (success / total * 100) if total > 0 else 0
         status = "OK" if success > 0 else "FAILED"
-        print(f"{info['alias']:30} {success}/{total} replies, {slow} slow, {fail} failed " f"({percentage:.1f}%) [{status}]")
+        print(f"{info['alias']:30} {success}/{total} replies, {slow} slow, {fail} failed ({percentage:.1f}%) [{status}]")
 
 
 def main() -> None:

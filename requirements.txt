@@ -10,5 +10,5 @@
 # This file was created or modified with the assistance of an AI (Large Language Model).
 # Review required for correctness, security, and licensing.
 
-# Runtime dependencies for ParaPing.
-readchar>=4.2.1
+# Install runtime dependencies from the canonical project metadata.
+.
