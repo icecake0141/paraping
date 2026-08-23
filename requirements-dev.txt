@@ -10,14 +10,5 @@
 # This file was created or modified with the assistance of an AI (Large Language Model).
 # Review required for correctness, security, and licensing.
 
--r requirements.txt
-pytest>=7.0.0
-pytest-cov>=4.0.0
-flake8>=6.0.0
-pylint>=2.15.0
-pre-commit>=3.6.0
-black>=24.1.0
-ruff>=0.1.15
-isort>=5.13.0
-mypy>=1.8.0
-types-PyYAML>=6.0.12
+# Install runtime and development dependencies from the canonical project metadata.
+.[dev]

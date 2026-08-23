@@ -106,7 +106,12 @@ class TestPingHost(unittest.TestCase):
 
         results = list(
             ping_host(
-                "192.0.2.1", timeout=1, count=3, slow_threshold=0.5, verbose=False, interval=0.01  # Small interval for testing
+                "192.0.2.1",
+                timeout=1,
+                count=3,
+                slow_threshold=0.5,
+                verbose=False,
+                interval=0.01,  # Small interval for testing
             )
         )
 

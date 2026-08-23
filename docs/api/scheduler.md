@@ -147,7 +147,7 @@ Utility accessors:
 
 ```python
 scheduler.get_host_count()  # -> int
-scheduler.get_hosts()       # -> list[str] (copy)
+scheduler.get_hosts()  # -> list[str] (copy)
 ```
 
 ---
@@ -182,7 +182,7 @@ This spreads all first pings evenly across exactly one interval period.
 ### Example: 10 hosts, 1.0 s interval
 
 ```python
-scheduler = Scheduler(interval=1.0, stagger=0.1)   # 1.0 / 10 = 0.1 s per host
+scheduler = Scheduler(interval=1.0, stagger=0.1)  # 1.0 / 10 = 0.1 s per host
 
 for i, host in enumerate(hosts):
     scheduler.add_host(host)
@@ -198,7 +198,7 @@ for i, host in enumerate(hosts):
 ### Example: 50 hosts, 1.0 s interval
 
 ```python
-stagger = 1.0 / 50   # = 0.02 s
+stagger = 1.0 / 50  # = 0.02 s
 scheduler = Scheduler(interval=1.0, stagger=stagger)
 # Pings spread over the full 1-second interval; no burst.
 ```
@@ -220,7 +220,7 @@ scheduler = Scheduler(interval=1.0, stagger=0.1)
 for host in hosts:
     scheduler.add_host(host)
 
-for _round in range(5):                      # 5 ping rounds
+for _round in range(5):  # 5 ping rounds
     next_times = scheduler.get_next_ping_times()
     for host, t in sorted(next_times.items(), key=lambda x: x[1]):
         delay = t - time.time()
@@ -235,7 +235,7 @@ for _round in range(5):                      # 5 ping rounds
 ```python
 hosts = [f"192.168.1.{i}" for i in range(1, 51)]
 # 50 hosts / 1.0 s = 50 pings/sec  (exactly at the global rate limit)
-stagger = 1.0 / len(hosts)          # = 0.02 s
+stagger = 1.0 / len(hosts)  # = 0.02 s
 scheduler = Scheduler(interval=1.0, stagger=stagger)
 for host in hosts:
     scheduler.add_host(host)
@@ -245,7 +245,7 @@ for host in hosts:
 
 ```python
 # Monitor 20 remote hosts that may have 200+ ms RTT
-scheduler = Scheduler(interval=5.0, stagger=0.25)   # 5 s / 20 hosts = 0.25 s stagger
+scheduler = Scheduler(interval=5.0, stagger=0.25)  # 5 s / 20 hosts = 0.25 s stagger
 ```
 
 ### Integration with a custom event loop
@@ -253,6 +253,7 @@ scheduler = Scheduler(interval=5.0, stagger=0.25)   # 5 s / 20 hosts = 0.25 s st
 ```python
 import asyncio
 from paraping.runtime.scheduler import Scheduler
+
 
 async def ping_loop(scheduler, hosts, rounds=10):
     for host in hosts:
@@ -268,6 +269,7 @@ async def ping_loop(scheduler, hosts, rounds=10):
                 await asyncio.sleep(delay)
             # await async_send_ping(host)
             scheduler.mark_ping_sent(host, sent_time=t)
+
 
 asyncio.run(ping_loop(Scheduler(interval=1.0, stagger=0.05), ["8.8.8.8", "1.1.1.1"]))
 ```
@@ -350,8 +352,8 @@ for host in new_hosts:
 `emit_mock_send_events(count=N)` generates `N` complete rounds for **all** registered hosts.  Sequence numbers reflect `ping_count + 1` at the moment the event is generated, and `ping_count` is incremented as events are emitted.  If you call `emit_mock_send_events` multiple times, sequence numbers continue from where they left off:
 
 ```python
-scheduler.emit_mock_send_events(count=2)   # sequences 1, 2
-scheduler.emit_mock_send_events(count=1)   # sequence 3
+scheduler.emit_mock_send_events(count=2)  # sequences 1, 2
+scheduler.emit_mock_send_events(count=1)  # sequence 3
 ```
 
 Call `reset()` between test runs if you need sequence numbers to restart from 1.

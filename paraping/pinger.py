@@ -70,7 +70,7 @@ def ping_host(
         logger.info("\n--- Pinging %s ---", host)
 
     if not os.path.exists(helper_path):
-        message = f"ping_helper binary not found at {helper_path}. " "Please run 'make build' and 'sudo make setcap'."
+        message = f"ping_helper binary not found at {helper_path}. Please run 'make build' and 'sudo make setcap'."
         if verbose:
             logger.info(message)
         yield {

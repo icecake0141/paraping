@@ -11,7 +11,7 @@
 # Review required for correctness, security, and licensing.
 
 [build-system]
-requires = ["setuptools>=82.0.1", "wheel"]
+requires = ["setuptools>=83.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -19,7 +19,7 @@ name = "paraping"
 version = "1.0.0"
 description = "Interactive terminal-based ICMP ping monitor for multiple hosts"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
 authors = [
     {name = "icecake0141"}
@@ -32,7 +32,6 @@ classifiers = [
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -41,20 +40,21 @@ classifiers = [
 
 # Runtime dependencies
 dependencies = [
-    "readchar>=4.2.1",
+    "readchar>=4.2.2",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.4.2",
+    "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
     "flake8>=7.3.0",
-    "pylint>=3.3.9",
-    "pre-commit>=4.3.0",
-    "black>=25.11.0",
-    "ruff>=0.15.11",
-    "isort>=6.1.0",
-    "mypy>=1.19.1",
+    "pylint>=4.0.6",
+    "pre-commit>=4.6.0",
+    "black>=26.5.1",
+    "ruff>=0.15.20",
+    "isort>=8.0.1",
+    "mypy>=2.1.0",
+    "types-PyYAML>=6.0.12.20260518",
 ]
 
 [project.urls]
@@ -99,7 +99,7 @@ exclude_lines = [
 
 [tool.black]
 line-length = 127
-target-version = ['py39', 'py310', 'py311', 'py312']
+target-version = ['py310', 'py311', 'py312']
 include = '\.pyi?$'
 exclude = '''
 /(
@@ -121,7 +121,7 @@ line_length = 127
 
 [tool.ruff]
 line-length = 127
-target-version = "py39"
+target-version = "py310"
 
 [tool.ruff.lint]
 select = [
@@ -134,6 +134,7 @@ select = [
 ]
 ignore = [
     "E203", # whitespace before ':'
+    "B905", # zip() calls intentionally allow uneven iterables
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -149,7 +150,7 @@ ignore = [
 "paraping/runtime/hosts.py" = ["C901"]  # host normalization complexity is pre-existing
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.10"
 strict = true
 ignore_missing_imports = true
 warn_unused_configs = true

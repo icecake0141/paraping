@@ -31,7 +31,7 @@ It continuously pings multiple hosts in parallel and visualizes network state in
 
 ## Runtime Requirements
 
-- Python 3.9+
+- Python 3.10+
 - Linux: `ping_helper` binary with `cap_net_raw` (recommended)
 - macOS/BSD: run with `sudo` when raw ICMP is required
 - Optional network access for ASN lookup
@@ -88,7 +88,7 @@ ParaPing は、複数ホストの運用トリアージ向けに設計された�
 
 ## 実行要件
 
-- Python 3.9+
+- Python 3.10+
 - Linux: `cap_net_raw` を付与した `ping_helper`（推奨）
 - macOS/BSD: raw ICMP が必要な場合は `sudo` で実行
 - ASN 取得にはネットワーク接続が必要（任意）

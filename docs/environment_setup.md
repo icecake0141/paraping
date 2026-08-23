@@ -32,7 +32,7 @@ This guide is specifically for developers who need to:
 ## Prerequisites
 
 - Git configured with access to the repository
-- Python 3.9 or newer
+- Python 3.10 or newer
 - pip package manager
 
 ## Quick Start
@@ -162,7 +162,7 @@ If the repository uses `main` instead of `master`:
 ## 前提条件
 
 - リポジトリへのアクセス権が設定されたGit
-- Python 3.9以降
+- Python 3.10以降
 - pipパッケージマネージャー
 
 ## クイックスタート
